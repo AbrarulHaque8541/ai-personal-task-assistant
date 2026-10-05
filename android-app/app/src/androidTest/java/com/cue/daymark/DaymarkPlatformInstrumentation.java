@@ -37,6 +37,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.crypto.SecretKey;
 import javax.crypto.KeyGenerator;
@@ -53,7 +54,7 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
         try {
             importLegacySnapshotRoundTripAndRollback();
             attachmentProviderPipeAndAndroidCrypto();
-            portableImportUriJournalSurvivesPreKeyProcessDeath();
+            portableImportUriJournalPreservesRecreationAndCleansOrphans();
             portableBackupRekeysAndReconcilesProcessDeath();
             result.putString("result", "passed");
             result.putInt("assertions", assertions);
@@ -136,31 +137,81 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
         }
     }
 
-    private void portableImportUriJournalSurvivesPreKeyProcessDeath() throws Exception {
+    private void portableImportUriJournalPreservesRecreationAndCleansOrphans() throws Exception {
         File root = makeTestDirectory("portable-uri-journal");
-        String selected = "content://documents.example/document/pre-key.dmbackup";
+        String selected = "content://documents.example/document/activity-recreation.dmbackup";
         String unrelated = "content://documents.example/document/unrelated";
         Set<String> grants = new HashSet<>(Arrays.asList(selected, unrelated));
         File journalFile = new File(root, "active-import-uri.bin");
         try {
-            PortableBackupManager.ActiveImportUriJournal beforeDeath =
+            PortableBackupManager.ActiveImportUriJournal journal =
                     new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
-            PortableImportGrantRecovery.recordTakenGrantOrRelease(beforeDeath, selected, exactUri -> {
+            PortableImportGrantRecovery.Selection selection = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                    journal, selected, exactUri -> {
                 if (!grants.remove(exactUri)) throw new IOException("selected URI grant was not held");
             });
-            check(selected.equals(beforeDeath.read()) && grants.contains(selected),
-                    "real AtomicFile journal persists the selected URI before recovery-key entry");
-
-            PortableBackupManager.ActiveImportUriJournal afterRestart =
+            PortableImportGrantRecovery.ActivityState saved = PortableImportGrantRecovery.activityStateForSelection(
+                    journal, selection, grants::contains);
+            check(saved != null && selected.equals(saved.uri)
+                            && selection.operationToken.equals(saved.operationToken),
+                    "saved Activity state contains the journaled URI and non-secret operation token");
+            PortableBackupManager.ActiveImportUriJournal afterRecreation =
                     new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
-            PortableImportGrantRecovery.recoverAfterProcessDeath(afterRestart,
-                    () -> check(grants.contains(selected), "startup reconciles before releasing the pre-key URI grant"),
-                    exactUri -> {
-                        check(selected.equals(exactUri), "startup releases only the URI persisted in AtomicFile");
-                        grants.remove(exactUri);
-                    });
-            check(afterRestart.read() == null && !grants.contains(selected) && grants.contains(unrelated),
-                    "pre-key restart clears the real journal and preserves unrelated URI grants");
+            PortableImportGrantRecovery.Selection restored = PortableImportGrantRecovery.restorePendingActivitySelection(
+                    afterRecreation, saved.uri, saved.operationToken, grants::contains);
+            check(selection.matches(restored), "recreated Activity validates the real AtomicFile journal record");
+            boolean retained = PortableImportGrantRecovery.reconcileStartup(afterRecreation, restored,
+                    () -> check(grants.contains(selected), "recreation reconciles before keeping the selected URI grant"),
+                    grants::contains, exactUri -> { throw new AssertionError("valid recreation must retain its grant"); });
+            check(retained && selection.matches(afterRecreation.read()) && grants.contains(selected),
+                    "valid Activity recreation preserves the journal and exact selected read grant");
+
+            PortableImportGrantRecovery.finishAfterWork(afterRecreation, selection, () -> { }, exactUri -> {
+                check(selected.equals(exactUri), "user cancellation releases only the URI persisted in AtomicFile");
+                grants.remove(exactUri);
+            });
+            check(afterRecreation.read() == null && !grants.contains(selected) && grants.contains(unrelated),
+                    "cancelled key flow clears its real AtomicFile journal and preserves unrelated grants");
+
+            String orphanUri = "content://documents.example/document/process-death.dmbackup";
+            grants.add(orphanUri);
+            PortableImportGrantRecovery.Selection orphan = new PortableImportGrantRecovery.Selection(
+                    UUID.randomUUID().toString(), orphanUri);
+            afterRecreation.write(orphan); // Deliberately not registered in this process: models process death.
+            check(PortableImportGrantRecovery.restorePendingActivitySelection(afterRecreation,
+                            orphan.uri, orphan.operationToken, grants::contains) == null,
+                    "a saved token from a new process is not accepted as Activity recreation");
+            AtomicBoolean reconciled = new AtomicBoolean();
+            boolean orphanPreserved = PortableImportGrantRecovery.reconcileStartup(afterRecreation, null, () -> {
+                reconciled.set(true);
+            }, grants::contains, exactUri -> {
+                check(reconciled.get(), "process-death orphan cleanup follows transaction reconciliation");
+                check(orphanUri.equals(exactUri), "process-death recovery releases only the journaled URI");
+                grants.remove(exactUri);
+            });
+            check(!orphanPreserved && afterRecreation.read() == null && !grants.contains(orphanUri)
+                            && grants.contains(unrelated),
+                    "real AtomicFile orphan is cleared after process death without touching other grants");
+
+            String legacyUri = "content://documents.example/document/legacy-uri-only.dmbackup";
+            grants.add(legacyUri);
+            try (FileOutputStream legacyFile = new FileOutputStream(journalFile)) {
+                legacyFile.write(legacyUri.getBytes(StandardCharsets.UTF_8));
+            }
+            PortableBackupManager.ActiveImportUriJournal legacyJournal =
+                    new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
+            check(legacyJournal.read().operationToken == null,
+                    "pre-token AtomicFile journal is recognized as a cleanup-only legacy record");
+            AtomicBoolean legacyReconciled = new AtomicBoolean();
+            PortableImportGrantRecovery.recoverAfterProcessDeath(legacyJournal, () -> {
+                legacyReconciled.set(true);
+            }, exactUri -> {
+                check(legacyReconciled.get(), "legacy URI-only cleanup follows transaction reconciliation");
+                check(legacyUri.equals(exactUri), "legacy cleanup releases only its exact URI");
+                grants.remove(exactUri);
+            });
+            check(legacyJournal.read() == null && !grants.contains(legacyUri) && grants.contains(unrelated),
+                    "legacy journal is removed without disturbing unrelated grants");
         } finally {
             deleteTree(root);
         }

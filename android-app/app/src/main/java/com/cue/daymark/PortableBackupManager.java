@@ -122,41 +122,46 @@ final class PortableBackupManager {
         clearPending(state);
     }
 
-    /** Durably record only the selected archive URI immediately after its read grant is taken. */
-    void recordActivePortableImportUri(Uri uri) throws IOException {
+    /** Durably record the exact selected archive and return its non-secret operation token. */
+    PortableImportGrantRecovery.Selection recordActivePortableImportUri(Uri uri) throws IOException {
         if (uri == null) throw new IOException("The selected backup could not be opened.");
-        PortableImportGrantRecovery.recordTakenGrantOrRelease(activeImportUriJournal,
+        return PortableImportGrantRecovery.recordTakenGrantOrRelease(activeImportUriJournal,
                 uri.toString(), this::releaseExactPortableReadGrant);
     }
 
-    /** Startup recovery reconciles the import transaction before releasing its exact abandoned read grant. */
-    void reconcileAndReleaseAbandonedImportUri(List<Task> loadedTasks,
-                                               AndroidAttachmentStore attachments) throws IOException {
-        PortableImportGrantRecovery.recoverAfterProcessDeath(activeImportUriJournal,
+    PortableImportGrantRecovery.Selection restorePendingPortableImportSelection(String savedUri,
+                                                                                 String savedOperationToken)
+            throws IOException {
+        return PortableImportGrantRecovery.restorePendingActivitySelection(activeImportUriJournal,
+                savedUri, savedOperationToken, this::hasExactPortableReadGrant);
+    }
+
+    PortableImportGrantRecovery.ActivityState activityStateForSelection(
+            PortableImportGrantRecovery.Selection selection) throws IOException {
+        return PortableImportGrantRecovery.activityStateForSelection(activeImportUriJournal, selection,
+                this::hasExactPortableReadGrant);
+    }
+
+    /** Reconcile first; preserve only a matching saved selection still live in this process with a read grant. */
+    boolean reconcileStartupImportUri(List<Task> loadedTasks, AndroidAttachmentStore attachments,
+                                      PortableImportGrantRecovery.Selection restoredSelection) throws IOException {
+        return PortableImportGrantRecovery.reconcileStartup(activeImportUriJournal, restoredSelection,
+                () -> reconcile(loadedTasks, attachments), this::hasExactPortableReadGrant,
+                this::releaseExactPortableReadGrant);
+    }
+
+    /** Normal completion and cancellation reconcile before releasing the exact operation's URI read grant. */
+    void finishActivePortableImportUri(PortableImportGrantRecovery.Selection expectedSelection,
+                                       List<Task> loadedTasks,
+                                       AndroidAttachmentStore attachments) throws IOException {
+        PortableImportGrantRecovery.finishAfterWork(activeImportUriJournal, expectedSelection,
                 () -> reconcile(loadedTasks, attachments), this::releaseExactPortableReadGrant);
     }
 
-    /** Normal completion also reconciles before releasing the exact active URI read grant. */
-    void finishActivePortableImportUri(Uri expectedUri, List<Task> loadedTasks,
+    void finishPortableImportSelection(PortableImportGrantRecovery.Selection expectedSelection,
+                                       List<Task> loadedTasks,
                                        AndroidAttachmentStore attachments) throws IOException {
-        if (expectedUri == null) throw new IOException("The active portable-import URI is missing.");
-        PortableImportGrantRecovery.finishAfterWork(activeImportUriJournal, expectedUri.toString(),
-                () -> reconcile(loadedTasks, attachments), this::releaseExactPortableReadGrant);
-    }
-
-    /** Cancellation/recreation cleanup reconciles first and releases only a matching still-journaled URI. */
-    void finishPortableImportSelection(Uri expectedUri, List<Task> loadedTasks,
-                                       AndroidAttachmentStore attachments) throws IOException {
-        if (expectedUri == null) throw new IOException("The selected portable-import URI is missing.");
-        String activeUri = activeImportUriJournal.read();
-        if (activeUri == null) {
-            reconcile(loadedTasks, attachments);
-            return;
-        }
-        if (!expectedUri.toString().equals(activeUri)) {
-            throw new IOException("The selected portable-import URI does not match the active recovery journal.");
-        }
-        finishActivePortableImportUri(expectedUri, loadedTasks, attachments);
+        finishActivePortableImportUri(expectedSelection, loadedTasks, attachments);
     }
 
     List<Task> restore(InputStream source, byte[] recoveryKey, EncryptedTaskStore tasks,
@@ -368,13 +373,24 @@ final class PortableBackupManager {
         }
     }
 
+    private boolean hasExactPortableReadGrant(String exactUri) {
+        try {
+            return exactUri != null && hasExactPortableReadGrant(Uri.parse(exactUri));
+        } catch (IOException | RuntimeException failure) {
+            return false;
+        }
+    }
+
     static final class ActiveImportUriJournal implements PortableImportGrantRecovery.JournalStore {
-        private static final int MAX_ENCODED_URI_BYTES = PortableImportGrantRecovery.MAX_URI_CHARS * 4;
+        private static final int JOURNAL_MAGIC = 0x4450494a; // DPIJ
+        private static final int JOURNAL_VERSION = 1;
+        private static final int TOKEN_BYTES = 36;
+        private static final int MAX_ENCODED_JOURNAL_BYTES = PortableImportGrantRecovery.MAX_URI_CHARS * 4 + 64;
         private final AtomicFile atomic;
 
         ActiveImportUriJournal(AtomicFile atomic) { this.atomic = atomic; }
 
-        @Override public String read() throws IOException {
+        @Override public PortableImportGrantRecovery.Selection read() throws IOException {
             File base = atomic.getBaseFile();
             File backup = new File(base.getPath() + ".bak");
             File staged = new File(base.getPath() + ".new");
@@ -384,26 +400,69 @@ final class PortableBackupManager {
             }
             byte[] encoded;
             try (InputStream input = atomic.openRead()) {
-                encoded = readBounded(input, MAX_ENCODED_URI_BYTES);
+                encoded = readBounded(input, MAX_ENCODED_JOURNAL_BYTES);
             }
             try {
-                String uri = new String(encoded, StandardCharsets.UTF_8);
-                if (!Arrays.equals(encoded, uri.getBytes(StandardCharsets.UTF_8))
-                        || !PortableImportGrantRecovery.isContentUri(uri)) {
+                if (encoded.length < Integer.BYTES
+                        || ByteBuffer.wrap(encoded, 0, Integer.BYTES).getInt() != JOURNAL_MAGIC) {
+                    String legacyUri = decodeUtf8(encoded);
+                    if (!PortableImportGrantRecovery.isContentUri(legacyUri)) {
+                        throw new IOException("The portable-import URI journal is malformed.");
+                    }
+                    return new PortableImportGrantRecovery.Selection(null, legacyUri);
+                }
+                DataInputStream input = new DataInputStream(new ByteArrayInputStream(encoded));
+                if (input.readInt() != JOURNAL_MAGIC || input.readUnsignedByte() != JOURNAL_VERSION) {
+                    throw new IOException("The portable-import URI journal version is unsupported.");
+                }
+                int tokenLength = input.readUnsignedByte();
+                int uriLength = input.readInt();
+                if (tokenLength != TOKEN_BYTES || uriLength <= 0
+                        || uriLength > PortableImportGrantRecovery.MAX_URI_CHARS * 4
+                        || encoded.length != Integer.BYTES + 1 + 1 + Integer.BYTES + tokenLength + uriLength) {
                     throw new IOException("The portable-import URI journal is malformed.");
                 }
-                return uri;
+                byte[] tokenBytes = new byte[tokenLength];
+                byte[] uriBytes = new byte[uriLength];
+                try {
+                    input.readFully(tokenBytes);
+                    input.readFully(uriBytes);
+                    String token = decodeUtf8(tokenBytes);
+                    String uri = decodeUtf8(uriBytes);
+                    if (!PortableImportGrantRecovery.isOperationToken(token)
+                            || !PortableImportGrantRecovery.isContentUri(uri)) {
+                        throw new IOException("The portable-import URI journal is malformed.");
+                    }
+                    return new PortableImportGrantRecovery.Selection(token, uri);
+                } finally {
+                    Arrays.fill(tokenBytes, (byte) 0);
+                    Arrays.fill(uriBytes, (byte) 0);
+                }
             } finally {
                 Arrays.fill(encoded, (byte) 0);
             }
         }
 
-        @Override public void write(String uri) throws IOException {
-            if (!PortableImportGrantRecovery.isContentUri(uri)) {
+        @Override public void write(PortableImportGrantRecovery.Selection selection) throws IOException {
+            if (selection == null || !PortableImportGrantRecovery.isOperationToken(selection.operationToken)
+                    || !PortableImportGrantRecovery.isContentUri(selection.uri)) {
                 throw new IOException("The portable-import URI journal is malformed.");
             }
-            byte[] encoded = uri.getBytes(StandardCharsets.UTF_8);
-            if (encoded.length > MAX_ENCODED_URI_BYTES) throw new IOException("The portable-import URI journal is oversized.");
+            byte[] tokenBytes = selection.operationToken.getBytes(StandardCharsets.UTF_8);
+            byte[] uriBytes = selection.uri.getBytes(StandardCharsets.UTF_8);
+            if (uriBytes.length > PortableImportGrantRecovery.MAX_URI_CHARS * 4) {
+                throw new IOException("The portable-import URI journal is oversized.");
+            }
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream(Integer.BYTES + 6 + tokenBytes.length + uriBytes.length);
+            try (DataOutputStream data = new DataOutputStream(bytes)) {
+                data.writeInt(JOURNAL_MAGIC);
+                data.writeByte(JOURNAL_VERSION);
+                data.writeByte(tokenBytes.length);
+                data.writeInt(uriBytes.length);
+                data.write(tokenBytes);
+                data.write(uriBytes);
+            }
+            byte[] encoded = bytes.toByteArray();
             FileOutputStream output = null;
             try {
                 output = atomic.startWrite();
@@ -420,8 +479,18 @@ final class PortableBackupManager {
                 if (failure instanceof IOException) throw (IOException) failure;
                 throw new IOException("The portable-import URI journal could not be committed.", failure);
             } finally {
+                Arrays.fill(tokenBytes, (byte) 0);
+                Arrays.fill(uriBytes, (byte) 0);
                 Arrays.fill(encoded, (byte) 0);
             }
+        }
+
+        private static String decodeUtf8(byte[] encoded) throws IOException {
+            String value = new String(encoded, StandardCharsets.UTF_8);
+            if (!Arrays.equals(encoded, value.getBytes(StandardCharsets.UTF_8))) {
+                throw new IOException("The portable-import URI journal is malformed.");
+            }
+            return value;
         }
 
         @Override public void clear() throws IOException {

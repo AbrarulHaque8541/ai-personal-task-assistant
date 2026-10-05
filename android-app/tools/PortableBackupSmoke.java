@@ -427,41 +427,82 @@ public final class PortableBackupSmoke {
     private static void coversImportUriActivityAndProcessDeathLifecycle() throws Exception {
         String selected = "content://documents.example/tree/primary%3Abackup.dmbackup";
         String unrelated = "content://other.example/document/retained";
-        check(selected.equals(PortableImportGrantRecovery.uriForActivityState(selected)),
-                "Activity recreation saves only a valid pending document URI");
-        check(PortableImportGrantRecovery.restorePendingActivityUri(selected,
-                        uri -> selected.equals(uri)) != null,
-                "Activity recreation restores the pending picker URI when its read grant remains");
-        check(PortableImportGrantRecovery.restorePendingActivityUri(selected,
-                        uri -> false) == null,
-                "Activity recreation requests a re-pick when the exact saved URI grant is missing");
-        check(PortableImportGrantRecovery.uriForActivityState("file:///private/path") == null,
-                "non-SAF URIs are never saved as pending portable-import state");
-
         InMemoryUriJournal journal = new InMemoryUriJournal();
         Set<String> readGrants = new HashSet<>(Arrays.asList(selected, unrelated));
         Set<String> writeGrants = new HashSet<>(Collections.singletonList(selected));
-        PortableImportGrantRecovery.recordTakenGrantOrRelease(journal, selected, readGrants::remove);
-        check(selected.equals(journal.value), "the exact selected URI is journaled immediately after grant acquisition, before any key prompt");
+        byte[] document = "selected encrypted archive remains readable".getBytes(StandardCharsets.UTF_8);
+        PortableImportGrantRecovery.Selection selection = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                journal, selected, readGrants::remove);
+        check(selection.uri.equals(selected) && selection.operationToken.equals(journal.value.operationToken),
+                "the selected URI and non-secret operation token are journaled before any key prompt");
+        PortableImportGrantRecovery.ActivityState saved = PortableImportGrantRecovery.activityStateForSelection(
+                journal, selection, readGrants::contains);
+        check(saved != null && selected.equals(saved.uri) && selection.operationToken.equals(saved.operationToken),
+                "Activity saved state contains only the exact URI and its operation token");
+        PortableImportGrantRecovery.Selection recreated = PortableImportGrantRecovery.restorePendingActivitySelection(
+                journal, saved.uri, saved.operationToken, readGrants::contains);
+        check(selection.matches(recreated), "same-process Activity recreation restores only a matching live journal selection");
         AtomicBoolean reconciled = new AtomicBoolean();
-        PortableImportGrantRecovery.recoverAfterProcessDeath(journal, () -> {
-            check(readGrants.contains(selected), "transaction recovery runs before any URI grant is released");
+        boolean preserved = PortableImportGrantRecovery.reconcileStartup(journal, recreated, () -> {
             reconciled.set(true);
-        }, exactUri -> {
-            check(reconciled.get(), "exact read-grant release follows transaction reconciliation");
-            check(selected.equals(exactUri), "process-death recovery releases only the journaled URI");
-            readGrants.remove(exactUri);
+        }, readGrants::contains, exactUri -> {
+            throw new AssertionError("a valid Activity recreation must preserve the selected read grant");
         });
-        check(journal.value == null && !readGrants.contains(selected),
-                "simulated process death in the pre-key window clears the journal after releasing the abandoned read grant");
+        check(preserved && reconciled.get() && journal.value != null && readGrants.contains(selected),
+                "startup transaction reconciliation preserves a matching restored selection and its journal");
+        check(Arrays.equals(document, new ByteArrayInputStream(document).readAllBytes()),
+                "the restored key-dialog flow can still read the selected document after Activity recreation");
         check(readGrants.contains(unrelated) && writeGrants.contains(selected),
                 "unrelated grants and the same URI's unrelated write permission are not revoked");
+        PortableImportGrantRecovery.finishAfterWork(journal, recreated, () -> { }, readGrants::remove);
+        check(journal.value == null && !readGrants.contains(selected),
+                "a resumed key flow can be cancelled and releases its selected read grant");
+
+        String freshLaunchUri = "content://documents.example/document/no-saved-state.dmbackup";
+        InMemoryUriJournal freshLaunchJournal = new InMemoryUriJournal();
+        Set<String> freshLaunchGrants = new HashSet<>(Arrays.asList(freshLaunchUri, unrelated));
+        PortableImportGrantRecovery.Selection freshLaunchSelection = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                freshLaunchJournal, freshLaunchUri, freshLaunchGrants::remove);
+        AtomicBoolean freshLaunchReconciled = new AtomicBoolean();
+        check(!PortableImportGrantRecovery.reconcileStartup(freshLaunchJournal, null, () -> {
+            freshLaunchReconciled.set(true);
+        }, freshLaunchGrants::contains, exactUri -> {
+            check(freshLaunchReconciled.get(), "fresh launch reconciles before abandoning a live-process selection");
+            check(freshLaunchUri.equals(exactUri), "fresh launch cleanup uses the URI from its journal");
+            freshLaunchGrants.remove(exactUri);
+        }), "fresh launch without saved pending state does not preserve even a live process token");
+        check(freshLaunchJournal.value == null && !freshLaunchGrants.contains(freshLaunchUri)
+                        && freshLaunchGrants.contains(unrelated),
+                "fresh launch without state clears only its exact journaled grant");
+
+        String abandonedUri = "content://documents.example/document/fresh-launch.dmbackup";
+        InMemoryUriJournal abandonedJournal = new InMemoryUriJournal();
+        Set<String> abandonedGrants = new HashSet<>(Arrays.asList(abandonedUri, unrelated));
+        PortableImportGrantRecovery.Selection abandoned = new PortableImportGrantRecovery.Selection(
+                UUID.randomUUID().toString(), abandonedUri);
+        abandonedJournal.write(abandoned); // A persisted operation with no process-local live marker models process death.
+        check(PortableImportGrantRecovery.restorePendingActivitySelection(abandonedJournal,
+                        abandonedUri, abandoned.operationToken, abandonedGrants::contains) == null,
+                "saved URI/token from a new process cannot impersonate same-process Activity recreation");
+        AtomicBoolean freshReconciled = new AtomicBoolean();
+        check(!PortableImportGrantRecovery.reconcileStartup(abandonedJournal, null, () -> {
+            freshReconciled.set(true);
+        }, abandonedGrants::contains, exactUri -> {
+            check(freshReconciled.get(), "fresh-launch grant cleanup follows transaction reconciliation");
+            check(abandonedUri.equals(exactUri), "fresh launch releases only the journaled URI");
+            abandonedGrants.remove(exactUri);
+        }), "fresh launch without valid saved pending state does not preserve an orphan journal");
+        check(abandonedJournal.value == null && !abandonedGrants.contains(abandonedUri)
+                        && abandonedGrants.contains(unrelated),
+                "fresh relaunch clears only its orphaned exact grant and retains unrelated grants");
 
         String failedWriteUri = "content://documents.example/document/journal-failure.dmbackup";
         Set<String> failedWriteGrants = new HashSet<>(Arrays.asList(failedWriteUri, unrelated));
         PortableImportGrantRecovery.JournalStore failedJournal = new PortableImportGrantRecovery.JournalStore() {
-            @Override public String read() { return null; }
-            @Override public void write(String uri) throws IOException { throw new IOException("simulated durable write failure"); }
+            @Override public PortableImportGrantRecovery.Selection read() { return null; }
+            @Override public void write(PortableImportGrantRecovery.Selection value) throws IOException {
+                throw new IOException("simulated durable write failure");
+            }
             @Override public void clear() { }
         };
         expectIOException(() -> PortableImportGrantRecovery.recordTakenGrantOrRelease(
@@ -473,14 +514,15 @@ public final class PortableBackupSmoke {
         String cancelledUri = "content://documents.example/document/cancelled.dmbackup";
         InMemoryUriJournal cancelledJournal = new InMemoryUriJournal();
         Set<String> cancelledGrants = new HashSet<>(Arrays.asList(cancelledUri, unrelated));
-        PortableImportGrantRecovery.recordTakenGrantOrRelease(cancelledJournal, cancelledUri, cancelledGrants::remove);
-        expectIOException(() -> PortableImportGrantRecovery.finishAfterWork(cancelledJournal, cancelledUri,
+        PortableImportGrantRecovery.Selection cancelled = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                cancelledJournal, cancelledUri, cancelledGrants::remove);
+        expectIOException(() -> PortableImportGrantRecovery.finishAfterWork(cancelledJournal, cancelled,
                         () -> { throw new IOException("simulated unresolved restore transaction"); }, cancelledGrants::remove),
                 "cancel/failure cleanup retains the journal and grant until storage reconciliation succeeds");
-        check(cancelledUri.equals(cancelledJournal.value) && cancelledGrants.contains(cancelledUri),
+        check(cancelled.matches(cancelledJournal.value) && cancelledGrants.contains(cancelledUri),
                 "failed cancellation reconciliation cannot clear or revoke the selected URI");
         AtomicBoolean cancelReconciled = new AtomicBoolean();
-        PortableImportGrantRecovery.finishAfterWork(cancelledJournal, cancelledUri, () -> {
+        PortableImportGrantRecovery.finishAfterWork(cancelledJournal, cancelled, () -> {
             cancelReconciled.set(true);
         }, exactUri -> {
             check(cancelReconciled.get() && cancelledUri.equals(exactUri),
@@ -491,15 +533,69 @@ public final class PortableBackupSmoke {
                         && cancelledGrants.contains(unrelated),
                 "successful cleanup clears only the completed selection and preserves unrelated grants");
 
+        String mismatchedJournalUri = "content://documents.example/document/journaled-after-uri-mismatch.dmbackup";
+        String mismatchedSavedUri = "content://documents.example/document/mismatched-saved-state.dmbackup";
+        InMemoryUriJournal mismatchJournal = new InMemoryUriJournal();
+        Set<String> mismatchGrants = new HashSet<>(Arrays.asList(mismatchedJournalUri, mismatchedSavedUri, unrelated));
+        PortableImportGrantRecovery.Selection mismatch = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                mismatchJournal, mismatchedJournalUri, mismatchGrants::remove);
+        check(PortableImportGrantRecovery.restorePendingActivitySelection(mismatchJournal,
+                        mismatchedSavedUri, mismatch.operationToken, mismatchGrants::contains) == null,
+                "mismatched saved URI is rejected even when its token and grants exist");
+        AtomicBoolean mismatchReconciled = new AtomicBoolean();
+        PortableImportGrantRecovery.reconcileStartup(mismatchJournal, null, () -> mismatchReconciled.set(true),
+                mismatchGrants::contains, exactUri -> {
+                    check(mismatchReconciled.get(), "mismatched-state cleanup reconciles storage first");
+                    check(mismatchedJournalUri.equals(exactUri), "mismatch cleanup trusts only the journaled URI");
+                    mismatchGrants.remove(exactUri);
+                });
+        check(!mismatchGrants.contains(mismatchedJournalUri) && mismatchGrants.contains(mismatchedSavedUri)
+                        && mismatchGrants.contains(unrelated),
+                "URI mismatch releases the exact journaled grant, not the different URI from saved state");
+
+        String revokedUri = "content://documents.example/document/revoked.dmbackup";
+        InMemoryUriJournal revokedJournal = new InMemoryUriJournal();
+        Set<String> revokedGrants = new HashSet<>(Arrays.asList(revokedUri, unrelated));
+        PortableImportGrantRecovery.Selection revoked = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                revokedJournal, revokedUri, revokedGrants::remove);
+        revokedGrants.remove(revokedUri);
+        check(PortableImportGrantRecovery.restorePendingActivitySelection(revokedJournal,
+                        revoked.uri, revoked.operationToken, revokedGrants::contains) == null,
+                "a revoked read grant invalidates otherwise matching saved pending state");
+        AtomicBoolean revokedReconciled = new AtomicBoolean();
+        PortableImportGrantRecovery.reconcileStartup(revokedJournal, null, () -> revokedReconciled.set(true),
+                revokedGrants::contains, exactUri -> {
+                    check(revokedReconciled.get(), "revoked-grant cleanup follows transaction reconciliation");
+                    check(revokedUri.equals(exactUri), "revoked-grant cleanup clears only its journal entry");
+                    revokedGrants.remove(exactUri);
+                });
+        check(revokedJournal.value == null && revokedGrants.contains(unrelated),
+                "revoked-grant startup clears the orphan journal without touching unrelated grants");
+
+        String mismatchedJournaledUri = "content://documents.example/document/journal-uri.dmbackup";
+        String savedUri = "content://documents.example/document/saved-uri.dmbackup";
+        InMemoryUriJournal mismatchedRecordJournal = new InMemoryUriJournal();
+        Set<String> mismatchedRecordGrants = new HashSet<>(Arrays.asList(mismatchedJournaledUri, savedUri));
+        String mismatchedToken = UUID.randomUUID().toString();
+        mismatchedRecordJournal.write(new PortableImportGrantRecovery.Selection(mismatchedToken, mismatchedJournaledUri));
+        check(PortableImportGrantRecovery.restorePendingActivitySelection(mismatchedRecordJournal,
+                        savedUri, mismatchedToken, mismatchedRecordGrants::contains) == null,
+                "saved URI must also match the URI stored beside its operation token in the journal");
+        PortableImportGrantRecovery.reconcileStartup(mismatchedRecordJournal, null, () -> { },
+                mismatchedRecordGrants::contains, mismatchedRecordGrants::remove);
+        check(!mismatchedRecordGrants.contains(mismatchedJournaledUri) && mismatchedRecordGrants.contains(savedUri),
+                "journal mismatch recovery cleans only the URI actually recorded in the journal");
+
         String retryUri = "content://documents.example/document/retry.dmbackup";
         InMemoryUriJournal retryJournal = new InMemoryUriJournal();
         Set<String> retryGrants = new HashSet<>(Collections.singletonList(retryUri));
-        PortableImportGrantRecovery.recordBeforeWork(retryJournal, retryUri);
-        expectIOException(() -> PortableImportGrantRecovery.recoverAfterProcessDeath(retryJournal,
+        PortableImportGrantRecovery.Selection retry = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                retryJournal, retryUri, retryGrants::remove);
+        expectIOException(() -> PortableImportGrantRecovery.reconcileStartup(retryJournal, null,
                         () -> { throw new IOException("simulated unresolved import journal"); },
-                        retryGrants::remove),
+                        retryGrants::contains, retryGrants::remove),
                 "failed transaction reconciliation leaves the URI journal and grant for a later startup");
-        check(retryUri.equals(retryJournal.value) && retryGrants.contains(retryUri),
+        check(retry.matches(retryJournal.value) && retryGrants.contains(retryUri),
                 "unresolved import state cannot prematurely discard its active-URI journal");
 
         PortableImportGrantRecovery.activityRestoreWorkerStarted();
@@ -763,9 +859,9 @@ public final class PortableBackupSmoke {
     }
 
     private static final class InMemoryUriJournal implements PortableImportGrantRecovery.JournalStore {
-        private String value;
-        @Override public String read() { return value; }
-        @Override public void write(String uri) { value = uri; }
+        private PortableImportGrantRecovery.Selection value;
+        @Override public PortableImportGrantRecovery.Selection read() { return value; }
+        @Override public void write(PortableImportGrantRecovery.Selection selection) { value = selection; }
         @Override public void clear() { value = null; }
     }
 
