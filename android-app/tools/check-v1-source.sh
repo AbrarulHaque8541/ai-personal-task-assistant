@@ -107,7 +107,7 @@ for forbidden in ("requestPermissions(", "ActivityResultContracts.RequestPermiss
     assert forbidden not in activity, f"browser must not add runtime permission prompt code: {forbidden}"
 
 add_task = re.search(r"private void addQuickTask\(\)\s*\{(.*?)\n    \}", activity, re.S)
-assert add_task and re.search(r"if \(webMode \|\| !storageReady\) return;", add_task.group(1)), "Web mode must never create a task"
+assert add_task and re.search(r"if \(webMode \|\| (!storageReady|!canEdit\(\))\) return;", add_task.group(1)), "Web mode must never create a task"
 navigate = re.search(r"private void navigateFromInput\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert navigate and "if (!webMode) return;" in navigate.group(1), "browser navigation must require Web mode"
 set_mode = re.search(r"private void setWebMode\(boolean enabled\)\s*\{(.*?)\n    \}", activity, re.S)
