@@ -449,6 +449,7 @@ public final class MainActivity extends Activity {
         undoBar.setGravity(Gravity.CENTER_VERTICAL);
         undoBar.setPadding(dp(14), dp(5), dp(10), dp(5));
         undoBar.setBackground(shape(palette.surfaceAlt, 12, palette.line));
+        undoBar.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         undoMessage = text("Task deleted", 12, palette.text, Typeface.NORMAL);
         undoBar.addView(undoMessage, new LinearLayout.LayoutParams(0, dp(48), 1f));
         undoButton = plainButton("Undo");
@@ -476,23 +477,17 @@ public final class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false);
 
         root.setOnApplyWindowInsetsListener((view, insets) -> {
-            int left;
-            int top;
-            int right;
-            int bottom;
             if (Build.VERSION.SDK_INT >= 30) {
                 Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                left = bars.left;
-                top = bars.top;
-                right = bars.right;
-                bottom = bars.bottom;
+                root.setPadding(dp(8) + bars.left, bars.top, dp(8) + bars.right, bars.bottom);
             } else {
-                left = insets.getSystemWindowInsetLeft();
-                top = insets.getSystemWindowInsetTop();
-                right = insets.getSystemWindowInsetRight();
-                bottom = insets.getSystemWindowInsetBottom();
+                // API 26-29: the decor view still fits the system windows by
+                // default, so content is already positioned below the status bar.
+                // Re-adding the system-bar insets here would double the top
+                // padding on these versions, so only the base side padding is
+                // applied and the system bars are left to the decor.
+                root.setPadding(dp(8), 0, dp(8), 0);
             }
-            root.setPadding(dp(8) + left, top, dp(8) + right, bottom);
             return insets;
         });
     }
@@ -958,6 +953,9 @@ public final class MainActivity extends Activity {
         pendingDeletedTask = tasks.remove(index);
         undoMessage.setText("Task deleted.");
         undoBar.setVisibility(View.VISIBLE);
+        // Bring focus to Undo so screen-reader and keyboard users can act on the
+        // seven-second recovery window without having to find the control.
+        undoButton.requestFocus();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         undoDismissal = this::hideUndoBar;
         mainHandler.postDelayed(undoDismissal, 7000);

@@ -2,6 +2,8 @@
   'use strict';
 
   const STORAGE_KEY = 'daymark.tasks.v1';
+  const BACKUP_KEY = 'daymark.tasks.v1.backup';
+  const PRIORITIES = ['low', 'medium', 'high'];
   const logic = window.DaymarkLogic;
   const state = { tasks: [], filter: 'all', query: '', toastTimer: null, toastAction: null, currentDay: null, dayTimer: null };
   const $ = (selector) => document.querySelector(selector);
@@ -17,26 +19,58 @@
   }
 
   function loadTasks() {
+    let saved = null;
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) {
-        setStorageStatus('Local storage ready');
-        return [];
-      }
+      saved = localStorage.getItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn('Could not read Daymark storage:', error);
+      setStorageStatus('Storage unavailable', true);
+      showToast('Browser storage is unavailable. You can still use this page for now.');
+      return [];
+    }
+    if (!saved) {
+      setStorageStatus('Local storage ready');
+      return [];
+    }
+    try {
       const parsed = JSON.parse(saved);
       if (!Array.isArray(parsed)) throw new Error('Saved task data is not a list.');
       const validated = logic.validateStoredTasks(parsed);
       if (validated.rejectedCount > 0) {
-        setStorageStatus('Some saved tasks were ignored', true);
+        // Some records failed validation and are about to be dropped. Keep the
+        // original payload in a recovery backup so nothing is silently lost,
+        // mirroring the protection used for a completely unreadable payload.
+        setStorageStatus(backUpRawPayload(saved)
+          ? 'Some saved tasks were ignored; the originals were kept in a backup'
+          : 'Some saved tasks were ignored', true);
       } else {
         setStorageStatus('Saved on this device');
+        // The main store is healthy again, so a recovery backup left over from an
+        // earlier unreadable payload is now stale and should not linger as if it
+        // were current data.
+        clearRecoveryBackup();
       }
       return validated.tasks;
     } catch (error) {
       console.warn('Could not load saved Daymark tasks:', error);
-      setStorageStatus('Storage unavailable', true);
-      showToast('Saved tasks could not be read. You can still use this page for now.');
+      setStorageStatus('Saved data could not be read', true);
+      // Preserve the unreadable payload instead of silently discarding it, so a
+      // future fix or manual recovery can still reach the original data.
+      const backupSaved = backUpRawPayload(saved);
+      showToast(backupSaved
+        ? 'Saved tasks could not be read. The original data was kept in a browser backup.'
+        : 'Saved tasks could not be read. Browser storage could not create a recovery backup; the original entry was left unchanged.');
       return [];
+    }
+  }
+
+  function backUpRawPayload(raw) {
+    try {
+      localStorage.setItem(BACKUP_KEY, raw);
+      return true;
+    } catch (backupError) {
+      console.warn('Could not keep a backup of raw Daymark tasks:', backupError);
+      return false;
     }
   }
 
@@ -44,11 +78,21 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks));
       setStorageStatus('Saved on this device');
+      // A successful full save makes any earlier recovery backup stale.
+      clearRecoveryBackup();
       return true;
     } catch (error) {
       console.warn('Could not save Daymark tasks:', error);
       setStorageStatus('Storage unavailable', true);
       return false;
+    }
+  }
+
+  function clearRecoveryBackup() {
+    try {
+      localStorage.removeItem(BACKUP_KEY);
+    } catch (error) {
+      console.warn('Could not clear the Daymark recovery backup:', error);
     }
   }
 
@@ -65,6 +109,12 @@
     return String(value).replace(/[&<>"']/g, (character) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[character]);
+  }
+
+  function readPriority(input) {
+    // Guard against unexpected select values so every stored task stays valid
+    // and reloadable by validateStoredTasks on the next visit.
+    return PRIORITIES.includes(input.value) ? input.value : 'medium';
   }
 
   function formatDate(dateString) {
@@ -235,7 +285,7 @@
     titleInput.removeAttribute('aria-invalid');
     const now = new Date().toISOString();
     const dueDateValue = $('#new-due-date').value;
-    state.tasks.push({ id: makeId(), title, dueDate: logic.isDateOnly(dueDateValue) ? dueDateValue : null, priority: $('#new-priority').value, completed: false, createdAt: now, updatedAt: now });
+    state.tasks.push({ id: makeId(), title, dueDate: logic.isDateOnly(dueDateValue) ? dueDateValue : null, priority: readPriority($('#new-priority')), completed: false, createdAt: now, updatedAt: now });
     const saved = persistTasks();
     form.reset();
     $('#new-priority').value = 'medium';
@@ -281,7 +331,7 @@
     task.title = title;
     const dueDateValue = $('#edit-due-date').value;
     task.dueDate = logic.isDateOnly(dueDateValue) ? dueDateValue : null;
-    task.priority = $('#edit-priority').value;
+    task.priority = readPriority($('#edit-priority'));
     task.updatedAt = new Date().toISOString();
     const saved = persistTasks();
     render();
