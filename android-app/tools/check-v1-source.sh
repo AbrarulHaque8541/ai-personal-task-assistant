@@ -50,9 +50,27 @@ assert "quickCaptureInput.setText(enabled ? \"\" : taskDraft);" in activity, "ta
 assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity, "Web text must not overwrite the local task draft"
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
-assert "Nothing loads until you tap Go or choose a site." in activity
+assert "browserOnlineEnabled = readBrowserOnlinePreference();" in activity
+assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "missing/corrupt online preference must default Offline"
+assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
+assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
+assert "Offline by default" in activity and "each search or site still needs a tap" in activity
+assert "Daymark sends no task text or telemetry" in activity
+assert "Recent URLs, including search terms and URL tokens, are kept in app-private history without encryption" in activity
+assert "other URL tokens are not redacted" in activity and "uri.getRawUserInfo() != null" in address, "history privacy disclosure must match URL credential handling"
+for method in ("navigateFromInput", "navigateBrowserTo", "loadBrowserAddress"):
+    body = re.search(r"private void " + method + r"\([^)]*\)\s*\{(.*?)\n    \}", activity, re.S)
+    assert body and "if (!browserOnlineEnabled)" in body.group(1), f"{method} must fail closed while Offline"
+online_setting = re.search(r"private void setBrowserOnlineEnabled\(boolean enabled\)\s*\{(.*?)\n    \}", activity, re.S)
+assert online_setting and "setBlockNetworkLoads(true)" in online_setting.group(1)
+assert online_setting and "stopLoading()" in online_setting.group(1)
+assert online_setting and "loadUrl(" not in online_setting.group(1) and "loadBrowserAddress(" not in online_setting.group(1), "enabling Online must not itself load a page"
+load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
+assert load_address and "setBlockNetworkLoads(false)" in load_address.group(1)
+assert load_address and load_address.group(1).index("setBlockNetworkLoads(false)") < load_address.group(1).index("browserWebView.loadUrl(address)"), "only a tapped navigation may release WebView network blocking"
 
 for expected in (
+    "settings.setBlockNetworkLoads(true)",
     "settings.setSafeBrowsingEnabled(true)",
     "WebSettings.MIXED_CONTENT_NEVER_ALLOW",
     "settings.setAllowFileAccess(false)",
@@ -94,6 +112,10 @@ for expected in ("clearHistory()", "clearCache(true)", "WebStorage.getInstance()
     assert expected in clear.group(1), f"clear action must include {expected}"
 assert "BrowserHistory.clear()" in clear.group(1), "clear action must erase local history"
 assert "History & data" in activity and "Clear history & site data" in activity
+assert "for all websites used in Daymark (not just the current site)" in activity, "clear scope must disclose all-site WebView storage/cookie deletion"
+assert "saved Android Autofill or password-manager data is not cleared" in activity, "clear disclosure must not overstate WebView form-data clearing"
+assert "browserStatus.setText(\"Clearing Daymark browser history and local site data...\")" in clear.group(1)
+assert "Daymark URL history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared." in clear.group(1), "completion status must follow asynchronous cookie removal"
 assert "HTTP redirect/downgrade was blocked" in activity and "No insecure page was opened" in activity
 
 text_size_calls = re.findall(r"\.setTextSize\(([^)]*)\)", activity)
@@ -108,6 +130,7 @@ task_logic = (main / "java/com/cue/daymark/TaskLogic.java").read_text(encoding="
 assert "Locale.getDefault()" in task_logic, "date formatting should follow the device locale"
 
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
+print("PASS browser policy: Offline by default with persisted opt-in, network blocked while Offline, and a separate tap required for each request")
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
 print("PASS local browser data: app-private capped history and explicit history/cookie/cache/WebStorage clear")

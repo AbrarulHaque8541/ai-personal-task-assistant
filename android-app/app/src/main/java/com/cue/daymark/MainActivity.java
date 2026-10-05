@@ -66,6 +66,7 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_PREFERENCES = "daymark.browser.local.v1";
     private static final String BROWSER_HISTORY_KEY = "history_urls";
     private static final String SEARCH_ENGINE_KEY = "search_engine";
+    private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -85,6 +86,7 @@ public final class MainActivity extends Activity {
     private boolean powerMode;
     private boolean highContrast;
     private boolean webMode;
+    private boolean browserOnlineEnabled;
     private String taskDraft = "";
     private float textScale = 1.0f;
     private SharedPreferences browserPreferences;
@@ -135,6 +137,7 @@ public final class MainActivity extends Activity {
     private Button browserHomeButton;
     private Button browserHistoryButton;
     private Spinner searchEngineSpinner;
+    private CheckBox browserOnlineToggle;
     private TextView browserStatus;
 
     @Override
@@ -155,8 +158,18 @@ public final class MainActivity extends Activity {
         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
         searchEngine = BrowserAddress.SearchEngine.fromName(
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
+        browserOnlineEnabled = readBrowserOnlinePreference();
         buildInterface();
         loadEncryptedTasks();
+    }
+
+    private boolean readBrowserOnlinePreference() {
+        try {
+            return browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY, false);
+        } catch (ClassCastException invalidPreference) {
+            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
+            return false;
+        }
     }
 
     @Override
@@ -380,6 +393,15 @@ public final class MainActivity extends Activity {
 
         webActions = new LinearLayout(this);
         webActions.setOrientation(LinearLayout.VERTICAL);
+        browserOnlineToggle = new CheckBox(this);
+        browserOnlineToggle.setText("Online browsing (off by default)");
+        browserOnlineToggle.setMinHeight(dp(48));
+        browserOnlineToggle.setChecked(browserOnlineEnabled);
+        browserOnlineToggle.setContentDescription(browserOnlineEnabled
+                ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block browser network access."
+                : "Online browsing is off by default. Turn it on to allow browser network access; then tap Go or a site to send a request.");
+        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> setBrowserOnlineEnabled(checked));
+        webActions.addView(browserOnlineToggle, bottomMargin(dp(2)));
         LinearLayout providerRow = new LinearLayout(this);
         providerRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView providerLabel = text("Search with", 12, palette.muted, Typeface.BOLD);
@@ -414,7 +436,7 @@ public final class MainActivity extends Activity {
         webGoButton.setOnClickListener(view -> navigateFromInput());
         providerRow.addView(webGoButton, new LinearLayout.LayoutParams(dp(76), dp(48)));
         webActions.addView(providerRow);
-        TextView requestNote = text("Nothing loads until you tap Go or choose a site.",
+        TextView requestNote = text("Offline by default. When Online is on, tap Go to send a search query or URL to the chosen destination, with normal connection data such as IP address and browser identification. Pages may contact third parties. Daymark sends no task text or telemetry. HTTP is blocked; a per-site exception requires a separate explicit request.",
                 11, palette.muted, Typeface.NORMAL);
         webActions.addView(requestNote, topMargin(dp(3)));
         card.addView(webActions);
@@ -484,11 +506,11 @@ public final class MainActivity extends Activity {
         panel.addView(toolbarScroll, bottomMargin(dp(4)));
 
         TextView disclosure = text(
-                "Online only after your tap. HTTPS only; HTTP is blocked. A per-site HTTP exception would require a separate explicit request. Search terms go to the chosen provider; pages may contact and be logged by their own or third-party endpoints. Daymark never copies task text into a site.",
+                "Offline by default. Turn Online on to allow network access; each search or site still needs a tap. Search queries/URLs and normal connection data go to the chosen destination. Pages may contact their own or third-party endpoints; task text and Daymark telemetry are not sent. HTTPS only; HTTP is blocked, and a per-site exception requires a separate explicit request.",
                 11, palette.muted, Typeface.NORMAL);
         disclosure.setPadding(dp(11), dp(8), dp(11), dp(8));
         disclosure.setBackground(shape(palette.accentSoft, 10, palette.accentSoft));
-        disclosure.setContentDescription("Browser privacy: HTTPS only. HTTP is blocked, and a per-site exception requires a separate explicit request. Search terms go to the selected provider. Pages may contact their own and third-party endpoints, which may log requests. Task text is not sent automatically.");
+        disclosure.setContentDescription("Browser privacy: offline by default. Turning Online on permits network access, but each search or site still requires a tap. The selected destination receives your query or URL and normal connection data; pages may contact third parties. Daymark does not send task text or telemetry. HTTPS only; HTTP is blocked, and a per-site exception requires a separate explicit request.");
         panel.addView(disclosure, bottomMargin(dp(5)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
@@ -539,11 +561,11 @@ public final class MainActivity extends Activity {
         TextView title = text("A browser, when you choose", 22, palette.text, Typeface.BOLD);
         home.addView(title, bottomMargin(dp(9)));
         TextView copy = text(
-                "Choose a search engine, type a search or HTTPS address, then tap Go. Bare domains open with HTTPS. HTTP is blocked; a per-site exception needs a separate explicit request. AI sites above are ordinary websites, not connected model APIs. No page is opened automatically.",
+                "Browser access starts Offline. Turn Online on, choose a search engine, enter a search or HTTPS address, then tap Go or a site shortcut for each request. Your query or URL and normal connection details go to that destination; pages may contact third parties. Daymark sends no task text or telemetry. HTTP is blocked; any per-site exception requires a separate explicit request. AI shortcuts are ordinary websites, not connected model APIs. Nothing loads automatically.",
                 14, palette.muted, Typeface.NORMAL);
         copy.setLineSpacing(dp(3), 1f);
         home.addView(copy, bottomMargin(dp(12)));
-        TextView local = text("Recent page URLs are kept in app-private local history. Use History & data to clear history, cookies, cache, and site storage.",
+        TextView local = text("Recent URLs, including search terms and URL tokens, are kept in app-private history without encryption. URL-embedded username/password is rejected at address validation; other URL tokens are not redacted. Use History & data to clear this history and Daymark's local cookies/cache/storage.",
                 12, palette.muted, Typeface.NORMAL);
         local.setLineSpacing(dp(2), 1f);
         home.addView(local);
@@ -552,6 +574,10 @@ public final class MainActivity extends Activity {
 
     private void navigateFromInput() {
         if (!webMode) return;
+        if (!browserOnlineEnabled) {
+            showBrowserOfflineStatus();
+            return;
+        }
         String input = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
         try {
             String address = BrowserAddress.resolveInput(input, searchEngine);
@@ -565,6 +591,10 @@ public final class MainActivity extends Activity {
 
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
+        if (!browserOnlineEnabled) {
+            showBrowserOfflineStatus();
+            return;
+        }
         final String safeAddress;
         try {
             safeAddress = BrowserAddress.requireAllowedWebUrl(address);
@@ -577,7 +607,19 @@ public final class MainActivity extends Activity {
 
     private void loadBrowserAddress(String address) {
         if (!webMode) return;
+        if (!browserOnlineEnabled) {
+            showBrowserOfflineStatus();
+            return;
+        }
         ensureBrowserWebView();
+        try {
+            browserWebView.getSettings().setBlockNetworkLoads(false);
+        } catch (SecurityException denied) {
+            setBrowserOnlineEnabled(false);
+            if (browserOnlineToggle != null) browserOnlineToggle.setChecked(false);
+            browserStatus.setText("Online access is unavailable. No page was opened; Daymark remains offline.");
+            return;
+        }
         browserHomeView.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
@@ -640,7 +682,7 @@ public final class MainActivity extends Activity {
 
     private void syncBrowserButtons() {
         if (browserBackButton == null) return;
-        boolean available = browserWebView != null;
+        boolean available = browserOnlineEnabled && browserWebView != null;
         browserBackButton.setEnabled(available && browserWebView.canGoBack());
         browserForwardButton.setEnabled(available && browserWebView.canGoForward());
         browserReloadButton.setEnabled(available);
@@ -671,6 +713,12 @@ public final class MainActivity extends Activity {
         syncBrowserButtons();
     }
 
+    private void showBrowserOfflineStatus() {
+        if (browserStatus != null) {
+            browserStatus.setText("Offline: nothing was sent. Turn Online on, then tap Go or a site to browse.");
+        }
+    }
+
     private void showBrowserHistoryDialog() {
         List<String> history = BrowserHistory.decode(
                 browserPreferences.getString(BROWSER_HISTORY_KEY, ""));
@@ -691,7 +739,7 @@ public final class MainActivity extends Activity {
                     dialog.dismiss();
                     new AlertDialog.Builder(this)
                             .setTitle("Clear local browser data?")
-                            .setMessage("This clears Daymark's local URL history, WebView history, cookies, cache, form data, SSL exception state, and WebStorage-managed data. You may be signed out of websites. It cannot erase request logs or data retained by websites or search providers.")
+                            .setMessage("This clears Daymark's local URL history, the current WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear data", (confirm, selected) -> clearBrowserData())
                             .show();
@@ -710,10 +758,13 @@ public final class MainActivity extends Activity {
         WebStorage.getInstance().deleteAllData();
         CookieManager cookies = CookieManager.getInstance();
         showBrowserHome();
-        browserStatus.setText("Local history, WebStorage, cache, form data, and cookies were cleared.");
+        browserStatus.setText("Clearing Daymark browser history and local site data...");
         cookies.removeAllCookies(removed -> {
             cookies.flush();
-            if (!isFinishing()) showToast("Local browser history and site data cleared.");
+            if (!isFinishing()) {
+                browserStatus.setText("Daymark URL history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
+                showToast("Local browser history and site data cleared.");
+            }
         });
     }
 
@@ -1002,7 +1053,7 @@ public final class MainActivity extends Activity {
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
         quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
         quickCaptureInput.setContentDescription(webMode
-                ? "Search the web or enter an HTTPS web address. This text is sent only after you tap Go."
+                ? "Search the web or enter an HTTPS web address. Browser network access is Offline by default; this is sent only when Online is enabled and you tap Go."
                 : "What do you want to get done? Type a task");
         quickCaptureInput.setImeOptions(webMode ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
         taskModeButton.setTextColor(webMode ? palette.muted : palette.accent);
@@ -1015,7 +1066,7 @@ public final class MainActivity extends Activity {
                 ? "Switch to Task mode. Your web search is not added to your tasks."
                 : "Task mode selected. Typing creates a task only after Add task.");
         webModeButton.setContentDescription(webMode
-                ? "Web mode selected. Requests start only after Go or a site tap."
+                ? "Web mode selected. Browser starts Offline; requests require Online enabled and a separate Go or site tap."
                 : "Switch to Web mode. The current task draft stays in Daymark and is not sent to a site.");
         if (undoBar != null) {
             if (webMode) undoBar.setVisibility(View.GONE);
@@ -1031,11 +1082,44 @@ public final class MainActivity extends Activity {
         }
         if (!webMode) {
             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
+        } else if (browserWebView != null) {
+            browserWebView.getSettings().setBlockNetworkLoads(true);
+            browserWebView.stopLoading();
+            discardBrowserWebView(false);
         }
         webMode = enabled;
         quickCaptureInput.setText(enabled ? "" : taskDraft);
         quickCaptureInput.setError(null);
+        if (enabled && browserStatus != null) {
+            browserStatus.setText(browserOnlineEnabled
+                    ? "Online is enabled. Nothing loads until you tap Go or a site."
+                    : "Offline by default. Turn Online on, then tap Go or a site.");
+        }
         syncModeUi();
+    }
+
+    private void setBrowserOnlineEnabled(boolean enabled) {
+        if (browserOnlineEnabled == enabled) return;
+        if (enabled) {
+            browserOnlineEnabled = true;
+            browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
+            if (browserStatus != null) browserStatus.setText("Online access enabled. Nothing loads until you tap Go or a site.");
+        } else {
+            if (browserWebView != null) {
+                browserWebView.getSettings().setBlockNetworkLoads(true);
+                browserWebView.stopLoading();
+            }
+            browserOnlineEnabled = false;
+            browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, false).apply();
+            showBrowserHome();
+            showBrowserOfflineStatus();
+        }
+        syncBrowserButtons();
+        if (browserOnlineToggle != null) {
+            browserOnlineToggle.setContentDescription(browserOnlineEnabled
+                    ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block browser network access."
+                    : "Online browsing is off by default. Turn it on to allow browser network access; then tap Go or a site to send a request.");
+        }
     }
 
     private void renderFilters(LocalDate today) {

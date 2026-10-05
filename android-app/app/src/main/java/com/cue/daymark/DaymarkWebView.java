@@ -34,6 +34,7 @@ final class DaymarkWebView extends WebView {
         setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
 
         WebSettings settings = getSettings();
+        settings.setBlockNetworkLoads(true);
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setSafeBrowsingEnabled(true);
