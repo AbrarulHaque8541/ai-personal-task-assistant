@@ -233,14 +233,6 @@ public final class MainActivity extends Activity {
         loadEncryptedTasks();
     }
 
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        if (pendingSaveTransaction != null) {
-            outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction);
-        }
-        super.onSaveInstanceState(outState);
-    }
-
     @SuppressWarnings("deprecation")
     private void restorePendingSaveTransaction(Bundle savedInstanceState) {
         if (savedInstanceState == null) return;
@@ -283,9 +275,10 @@ public final class MainActivity extends Activity {
     }
 
     @Override
-    protected void onSaveInstanceState(Bundle state) {
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
         if (pendingAttachmentTaskId != null) {
-            state.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
+            outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
         }
         PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
         if (pendingSelection != null) {
@@ -293,19 +286,20 @@ public final class MainActivity extends Activity {
                 PortableImportGrantRecovery.ActivityState saved = portableBackupManager
                         .activityStateForSelection(pendingSelection);
                 if (saved != null) {
-                    state.putString(STATE_PENDING_PORTABLE_IMPORT_URI, saved.uri);
-                    state.putString(STATE_PENDING_PORTABLE_IMPORT_TOKEN, saved.operationToken);
+                    outState.putString(STATE_PENDING_PORTABLE_IMPORT_URI, saved.uri);
+                    outState.putString(STATE_PENDING_PORTABLE_IMPORT_TOKEN, saved.operationToken);
                 }
             } catch (IOException ignored) {
                 // An incomplete or unreadable journal is recovered conservatively on startup.
             }
         }
         if (pendingSaveTransaction != null) {
-            state.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction);
+            outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction);
         }
-        super.onSaveInstanceState(state);
+        super.onSaveInstanceState(outState);
     }
 
+    @Override
     protected void onResume() {
         super.onResume();
         activityResumed = true;
