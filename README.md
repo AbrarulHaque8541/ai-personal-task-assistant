@@ -5,6 +5,16 @@
 [![Zero Data Loss](https://img.shields.io/badge/Data%20Safety-Zero%20Loss%20Guaranteed-success.svg)](android-app/STORAGE_RECOVERY.md)
 [![Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20%28API%2026--35%29-orange.svg)](android-app/)
 
+## 📥 Download Daymark
+
+**Latest APK (Android 8.0+):** [Download Daymark APK (v1.0.0)](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/raw/main/artifacts/Daymark-debug-device-untested-api35.apk)
+
+- Size: 51,831 bytes · SHA-256: `e80428836bcac97ea6655cf9d865a7eb7b9d7bbcd7c4f6859c308d056b533724` (verified)
+- Release page with full notes: [Releases → v1.0.0](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0)
+- Updating from an older Daymark APK is safe — your existing tasks, encrypted storage, and Keystore keys are preserved (same package `com.cue.daymark`, same signing key).
+
+---
+
 **Daymark** is a privacy-first, offline-ready personal task assistant with end-to-end encrypted local storage, portable encrypted backups, task attachments, and release-integrity verification.
 
 ---
