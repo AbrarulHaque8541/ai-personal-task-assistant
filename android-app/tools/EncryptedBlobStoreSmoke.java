@@ -23,6 +23,9 @@ public final class EncryptedBlobStoreSmoke {
         invalidatedKeyLookupIsReportedAsUnavailable();
         unusableCipherKeyIsReportedAsUnavailable();
         interruptedWriteKeepsThePriorCommittedSnapshot();
+        syncFailurePreservesPriorSnapshot();
+        silentCommitFailureIsReportedAndPriorSnapshotRemains();
+        staleSnapshotCannotOverwriteNewerCommit();
         incompleteFirstWriteIsNotMistakenForEmpty();
         System.out.println("PASS encrypted storage recovery tests: " + assertions + " assertions");
     }
@@ -122,6 +125,58 @@ public final class EncryptedBlobStoreSmoke {
                 "reload returns the prior committed plaintext, not the failed edit");
     }
 
+    private static void silentCommitFailureIsReportedAndPriorSnapshotRemains() throws Exception {
+        byte[] originalPlaintext = "previous committed task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Fixture saved = saveNew(originalPlaintext);
+        byte[] originalBlob = saved.file.bytes();
+        saved.file.silentlyFailNextFinishWrite();
+        expectFailure(() -> { saved.store.save("unsaved edit".getBytes(java.nio.charset.StandardCharsets.UTF_8)); return null; },
+                EncryptedBlobStore.Kind.WRITE_FAILED,
+                "a silent atomic-file commit failure is not reported as a successful save");
+        check(Arrays.equals(originalBlob, saved.file.bytes()),
+                "a silent commit failure preserves the exact prior ciphertext");
+
+        EncryptedBlobStore restarted = new EncryptedBlobStore(saved.file, saved.keys);
+        EncryptedBlobStore.LoadResult recovered = restarted.load();
+        check(Arrays.equals(originalPlaintext, recovered.plaintext()),
+                "reload returns the previous snapshot after a silent commit failure");
+    }
+
+    private static void syncFailurePreservesPriorSnapshot() throws Exception {
+        byte[] originalPlaintext = "previous committed task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Fixture saved = saveNew(originalPlaintext);
+        byte[] originalBlob = saved.file.bytes();
+        saved.file.failNextFinishWrite();
+        expectFailure(() -> { saved.store.save("unsaved edit".getBytes(java.nio.charset.StandardCharsets.UTF_8)); return null; },
+                EncryptedBlobStore.Kind.WRITE_FAILED,
+                "a surfaced sync/finish failure is reported as an unsuccessful save");
+        check(Arrays.equals(originalBlob, saved.file.bytes()),
+                "a surfaced sync/finish failure preserves the exact prior ciphertext");
+        EncryptedBlobStore restarted = new EncryptedBlobStore(saved.file, saved.keys);
+        check(Arrays.equals(originalPlaintext, restarted.load().plaintext()),
+                "reload returns the previous snapshot after a surfaced sync failure");
+    }
+
+    private static void staleSnapshotCannotOverwriteNewerCommit() throws Exception {
+        byte[] initial = "initial committed snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Fixture saved = saveNew(initial);
+        EncryptedBlobStore staleActivityStore = new EncryptedBlobStore(saved.file, saved.keys);
+        check(!staleActivityStore.load().isEmpty(), "a second Activity loads the existing snapshot");
+
+        byte[] latest = "newer committed snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        saved.store.save(latest);
+        byte[] latestBlob = saved.file.bytes();
+        expectFailure(() -> { staleActivityStore.save("stale edit".getBytes(java.nio.charset.StandardCharsets.UTF_8)); return null; },
+                EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
+                "a stale Activity cannot overwrite a snapshot committed after its load");
+        check(Arrays.equals(latestBlob, saved.file.bytes()),
+                "stale-save rejection preserves the newer committed ciphertext");
+
+        EncryptedBlobStore restarted = new EncryptedBlobStore(saved.file, saved.keys);
+        check(Arrays.equals(latest, restarted.load().plaintext()),
+                "reload returns the newer snapshot after stale-save rejection");
+    }
+
     private static void incompleteFirstWriteIsNotMistakenForEmpty() throws Exception {
         MemoryAtomicFile file = new MemoryAtomicFile();
         file.leaveIncompleteFirstWrite(new byte[] { 'D', 'M', 'T' });
@@ -208,6 +263,8 @@ public final class EncryptedBlobStoreSmoke {
         private byte[] legacyBackup;
         private ByteArrayOutputStream staged;
         private int failAfterBytes = -1;
+        private boolean failFinishWrite;
+        private boolean silentFinishFailure;
 
         @Override
         public boolean hasCommittedSnapshot() {
@@ -251,7 +308,17 @@ public final class EncryptedBlobStoreSmoke {
         }
 
         @Override
-        public void finishWrite(OutputStream output) {
+        public void finishWrite(OutputStream output) throws IOException {
+            if (failFinishWrite) {
+                failFinishWrite = false;
+                throw new IOException("Simulated file sync failure.");
+            }
+            if (silentFinishFailure) {
+                silentFinishFailure = false;
+                staged = null;
+                failAfterBytes = -1;
+                return;
+            }
             base = staged.toByteArray();
             staged = null;
             legacyBackup = null;
@@ -272,6 +339,14 @@ public final class EncryptedBlobStoreSmoke {
 
         void failNextWriteAfter(int byteCount) {
             failAfterBytes = byteCount;
+        }
+
+        void silentlyFailNextFinishWrite() {
+            silentFinishFailure = true;
+        }
+
+        void failNextFinishWrite() {
+            failFinishWrite = true;
         }
 
         void leaveIncompleteFirstWrite(byte[] partialBytes) {

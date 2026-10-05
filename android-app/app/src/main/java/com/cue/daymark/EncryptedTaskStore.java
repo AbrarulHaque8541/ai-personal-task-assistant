@@ -27,6 +27,7 @@ import javax.crypto.SecretKey;
 /** App-private, authenticated-encryption storage. All calls run on MainActivity's I/O executor. */
 final class EncryptedTaskStore {
     private static final String KEY_ALIAS = "daymark.task-store.aes-gcm.v1";
+    private static final Object FILE_ACCESS_LOCK = new Object();
     private final File storeFile;
     private final EncryptedBlobStore encryptedStore;
     private boolean loadReady;
@@ -39,33 +40,37 @@ final class EncryptedTaskStore {
     }
 
     List<Task> load() throws Exception {
-        loadReady = false;
-        EncryptedBlobStore.LoadResult loaded = encryptedStore.load();
-        if (loaded.isEmpty()) {
-            loadReady = true;
-            return new ArrayList<>();
-        }
-        try {
-            List<Task> tasks = decodeTasks(loaded.plaintext());
-            loadReady = true;
-            return tasks;
-        } catch (Exception exception) {
-            throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.CORRUPT_DATA,
-                    "Saved task data is malformed or unsupported.", exception);
+        synchronized (FILE_ACCESS_LOCK) {
+            loadReady = false;
+            EncryptedBlobStore.LoadResult loaded = encryptedStore.load();
+            if (loaded.isEmpty()) {
+                loadReady = true;
+                return new ArrayList<>();
+            }
+            try {
+                List<Task> tasks = decodeTasks(loaded.plaintext());
+                loadReady = true;
+                return tasks;
+            } catch (Exception exception) {
+                throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.CORRUPT_DATA,
+                        "Saved task data is malformed or unsupported.", exception);
+            }
         }
     }
 
     void save(List<Task> tasks) throws Exception {
-        if (!loadReady) {
-            throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
-                    "Task storage must load successfully before it can be changed.");
-        }
-        byte[] plaintext = encodeTasks(tasks);
-        try {
-            encryptedStore.save(plaintext);
-        } catch (EncryptedBlobStore.StorageException exception) {
-            loadReady = false;
-            throw exception;
+        synchronized (FILE_ACCESS_LOCK) {
+            if (!loadReady) {
+                throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
+                        "Task storage must load successfully before it can be changed.");
+            }
+            byte[] plaintext = encodeTasks(tasks);
+            try {
+                encryptedStore.save(plaintext);
+            } catch (EncryptedBlobStore.StorageException exception) {
+                loadReady = false;
+                throw exception;
+            }
         }
     }
 
@@ -171,8 +176,12 @@ final class EncryptedTaskStore {
         }
 
         @Override
-        public void finishWrite(OutputStream output) {
-            atomicFile.finishWrite((FileOutputStream) output);
+        public void finishWrite(OutputStream output) throws IOException {
+            FileOutputStream fileOutput = (FileOutputStream) output;
+            // AtomicFile.finishWrite logs sync failures on some platform versions instead of
+            // throwing them, so surface the sync result before asking it to commit the rename.
+            fileOutput.getFD().sync();
+            atomicFile.finishWrite(fileOutput);
         }
 
         @Override

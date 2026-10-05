@@ -63,5 +63,13 @@ check('baseFile.getPath() + ".bak"' in STORE and 'baseFile.getPath() + ".new"' i
       "Android adapter distinguishes a recoverable backup/staged write from no store")
 check("Files.move" not in STORE and "AtomicFile" in STORE,
       "persistence uses Android AtomicFile instead of a non-atomic replacement fallback")
+check("fileOutput.getFD().sync()" in STORE,
+      "the Android adapter surfaces file-sync errors before AtomicFile commit")
+check("Arrays.equals(blob, committedBlob)" in BLOB_STORE,
+      "the encrypted snapshot is read back and compared before save success")
+check("synchronized (FILE_ACCESS_LOCK)" in STORE,
+      "file load/save operations are serialized across Activity instances")
+check("verifyLoadedSnapshotUnchanged()" in BLOB_STORE,
+      "a stale Activity cannot overwrite a newer encrypted snapshot")
 
 print(f"PASS storage failure UI/source checks: {checks} assertions")

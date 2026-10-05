@@ -28,6 +28,7 @@ final class EncryptedBlobStore {
     private final KeyAccess keys;
     private boolean loadedSuccessfully;
     private boolean loadedExistingSnapshot;
+    private byte[] loadedBlob;
 
     EncryptedBlobStore(AtomicFileAccess file, KeyAccess keys) {
         this.file = file;
@@ -37,6 +38,7 @@ final class EncryptedBlobStore {
     LoadResult load() throws StorageException {
         loadedSuccessfully = false;
         loadedExistingSnapshot = false;
+        loadedBlob = null;
 
         if (!file.hasCommittedSnapshot()) {
             if (file.hasAnyArtifacts()) {
@@ -73,6 +75,7 @@ final class EncryptedBlobStore {
         byte[] plaintext = decrypt(key, iv, ciphertext);
         loadedSuccessfully = true;
         loadedExistingSnapshot = true;
+        loadedBlob = Arrays.copyOf(blob, blob.length);
         return LoadResult.present(plaintext);
     }
 
@@ -84,6 +87,7 @@ final class EncryptedBlobStore {
 
         SecretKey key;
         if (loadedExistingSnapshot) {
+            verifyLoadedSnapshotUnchanged();
             key = keys.loadExistingKey();
         } else {
             if (file.hasAnyArtifacts()) {
@@ -98,6 +102,7 @@ final class EncryptedBlobStore {
         writeAtomically(blob);
         loadedSuccessfully = true;
         loadedExistingSnapshot = true;
+        loadedBlob = Arrays.copyOf(blob, blob.length);
     }
 
     private byte[] decrypt(SecretKey key, byte[] iv, byte[] ciphertext) throws StorageException {
@@ -155,6 +160,29 @@ final class EncryptedBlobStore {
         }
     }
 
+    private void verifyLoadedSnapshotUnchanged() throws StorageException {
+        if (loadedBlob == null || !file.hasCommittedSnapshot()) {
+            loadedSuccessfully = false;
+            throw new StorageException(Kind.STORE_NOT_VERIFIED,
+                    "The committed encrypted snapshot is no longer the one that was loaded.");
+        }
+        try (InputStream input = file.openRead()) {
+            byte[] currentBlob = readBounded(input);
+            if (!Arrays.equals(loadedBlob, currentBlob)) {
+                loadedSuccessfully = false;
+                throw new StorageException(Kind.STORE_NOT_VERIFIED,
+                        "The committed encrypted snapshot changed after it was loaded.");
+            }
+        } catch (StorageException exception) {
+            loadedSuccessfully = false;
+            throw exception;
+        } catch (IOException exception) {
+            loadedSuccessfully = false;
+            throw new StorageException(Kind.STORAGE_READ_FAILED,
+                    "The committed encrypted snapshot could not be rechecked before saving.", exception);
+        }
+    }
+
     private void writeAtomically(byte[] blob) throws StorageException {
         OutputStream output = null;
         try {
@@ -163,6 +191,14 @@ final class EncryptedBlobStore {
             output.flush();
             file.finishWrite(output);
             output = null;
+            // AtomicFile may log a failed rename without surfacing it to this caller.
+            // Verify that the visible committed snapshot is exactly the one requested.
+            try (InputStream committed = file.openRead()) {
+                byte[] committedBlob = readBounded(committed);
+                if (!Arrays.equals(blob, committedBlob)) {
+                    throw new IOException("Committed encrypted snapshot did not match the requested write.");
+                }
+            }
         } catch (Exception exception) {
             if (output != null) {
                 try {
