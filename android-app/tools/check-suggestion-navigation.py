@@ -59,7 +59,7 @@ navigation = between(
     "    private View findTaskRow(String taskId) {",
 )
 for expected in (
-    "if (!storageReady || taskId == null) return;",
+    "if (taskId == null) return;",
     "Task task = findTaskById(taskId);",
     "if (task == null) {",
     "renderSuggestions(LocalDate.now());",
@@ -77,6 +77,7 @@ for expected in (
     "postDelayed(suggestionHighlightReset, 2500);",
 ):
     assert expected in navigation, f"suggestion navigation missing required behavior: {expected}"
+assert "storageReady" not in navigation, "read-only suggestion navigation must remain available while storage writes are paused"
 for forbidden in (
     "saveTasksAsync(",
     "tasks.add(",

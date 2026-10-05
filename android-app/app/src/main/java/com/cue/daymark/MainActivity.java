@@ -1448,7 +1448,8 @@ public final class MainActivity extends Activity {
     }
 
     private void showSuggestedTask(String taskId) {
-        if (!storageReady || taskId == null) return;
+        // Read-only navigation remains available for loaded tasks when storage writes are paused.
+        if (taskId == null) return;
         Task task = findTaskById(taskId);
         if (task == null) {
             captureFeedback.setText("That task is no longer available. Your saved tasks were not changed.");
