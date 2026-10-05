@@ -75,6 +75,24 @@ final class EncryptedTaskStore {
         }
     }
 
+    List<Task> appendAtomically(List<Task> additions) throws Exception {
+        synchronized (FILE_ACCESS_LOCK) {
+            if (additions == null || !TaskLogic.isValidTaskList(additions)) {
+                throw new IOException("The imported task set failed validation.");
+            }
+            List<Task> latest = load();
+            if (additions.isEmpty()) return latest;
+            List<Task> combined = new ArrayList<>(latest.size() + additions.size());
+            combined.addAll(latest);
+            combined.addAll(additions);
+            if (!TaskLogic.isValidTaskList(combined)) {
+                throw new IOException("The restore would exceed task or attachment limits.");
+            }
+            save(combined);
+            return combined;
+        }
+    }
+
     private static KeyStore loadKeyStore() throws EncryptedBlobStore.StorageException {
         try {
             KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");

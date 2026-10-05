@@ -4,6 +4,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
 sh ./tools/run-attachment-tests.sh
+sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 - "$ROOT" <<'PY'
@@ -37,6 +38,13 @@ build = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
 deps = build.split("dependencies {", 1)[1].split("}", 1)[0]
 assert "implementation(" not in deps and "api(" not in deps and "runtimeOnly(" not in deps, "unexpected app runtime dependency"
 activity = (main / "java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+export_flow = activity.split("private void beginPortableExport", 1)[1].split("private void writePortableExport", 1)[0]
+assert "new Intent(Intent.ACTION_CREATE_DOCUMENT)" in export_flow, "portable export must create a new SAF document"
+assert "Intent.ACTION_OPEN_DOCUMENT" not in export_flow, "portable export must not select an existing document for overwrite"
+codec = (main / "java/com/cue/daymark/PortableBackupCodec.java").read_text(encoding="utf-8")
+assert 'Cipher.getInstance("AES/GCM/NoPadding")' in codec and "MAX_ARCHIVE_BYTES" in codec and "MAX_MANIFEST_BYTES" in codec
+manager = (main / "java/com/cue/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
+assert "writePending(" in manager and "appendAtomically(additions)" in manager and "reconcile(" in manager
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
     assert expected in activity, f"missing V1 source feature marker: {expected}"
 for expected in ("Permission status:", "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "no Android permissions are declared"):
@@ -63,5 +71,6 @@ print("PASS V1 source policy: no permissions/network, background components or r
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
 print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")
+print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"

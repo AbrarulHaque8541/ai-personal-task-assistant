@@ -55,6 +55,17 @@ final class AttachmentBlobStore {
 
     long importStream(String taskId, String id, InputStream source, long remainingTotalBytes,
                       long expectedBytes, CancellationCheck cancellation) throws IOException {
+        return importStreamInternal(taskId, id, source, remainingTotalBytes, expectedBytes, cancellation, true);
+    }
+
+    long stageImportStream(String taskId, String id, InputStream source, long remainingTotalBytes,
+                           long expectedBytes, CancellationCheck cancellation) throws IOException {
+        return importStreamInternal(taskId, id, source, remainingTotalBytes, expectedBytes, cancellation, false);
+    }
+
+    private long importStreamInternal(String taskId, String id, InputStream source, long remainingTotalBytes,
+                                      long expectedBytes, CancellationCheck cancellation,
+                                      boolean commitImmediately) throws IOException {
         requireTaskId(taskId);
         requireId(id);
         if (source == null) throw new IOException("The selected file could not be opened.");
@@ -77,7 +88,9 @@ final class AttachmentBlobStore {
         checkAvailableSpace(requiredFree);
 
         File staging = new File(directory, id + ".pending");
+        if (staging.exists()) throw new IOException("An incomplete attachment transaction already uses this identifier.");
         CipherOutputStream encrypted = null;
+        boolean keepStaging = false;
         try {
             SecretKey key = hasStoredPayload() ? keys.loadExistingKey() : keys.createKeyForNewStore();
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -115,10 +128,17 @@ final class AttachmentBlobStore {
                 sync.getFD().sync();
             }
             if (cancellation != null && cancellation.isCancelled()) throw new CancelledException();
-            if (!staging.renameTo(destination)) throw new IOException("The attachment could not be committed.");
-            if (destination.length() != copied + OVERHEAD_BYTES) {
-                destination.delete();
-                throw new IOException("The committed attachment size could not be verified.");
+            if (staging.length() != copied + OVERHEAD_BYTES) {
+                throw new IOException("The staged attachment size could not be verified.");
+            }
+            if (commitImmediately) {
+                if (!staging.renameTo(destination)) throw new IOException("The attachment could not be committed.");
+                if (destination.length() != copied + OVERHEAD_BYTES) {
+                    destination.delete();
+                    throw new IOException("The committed attachment size could not be verified.");
+                }
+            } else {
+                keepStaging = true;
             }
             return copied;
         } catch (FileLimitException | StorageLimitException | StorageSpaceException | CancelledException exception) {
@@ -131,7 +151,7 @@ final class AttachmentBlobStore {
             if (encrypted != null) {
                 try { encrypted.close(); } catch (IOException ignored) { }
             }
-            if (staging.exists() && !staging.delete()) staging.deleteOnExit();
+            if (!keepStaging && staging.exists() && !staging.delete()) staging.deleteOnExit();
         }
     }
 
@@ -174,6 +194,23 @@ final class AttachmentBlobStore {
         }
     }
 
+    void commitStaged(String id) throws IOException {
+        requireId(id);
+        File staging = new File(directory, id + ".pending");
+        File destination = payloadFile(id);
+        if (!staging.isFile() || destination.exists()) {
+            throw new IOException("The staged attachment cannot be committed safely.");
+        }
+        long length = staging.length();
+        if (length < OVERHEAD_BYTES || length > AttachmentLogic.MAX_FILE_BYTES + OVERHEAD_BYTES) {
+            throw new IOException("The staged attachment has an invalid size.");
+        }
+        if (!staging.renameTo(destination)) throw new IOException("The staged attachment could not be committed.");
+        if (!destination.isFile() || destination.length() != length) {
+            throw new IOException("The committed attachment size could not be verified.");
+        }
+    }
+
     void delete(String id) throws IOException {
         requireId(id);
         File file = payloadFile(id);
@@ -208,13 +245,13 @@ final class AttachmentBlobStore {
     }
 
     private int storedCount() throws IOException {
-        File[] files = directory.listFiles((parent, name) -> name.endsWith(".enc"));
+        File[] files = directory.listFiles((parent, name) -> name.endsWith(".enc") || name.endsWith(".pending"));
         if (files == null) throw new IOException("The attachment folder could not be enumerated.");
         return files.length;
     }
 
     private long storedBytes() throws IOException {
-        File[] files = directory.listFiles((parent, name) -> name.endsWith(".enc"));
+        File[] files = directory.listFiles((parent, name) -> name.endsWith(".enc") || name.endsWith(".pending"));
         if (files == null) throw new IOException("The attachment folder could not be enumerated.");
         long total = 0;
         for (File file : files) {

@@ -1,0 +1,283 @@
+package com.cue.daymark;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.InputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/** Host-side protocol tests; runtime Android SAF/Keystore behavior is covered by instrumentation. */
+public final class PortableBackupSmoke {
+    private static int assertions;
+    private PortableBackupSmoke() { }
+
+    public static void main(String[] args) throws Exception {
+        recoveryKeyEncodingRoundTripsAndChecksErrors();
+        archiveRoundTripsWithoutExposingTaskData();
+        rejectsWrongKeyTamperAndMalformedFraming();
+        rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation();
+        exportFailsClosedOnProviderReadAndWriteFailure();
+        System.out.println("PASS portable backup protocol smoke tests: " + assertions + " assertions");
+    }
+
+    private static void recoveryKeyEncodingRoundTripsAndChecksErrors() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        String printable = PortableBackupCodec.encodeRecoveryKey(key);
+        check(printable.startsWith("DMK1-"), "recovery code has a versioned prefix");
+        check(printable.length() == 74, "recovery code has canonical grouped length");
+        byte[] decoded = PortableBackupCodec.decodeRecoveryKey(printable);
+        check(Arrays.equals(key, decoded), "recovery code round-trips the exact 32-byte key");
+        char replacement = printable.charAt(printable.length() - 1) == 'A' ? 'B' : 'A';
+        String changed = printable.substring(0, printable.length() - 1) + replacement;
+        expectIOException(() -> PortableBackupCodec.decodeRecoveryKey(changed), "recovery key check detects a mistyped character");
+        expectIOException(() -> PortableBackupCodec.decodeRecoveryKey(printable.replace('-', ' ')), "recovery key rejects malformed separators");
+        PortableBackupCodec.clear(key);
+        PortableBackupCodec.clear(decoded);
+        check(allZero(key) && allZero(decoded), "recovery key byte buffers can be cleared");
+    }
+
+    private static void archiveRoundTripsWithoutExposingTaskData() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        String taskId = UUID.randomUUID().toString();
+        String attachmentId = UUID.randomUUID().toString();
+        byte[] payload = "private payload marker — attachment bytes".getBytes(StandardCharsets.UTF_8);
+        Task task = new Task(taskId, "Secret task marker", "2026-10-06", "high", false,
+                "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z",
+                Collections.singletonList(new AttachmentRef(attachmentId, "private-qrx1.txt", "text/plain", payload.length)));
+        ByteArrayOutputStream archiveBytes = new ByteArrayOutputStream();
+        String backupId = PortableBackupCodec.writeArchive(archiveBytes, key,
+                Collections.singletonList(task), (sourceTask, reference) -> new ByteArrayInputStream(payload),
+                new SecureRandom(), () -> false);
+        byte[] archive = archiveBytes.toByteArray();
+        check(archive.length < 2 * 1024 * 1024, "small test archive remains bounded");
+        check(!startsWith(archive, new byte[] { 'P', 'K', 3, 4 }), "portable archive is not ZIP");
+        check(backupId.length() == 32, "header backup ID is a 128-bit random identifier");
+        check(!contains(archive, "Secret task marker".getBytes(StandardCharsets.UTF_8)), "task titles are encrypted");
+        check(!contains(archive, "private-qrx1.txt".getBytes(StandardCharsets.UTF_8)), "attachment names are encrypted");
+        check(!contains(archive, "text/plain".getBytes(StandardCharsets.UTF_8)), "attachment MIME types are encrypted");
+        check(!contains(archive, taskId.getBytes(StandardCharsets.UTF_8)), "source task IDs are not exported");
+        check(!contains(archive, attachmentId.getBytes(StandardCharsets.UTF_8)), "source attachment IDs are not exported");
+
+        File stage = Files.createTempDirectory("portable-backup-roundtrip").toFile();
+        PortableBackupCodec.VerifiedArchive opened = PortableBackupCodec.readArchive(
+                new ByteArrayInputStream(archive), key, stage, id -> check(id.equals(backupId), "backup ID is checked before decryption"), () -> false);
+        check(opened.backupId.equals(backupId), "header backup ID survives authenticated round trip");
+        check(opened.tasks.size() == 1 && opened.attachments.size() == 1, "authenticated manifest restores task and attachment descriptors");
+        PortableBackupCodec.PortableTask openedTask = opened.tasks.get(0);
+        check(openedTask.title.equals("Secret task marker") && openedTask.dueDate.equals("2026-10-06"), "encrypted task fields round-trip exactly");
+        check(openedTask.attachments.size() == 1 && openedTask.attachments.get(0).displayName.equals("private-qrx1.txt"), "encrypted attachment metadata round-trips");
+        check(Arrays.equals(payload, Files.readAllBytes(opened.attachments.get(0).stagedPlaintext.toPath())), "full attachment bytes are authenticated before staging is returned");
+        opened.clearStagedPlaintext();
+        check(stage.listFiles().length == 0, "verified plaintext staging can be removed after transaction");
+        deleteTree(stage);
+
+        File zeroProgressStage = Files.createTempDirectory("portable-backup-zero-progress").toFile();
+        PortableBackupCodec.VerifiedArchive zeroProgress = PortableBackupCodec.readArchive(
+                new ZeroProgressInputStream(archive), key, zeroProgressStage, id -> { }, () -> false);
+        check(Arrays.equals(payload, Files.readAllBytes(zeroProgress.attachments.get(0).stagedPlaintext.toPath())),
+                "zero-progress SAF reads make bounded forward progress");
+        zeroProgress.clearStagedPlaintext();
+        deleteTree(zeroProgressStage);
+        PortableBackupCodec.clear(key);
+    }
+
+    private static void rejectsWrongKeyTamperAndMalformedFraming() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        byte[] wrongKey = key.clone();
+        wrongKey[0] ^= 0x20;
+        byte[] payload = new byte[8192];
+        for (int i = 0; i < payload.length; i++) payload[i] = (byte) (i * 37);
+        byte[] archive = makeArchive(key, payload);
+        File root = Files.createTempDirectory("portable-backup-reject").toFile();
+
+        File wrongStage = new File(root, "wrong");
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(archive), wrongKey,
+                wrongStage, id -> { }, () -> false), "wrong key is rejected before any import commit");
+        check(!wrongStage.exists() || wrongStage.list().length == 0, "wrong key leaves no plaintext staging files");
+        File missingKeyStage = new File(root, "missing-key");
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(archive), null,
+                missingKeyStage, id -> { }, () -> false), "missing recovery key is rejected without import");
+        check(!missingKeyStage.exists(), "missing recovery key creates no staging directory");
+
+        byte[] tampered = archive.clone();
+        tampered[tampered.length - 1] ^= 0x01;
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(tampered), key,
+                new File(root, "tamper"), id -> { }, () -> false), "modified GCM tag is rejected");
+        byte[] truncated = Arrays.copyOf(archive, archive.length - 1);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(truncated), key,
+                new File(root, "truncated"), id -> { }, () -> false), "truncated final record is rejected");
+        byte[] trailing = Arrays.copyOf(archive, archive.length + 1);
+        trailing[trailing.length - 1] = 0x55;
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(trailing), key,
+                new File(root, "trailing"), id -> { }, () -> false), "trailing bytes are rejected");
+
+        byte[] duplicateRecord = archive.clone();
+        int manifestLength = ByteBuffer.wrap(duplicateRecord, 65, 8).getLong() > Integer.MAX_VALUE
+                ? 0 : (int) ByteBuffer.wrap(duplicateRecord, 65, 8).getLong();
+        int secondRecord = 28 + 57 + manifestLength + 16;
+        byte[] missingRecord = Arrays.copyOf(archive, secondRecord);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(missingRecord), key,
+                new File(root, "missing-record"), id -> { }, () -> false), "missing attachment record is rejected");
+
+        System.arraycopy(duplicateRecord, 33, duplicateRecord, secondRecord + 5, 16);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(duplicateRecord), key,
+                new File(root, "duplicate"), id -> { }, () -> false), "duplicate record identity is rejected");
+        byte[] extraRecord = Arrays.copyOf(archive, archive.length + archive.length - secondRecord);
+        System.arraycopy(archive, secondRecord, extraRecord, archive.length, archive.length - secondRecord);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(extraRecord), key,
+                new File(root, "extra-record"), id -> { }, () -> false), "extra attachment record after the declared record set is rejected");
+
+        AtomicInteger checks = new AtomicInteger();
+        File midCancelStage = new File(root, "mid-cancel");
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(archive), key,
+                midCancelStage, id -> { }, () -> checks.incrementAndGet() >= 5),
+                "cancellation after attachment plaintext staging still aborts the import");
+        check(!midCancelStage.exists() || midCancelStage.list().length == 0,
+                "cancelled mid-record import removes partial plaintext staging");
+
+        deleteTree(root);
+        PortableBackupCodec.clear(key);
+        PortableBackupCodec.clear(wrongKey);
+    }
+
+    private static void rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        byte[] archive = makeArchive(key, new byte[] { 1, 2, 3, 4 });
+        File root = Files.createTempDirectory("portable-backup-bounds").toFile();
+        byte[] futureVersion = archive.clone();
+        futureVersion[5] = 2;
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(futureVersion), key,
+                new File(root, "version"), id -> { }, () -> false), "unknown format version is rejected");
+        byte[] futureSuite = archive.clone();
+        futureSuite[7] = 2;
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(futureSuite), key,
+                new File(root, "suite"), id -> { }, () -> false), "unknown encryption suite is rejected");
+        byte[] tooManyRecords = archive.clone();
+        ByteBuffer.wrap(tooManyRecords).putInt(24, PortableBackupCodec.MAX_RECORDS + 1);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(tooManyRecords), key,
+                new File(root, "records"), id -> { }, () -> false), "record-count bound is checked before crypto");
+        byte[] hugeManifest = archive.clone();
+        ByteBuffer.wrap(hugeManifest).putLong(65, (long) PortableBackupCodec.MAX_MANIFEST_BYTES + 1L);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(hugeManifest), key,
+                new File(root, "manifest"), id -> { }, () -> false), "manifest bound is checked before allocation");
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(archive), key,
+                new File(root, "duplicate-backup"), id -> { throw new IOException("duplicate backup"); }, () -> false),
+                "duplicate backup ID check runs before decryption");
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(archive), key,
+                new File(root, "cancel"), id -> { }, () -> true), "cancellation aborts before transaction staging");
+        check(new File(root, "cancel").list().length == 0, "cancelled import leaves no staged plaintext");
+        deleteTree(root);
+        PortableBackupCodec.clear(key);
+    }
+
+    private static void exportFailsClosedOnProviderReadAndWriteFailure() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        byte[] payload = "provider-secret".getBytes(StandardCharsets.UTF_8);
+        Task task = new Task(UUID.randomUUID().toString(), "provider failure task", null, "medium", false,
+                "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z",
+                Collections.singletonList(new AttachmentRef(UUID.randomUUID().toString(), "source.txt",
+                        "text/plain", payload.length)));
+        ByteArrayOutputStream partial = new ByteArrayOutputStream();
+        expectIOException(() -> PortableBackupCodec.writeArchive(partial, key, Collections.singletonList(task),
+                (sourceTask, reference) -> new InputStream() {
+                    @Override public int read() throws IOException { throw new IOException("provider read failed"); }
+                }, new SecureRandom(), () -> false), "attachment-provider read error aborts archive creation");
+        check(!contains(partial.toByteArray(), payload), "provider read failure cannot emit attachment plaintext");
+
+        expectIOException(() -> PortableBackupCodec.writeArchive(new CappedOutputStream(64), key,
+                Collections.emptyList(), (sourceTask, reference) -> new ByteArrayInputStream(new byte[0]),
+                new SecureRandom(), () -> false), "document-provider write/low-space error aborts archive creation");
+        PortableBackupCodec.clear(key);
+    }
+
+    private static byte[] makeArchive(byte[] key, byte[] payload) throws Exception {
+        Task task = new Task(UUID.randomUUID().toString(), "bounded task", null, "medium", false,
+                "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z",
+                Collections.singletonList(new AttachmentRef(UUID.randomUUID().toString(), "payload.bin",
+                        "application/octet-stream", payload.length)));
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        PortableBackupCodec.writeArchive(output, key, Collections.singletonList(task),
+                (sourceTask, reference) -> new ByteArrayInputStream(payload), new SecureRandom(), () -> false);
+        return output.toByteArray();
+    }
+
+    private static boolean contains(byte[] haystack, byte[] needle) {
+        outer: for (int i = 0; i <= haystack.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) if (haystack[i + j] != needle[j]) continue outer;
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean startsWith(byte[] value, byte[] prefix) {
+        if (value.length < prefix.length) return false;
+        for (int i = 0; i < prefix.length; i++) if (value[i] != prefix[i]) return false;
+        return true;
+    }
+
+    private static boolean allZero(byte[] value) {
+        int bits = 0;
+        for (byte b : value) bits |= b;
+        return bits == 0;
+    }
+
+    private static void expectIOException(IoOperation operation, String message) throws Exception {
+        assertions++;
+        try {
+            operation.run();
+            throw new AssertionError(message + ": expected IOException");
+        } catch (IOException expected) {
+            // Expected fail-closed path.
+        }
+    }
+
+    private static void check(boolean condition, String message) {
+        assertions++;
+        if (!condition) throw new AssertionError(message);
+    }
+
+    private static void deleteTree(File file) throws IOException {
+        if (!file.exists()) return;
+        File[] children = file.listFiles();
+        if (children != null) for (File child : children) deleteTree(child);
+        if (!file.delete() && file.exists()) throw new IOException("Could not clean host-test staging file.");
+    }
+
+    private static final class ZeroProgressInputStream extends ByteArrayInputStream {
+        private boolean returnZero = true;
+        ZeroProgressInputStream(byte[] bytes) { super(bytes); }
+        @Override public synchronized int read(byte[] target, int offset, int length) {
+            if (length > 0 && returnZero) {
+                returnZero = false;
+                return 0;
+            }
+            returnZero = true;
+            return super.read(target, offset, length);
+        }
+    }
+
+    private static final class CappedOutputStream extends OutputStream {
+        private final int limit;
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        CappedOutputStream(int limit) { this.limit = limit; }
+        @Override public void write(int value) throws IOException {
+            if (bytes.size() >= limit) throw new IOException("simulated provider storage full");
+            bytes.write(value);
+        }
+        @Override public void write(byte[] data, int offset, int length) throws IOException {
+            if (length > limit - bytes.size()) throw new IOException("simulated provider storage full");
+            bytes.write(data, offset, length);
+        }
+    }
+
+    private interface IoOperation { void run() throws Exception; }
+}

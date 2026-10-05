@@ -60,6 +60,21 @@ final class AndroidAttachmentStore {
         return blobs.openInput(taskId, appOwnedId);
     }
 
+    long stagePortableImport(String taskId, String appOwnedId, InputStream source,
+                             long remainingTotalBytes, long expectedBytes,
+                             AttachmentBlobStore.CancellationCheck cancellation) throws IOException {
+        return blobs.stageImportStream(taskId, appOwnedId, source, remainingTotalBytes,
+                expectedBytes, cancellation);
+    }
+
+    void commitPortableImport(String appOwnedId) throws IOException {
+        blobs.commitStaged(appOwnedId);
+    }
+
+    void discardPortableImport(String appOwnedId) throws IOException {
+        blobs.delete(appOwnedId);
+    }
+
     void delete(String appOwnedId) throws IOException {
         blobs.delete(appOwnedId);
     }
