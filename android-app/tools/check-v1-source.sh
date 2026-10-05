@@ -36,6 +36,7 @@ activity = (main / "java/com/cue/daymark/MainActivity.java").read_text(encoding=
 webview = (main / "java/com/cue/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
 address = (main / "java/com/cue/daymark/BrowserAddress.java").read_text(encoding="utf-8")
 history_source = (main / "java/com/cue/daymark/BrowserHistory.java").read_text(encoding="utf-8")
+browser_smoke = (root / "tools/BrowserAddressSmoke.java").read_text(encoding="utf-8")
 settings_policy = (main / "java/com/cue/daymark/BrowserSettingsPolicy.java").read_text(encoding="utf-8")
 settings_smoke = (root / "tools/BrowserSettingsPolicySmoke.java").read_text(encoding="utf-8")
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
@@ -85,14 +86,24 @@ assert "settings.setSafeBrowsingEnabled(safeBrowsingEnabled)" in webview
 assert "DEFAULT_SAFE_BROWSING_ENABLED = true" in settings_policy
 assert "Safe Browsing must default on for new installs" in settings_smoke
 assert "explicit opt-out should be restorable" in settings_smoke and "user must be able to re-enable" in settings_smoke
-assert "Local history keeps only HTTPS origins and paths" in activity
-assert "query parameters, fragments, and embedded username/password are removed before saving" in activity
-assert "Search terms are not saved in history" in activity and "Path segments are kept and may themselves contain tokens" in activity
+assert "Site history keeps only validated HTTPS origins" in activity
+assert "Paths, queries, fragments, URL credentials, and page titles are not saved" in activity
+assert "Selecting a saved site opens its origin, not its last route" in activity
 assert "sanitizeStoredBrowserHistory();" in activity and "BrowserHistory.sanitizeSerialized(existing)" in activity, "legacy history must be sanitized on launch"
 assert "BrowserHistory.sanitizeUrl(url)" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity, "each history write must pass through the sanitizer"
-assert "Local HTTPS history (queries removed)" in activity and "path segments remain" in activity
-for expected in ("sanitized.getRawUserInfo()", "sanitized.getRawQuery()", "sanitized.getRawFragment()", "source.getRawPath()", "source.getHost()", "source.getPort()"):
+history_dialog = re.search(r"private void showBrowserHistoryDialog\(\)\s*\{(.*?)\n    \}", activity, re.S)
+assert history_dialog and 'setTitle("Site history (HTTPS origins only)")' in history_dialog.group(1)
+assert history_dialog and "navigateBrowserTo(history.get(selected))" in history_dialog.group(1), "reopening a saved site must navigate to its origin"
+for expected in ("source.getHost()", "source.getPort()", "port != HTTPS_DEFAULT_PORT", "HTTPS_DEFAULT_PORT = 443",
+                 "sanitized.getRawUserInfo()", "sanitized.getRawQuery()", "sanitized.getRawFragment()", "sanitized.getRawPath()"):
     assert expected in history_source, f"history sanitizer must handle {expected}"
+assert "source.getRawPath()" not in history_source, "site history must not read or persist a page path"
+assert "no paths, queries, fragments, userinfo, or titles" in history_source
+for secret_case in ("/reset/secret-reset-token", "/oauth/secret-authorization-code", "secret-code",
+                    "secret-fragment", "user:password@example.com", "Private password-reset page title with a secret code"):
+    assert secret_case in browser_smoke, f"missing origin-history privacy regression: {secret_case}"
+assert "BrowserAddress.isAllowedWebUrl(sites.get(0))" in browser_smoke, "a stored site origin must remain reopenable"
+assert "active browsing URL" in browser_smoke, "history redaction must not mutate the current route/query"
 assert "uri.getRawUserInfo() != null" in address, "browser navigation must continue to reject userinfo"
 for method in ("navigateFromInput", "navigateBrowserTo", "loadBrowserAddress"):
     body = re.search(r"private void " + method + r"\([^)]*\)\s*\{(.*?)\n    \}", activity, re.S)
@@ -110,6 +121,7 @@ assert ensure_webview and "if (!browserNetworkPolicy.allowsRemoteLoads()) return
 load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
 assert load_address and "setBlockNetworkLoads(false)" in load_address.group(1)
 assert load_address and load_address.group(1).index("setBlockNetworkLoads(false)") < load_address.group(1).index("browserWebView.loadUrl(address)"), "only a tapped navigation may release WebView network blocking"
+assert load_address and "browserWebView.loadUrl(address)" in load_address.group(1), "active browsing must retain the full validated route/query"
 
 for expected in (
     "settings.setBlockNetworkLoads(true)",
@@ -153,11 +165,12 @@ assert clear, "explicit browser data clear action is required"
 for expected in ("clearHistory()", "clearCache(true)", "WebStorage.getInstance().deleteAllData()", "removeAllCookies("):
     assert expected in clear.group(1), f"clear action must include {expected}"
 assert "BrowserHistory.clear()" in clear.group(1), "clear action must erase local history"
-assert "History & data" in activity and "Clear history & site data" in activity
+assert 'compactButton("Site history", false)' in activity and "Clear site history & data" in activity
+assert "Site history stores only validated HTTPS origins" in activity and "no paths, queries, fragments, URL credentials, or page titles" in activity
 assert "for all websites used in Daymark (not just the current site)" in activity, "clear scope must disclose all-site WebView storage/cookie deletion"
 assert "saved Android Autofill or password-manager data is not cleared" in activity, "clear disclosure must not overstate WebView form-data clearing"
-assert "browserStatus.setText(\"Clearing Daymark browser history and local site data...\")" in clear.group(1)
-assert "Daymark URL history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared." in clear.group(1), "completion status must follow asynchronous cookie removal"
+assert "browserStatus.setText(\"Clearing Daymark site history and local site data...\")" in clear.group(1)
+assert "Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared." in clear.group(1), "completion status must follow asynchronous cookie removal"
 assert "HTTP redirect/downgrade was blocked" in activity and "No insecure page was opened" in activity
 
 text_size_calls = re.findall(r"\.setTextSize\(([^)]*)\)", activity)
@@ -176,7 +189,7 @@ print("PASS browser policy: Offline by default with persisted opt-in, Daymark pa
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
-print("PASS local browser data: query-free capped history, legacy-entry sanitization, and explicit history/cookie/cache/WebStorage clear")
+print("PASS local browser data: capped origin-only site history, legacy-origin migration, reopen/dedup, secret redaction, and explicit history/cookie/cache/WebStorage clear")
 print("PASS manifest/dependencies: INTERNET only, no background components, no added runtime dependency or optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, live status, explicit English-only scope, device-locale dates")
 PY

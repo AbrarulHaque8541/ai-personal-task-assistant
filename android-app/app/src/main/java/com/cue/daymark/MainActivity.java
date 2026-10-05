@@ -528,8 +528,8 @@ public final class MainActivity extends Activity {
         browserHomeButton = compactButton("Home", false);
         browserHomeButton.setContentDescription("Return to the local browser home screen");
         browserHomeButton.setOnClickListener(view -> showBrowserHome());
-        browserHistoryButton = compactButton("History & data", false);
-        browserHistoryButton.setContentDescription("View local browser history or clear history and site data");
+        browserHistoryButton = compactButton("Site history", false);
+        browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
         browserSettingsButton = compactButton("Settings", false);
         browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
@@ -604,7 +604,7 @@ public final class MainActivity extends Activity {
                 14, palette.muted, Typeface.NORMAL);
         copy.setLineSpacing(dp(3), 1f);
         home.addView(copy, bottomMargin(dp(12)));
-        TextView local = text("Local history keeps only HTTPS origins and paths; query parameters, fragments, and embedded username/password are removed before saving. Search terms are not saved in history. Path segments are kept and may themselves contain tokens. Legacy entries are sanitized when Daymark opens. History is local but not encrypted. Use History & data to clear it and Daymark's cookies/cache/storage.",
+        TextView local = text("Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted. Use Site history to clear it and Daymark's cookies/cache/storage.",
                 12, palette.muted, Typeface.NORMAL);
         local.setLineSpacing(dp(2), 1f);
         home.addView(local);
@@ -777,26 +777,26 @@ public final class MainActivity extends Activity {
     private void showBrowserHistoryDialog() {
         sanitizeStoredBrowserHistory();
         List<String> history = BrowserHistory.decode(browserPreferences.getString(BROWSER_HISTORY_KEY, ""));
-        String[] entries = history.isEmpty() ? new String[] { "No recent pages" }
+        String[] entries = history.isEmpty() ? new String[] { "No recent sites" }
                 : history.toArray(new String[0]);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Local HTTPS history (queries removed)")
+                .setTitle("Site history (HTTPS origins only)")
                 .setItems(entries, (whichDialog, selected) -> {
                     if (selected < 0 || selected >= history.size()) return;
                     quickCaptureInput.setText(history.get(selected));
                     navigateBrowserTo(history.get(selected));
                 })
-                .setNeutralButton("Clear history & site data", null)
+                .setNeutralButton("Clear site history & data", null)
                 .setPositiveButton("Close", null)
                 .create();
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
                 .setOnClickListener(view -> {
                     dialog.dismiss();
                     new AlertDialog.Builder(this)
-                            .setTitle("Clear local browser data?")
-                            .setMessage("Local history shows only HTTPS origin/path: query parameters and fragments are stripped and embedded credentials are removed before saving; path segments remain. Legacy entries are sanitized on launch. Clearing removes Daymark's local URL history, the current WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
+                            .setTitle("Clear site history and data?")
+                            .setMessage("Site history stores only validated HTTPS origins: no paths, queries, fragments, URL credentials, or page titles. Older entries are reduced to origins on launch. Selecting a saved site opens that origin, not the last route. Clearing removes Daymark's site history, the current WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
                             .setNegativeButton("Cancel", null)
-                            .setPositiveButton("Clear data", (confirm, selected) -> clearBrowserData())
+                            .setPositiveButton("Clear site data", (confirm, selected) -> clearBrowserData())
                             .show();
                 }));
         dialog.show();
@@ -813,12 +813,12 @@ public final class MainActivity extends Activity {
         WebStorage.getInstance().deleteAllData();
         CookieManager cookies = CookieManager.getInstance();
         showBrowserHome();
-        browserStatus.setText("Clearing Daymark browser history and local site data...");
+        browserStatus.setText("Clearing Daymark site history and local site data...");
         cookies.removeAllCookies(removed -> {
             cookies.flush();
             if (!isFinishing()) {
-                browserStatus.setText("Daymark URL history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
-                showToast("Local browser history and site data cleared.");
+                browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
+                showToast("Local site history and site data cleared.");
             }
         });
     }
