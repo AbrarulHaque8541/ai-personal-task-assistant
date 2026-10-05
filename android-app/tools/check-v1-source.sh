@@ -90,6 +90,11 @@ assert reminder_scheduler.index("getNotificationChannel(id) != null") < reminder
 for expected in ("ACTION_BOOT_COMPLETED", "ACTION_TIMEZONE_CHANGED", "ACTION_TIME_CHANGED", "ACTION_FALLBACK", "ACTION_SNOOZE", "ACTION_CANCEL", "markDelivered"):
     assert expected in reminder_receiver or expected in reminder_receiver.replace("Intent.", ""), f"missing receiver action: {expected}"
 assert "goAsync()" in reminder_receiver and "setExact" not in reminder_receiver
+assert "shouldDeliverForTask(pending, task)" in reminder_receiver and "belongsToOpenTask(current, task)" in reminder_receiver, "fire and snooze actions must verify the task is still open"
+assert "reconcileAndReschedule(context, store)" in reminder_receiver, "boot/time/permission restoration must reconcile reminders against current tasks"
+assert "if (task == null || task.completed)" in activity, "startup reconciliation must remove reminders for deleted or completed tasks"
+assert "saveTasksAsync(() ->" in activity and "cancelReminderAsync(task.id, false)" in activity, "task completion/deletion must cancel reminders only after a successful task save"
+assert "restoreReminderAsync(restore)" in activity, "undo must restore a reminder only after the task save succeeds"
 assert reminder_receiver.index("if (!ReminderScheduler.notificationsEnabled(context))") < reminder_receiver.index("store.markDelivered(taskId)"), "do not consume a reminder before confirming notifications can be posted"
 assert "<uses-permission android:name=\"android.permission.USE_EXACT_ALARM\"" not in (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 for blanket in ("android.permission.READ_MEDIA_AUDIO", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WAKE_LOCK", "android.permission.FOREGROUND_SERVICE"):

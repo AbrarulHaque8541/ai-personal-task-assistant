@@ -64,6 +64,8 @@ The app's **Demo suggestion** ranking is deterministic local code: open tasks by
 
 An open task can have one local date/time reminder or a relative timer (1 minute through 7 days). The reminder record, including its task-title snapshot and selected sound URI, is stored separately in `files/reminders.enc` with AES-GCM and an Android Keystore key; the existing task schema and task file are unchanged. Creating a reminder does not use the network.
 
+Marking a task complete removes its reminder after the task save succeeds. Deleting a task removes its reminder after the delete save succeeds; Undo restores the reminder only after the task is saved back. Before delivering or snoozing, the private receiver checks the encrypted task record still exists and remains open, so stale alarms are discarded rather than shown for completed or deleted tasks.
+
 Daymark asks for `POST_NOTIFICATIONS` only when the user saves a reminder. A denial leaves the task list usable and does not create the reminder. When `SCHEDULE_EXACT_ALARM` access is unavailable, the app saves and schedules an inexact alarm, explains the timing tradeoff, and offers the Android Alarms & reminders Settings page as an optional next step. It does not request `USE_EXACT_ALARM` or bypass the user's choice.
 
 If notification access is disabled later, Daymark cancels pending alarms when it observes the change; encrypted reminder records are retained. If an alarm fires before Daymark observes the setting, the receiver cancels both alarm paths and leaves the reminder active rather than marking it delivered. Daymark re-arms overdue active reminders when it resumes after access is restored.

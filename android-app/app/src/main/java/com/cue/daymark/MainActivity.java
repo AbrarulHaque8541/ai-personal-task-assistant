@@ -1101,8 +1101,14 @@ public final class MainActivity extends Activity {
             Exception reminderFailure = null;
             try {
                 loadedReminders = reminderStore.rebaseForCurrentTimezone();
-                if (failure == null) loadedReminders = reconcileReminders(loaded, loadedReminders);
-                ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
+                if (failure == null) {
+                    loadedReminders = reconcileReminders(loaded, loadedReminders);
+                    ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
+                } else {
+                    for (Reminder reminder : loadedReminders) {
+                        ReminderScheduler.cancel(getApplicationContext(), reminder.taskId);
+                    }
+                }
             } catch (Exception exception) {
                 reminderFailure = exception;
             }
@@ -1148,7 +1154,7 @@ public final class MainActivity extends Activity {
         List<Reminder> reconciled = new ArrayList<>();
         for (Reminder reminder : storedReminders) {
             Task task = byId.get(reminder.taskId);
-            if (task == null) {
+            if (task == null || task.completed) {
                 reminderStore.remove(reminder.taskId);
                 ReminderScheduler.cancel(getApplicationContext(), reminder.taskId);
                 ReminderScheduler.cancelNotification(getApplicationContext(), reminder.taskId);
@@ -1170,7 +1176,9 @@ public final class MainActivity extends Activity {
             List<Reminder> loaded = null;
             Exception failure = null;
             try {
+                List<Task> loadedTasks = taskStore.load();
                 loaded = reminderStore.rebaseForCurrentTimezone();
+                loaded = reconcileReminders(loadedTasks, loaded);
                 ReminderScheduler.rescheduleAll(getApplicationContext(), loaded);
             } catch (Exception exception) {
                 failure = exception;
@@ -1193,6 +1201,10 @@ public final class MainActivity extends Activity {
     }
 
     private void saveTasksAsync() {
+        saveTasksAsync(null);
+    }
+
+    private void saveTasksAsync(Runnable onSuccess) {
         if (!storageReady) return;
         long revision = ++saveRevision;
         List<Task> snapshot = new ArrayList<>(tasks);
@@ -1211,6 +1223,7 @@ public final class MainActivity extends Activity {
                 if (error == null) {
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(snapshot);
+                    if (onSuccess != null) onSuccess.run();
                     if (revision == saveRevision) {
                         storageReady = true;
                         storageStatus.setText("Encrypted storage ready");
@@ -1744,7 +1757,10 @@ public final class MainActivity extends Activity {
             if (!storageReady || checked == task.completed) return;
             replaceTask(TaskLogic.toggleCompleted(task));
             render();
-            saveTasksAsync();
+            saveTasksAsync(() -> {
+                Task persisted = findTaskById(task.id);
+                if (persisted != null && persisted.completed) cancelReminderAsync(task.id, false);
+            });
         });
         return row;
     }
@@ -2311,7 +2327,6 @@ public final class MainActivity extends Activity {
         pendingDeletedIndex = index;
         pendingDeletedTask = tasks.remove(index);
         pendingDeletedReminder = reminders.get(task.id);
-        cancelReminderAsync(task.id, false);
         undoMessage.setText("Task deleted.");
         undoBar.setVisibility(View.VISIBLE);
         // Bring focus to Undo so screen-reader and keyboard users can act on the
@@ -2321,7 +2336,9 @@ public final class MainActivity extends Activity {
         undoDismissal = this::hideUndoBar;
         mainHandler.postDelayed(undoDismissal, 7000);
         render();
-        saveTasksAsync();
+        saveTasksAsync(() -> {
+            if (findTaskById(task.id) == null) cancelReminderAsync(task.id, false);
+        });
     }
 
     private void confirmDeleteTask(Task task) {
@@ -2346,8 +2363,11 @@ public final class MainActivity extends Activity {
         pendingDeletedTask = null;
         hideUndoBar();
         render();
-        saveTasksAsync();
-        restoreReminderAsync(restore);
+        saveTasksAsync(() -> {
+            if (restore == null) return;
+            Task restored = findTaskById(restore.taskId);
+            if (restored != null && !restored.completed) restoreReminderAsync(restore);
+        });
         showToast("Task restored.");
     }
 

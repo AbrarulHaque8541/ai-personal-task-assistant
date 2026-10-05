@@ -15,6 +15,7 @@ final class ReminderLogicSmoke {
         dozePlanUsesIdleApisWithoutClaimingExactDelivery();
         timezoneAndRebootRestorePersistedIntent();
         cancellationAndSnoozeUpdateOnlyTheTargetReminder();
+        taskLifecycleBlocksStaleReminders();
         soundChannelsAreStableAndDistinct();
         System.out.println("ReminderLogicSmoke: all reminder policy checks passed.");
     }
@@ -101,6 +102,22 @@ final class ReminderLogicSmoke {
             rejected = true;
         }
         assert rejected : "only a delivered reminder may be snoozed";
+    }
+
+    private static void taskLifecycleBlocksStaleReminders() {
+        long now = 1_800_000_000_000L;
+        Reminder reminder = ReminderLogic.afterMinutes("task-1", "Review", 30, now, null);
+        Task open = new Task("task-1", "Review", null, "medium", false, "created", "updated");
+        Task completed = open.withCompleted(true, "completed");
+        Task different = new Task("task-2", "Other", null, "medium", false, "created", "updated");
+
+        assert ReminderLogic.belongsToOpenTask(reminder, open);
+        assert ReminderLogic.shouldDeliverForTask(reminder, open);
+        assert !ReminderLogic.belongsToOpenTask(reminder, completed);
+        assert !ReminderLogic.shouldDeliverForTask(reminder, completed);
+        assert !ReminderLogic.belongsToOpenTask(reminder, different);
+        assert !ReminderLogic.belongsToOpenTask(reminder, null);
+        assert !ReminderLogic.shouldDeliverForTask(reminder.withDelivered(true), open);
     }
 
     private static void soundChannelsAreStableAndDistinct() {

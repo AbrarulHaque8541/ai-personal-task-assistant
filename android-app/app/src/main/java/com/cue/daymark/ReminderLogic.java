@@ -99,6 +99,15 @@ final class ReminderLogic {
         return reminders.removeIf(reminder -> taskId.equals(reminder.taskId));
     }
 
+    static boolean belongsToOpenTask(Reminder reminder, Task task) {
+        return reminder != null && reminder.isValid() && task != null
+                && !task.completed && reminder.taskId.equals(task.id);
+    }
+
+    static boolean shouldDeliverForTask(Reminder reminder, Task task) {
+        return belongsToOpenTask(reminder, task) && !reminder.delivered;
+    }
+
     static Reminder snooze(Reminder reminder, long nowMillis) {
         if (reminder == null || !reminder.isValid() || !reminder.delivered) {
             throw new IllegalArgumentException("Only a delivered reminder can be snoozed.");

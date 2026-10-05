@@ -9,6 +9,9 @@ import android.content.Context;
 import android.content.Intent;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.time.ZoneId;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,6 +52,14 @@ public final class ReminderReceiver extends BroadcastReceiver {
             deliverIfCurrent(context, store, taskId);
         } else if (ACTION_SNOOZE.equals(action)) {
             if (taskId == null) return;
+            Reminder current = store.find(taskId);
+            Task task = findTask(context, taskId);
+            if (!ReminderLogic.belongsToOpenTask(current, task)) {
+                store.remove(taskId);
+                ReminderScheduler.cancel(context, taskId);
+                ReminderScheduler.cancelNotification(context, taskId);
+                return;
+            }
             Reminder next = store.snooze(taskId, System.currentTimeMillis());
             ReminderScheduler.cancelNotification(context, taskId);
             if (next != null) ReminderScheduler.schedule(context, next);
@@ -58,14 +69,24 @@ public final class ReminderReceiver extends BroadcastReceiver {
             ReminderScheduler.cancel(context, taskId);
             ReminderScheduler.cancelNotification(context, taskId);
         } else if (isSystemRescheduleAction(action)) {
-            List<Reminder> reminders = store.rebaseForCurrentTimezone();
-            ReminderScheduler.rescheduleAll(context, reminders);
+            reconcileAndReschedule(context, store);
         }
     }
 
     private void deliverIfCurrent(Context context, EncryptedReminderStore store, String taskId) throws Exception {
         Reminder pending = store.find(taskId);
         if (pending == null || pending.delivered) return;
+        Task task = findTask(context, taskId);
+        if (!ReminderLogic.shouldDeliverForTask(pending, task)) {
+            store.remove(taskId);
+            ReminderScheduler.cancel(context, taskId);
+            ReminderScheduler.cancelNotification(context, taskId);
+            return;
+        }
+        if (!task.title.equals(pending.taskTitle)) {
+            store.updateTaskTitle(taskId, task.title);
+            pending = pending.withTitle(task.title);
+        }
         Reminder rebased = ReminderLogic.afterTimezoneChange(pending, ZoneId.systemDefault());
         if (rebased.triggerAtMillis != pending.triggerAtMillis) {
             store.put(rebased);
@@ -92,6 +113,43 @@ public final class ReminderReceiver extends BroadcastReceiver {
                 || Intent.ACTION_TIMEZONE_CHANGED.equals(action)
                 || Intent.ACTION_DATE_CHANGED.equals(action)
                 || ACTION_EXACT_PERMISSION_CHANGED.equals(action);
+    }
+
+    private void reconcileAndReschedule(Context context, EncryptedReminderStore store) throws Exception {
+        List<Reminder> reminders = store.rebaseForCurrentTimezone();
+        List<Task> tasks;
+        try {
+            tasks = new EncryptedTaskStore(context).load();
+        } catch (Exception exception) {
+            for (Reminder reminder : reminders) ReminderScheduler.cancel(context, reminder.taskId);
+            throw exception;
+        }
+        Map<String, Task> tasksById = new HashMap<>();
+        for (Task task : tasks) tasksById.put(task.id, task);
+        List<Reminder> active = new ArrayList<>();
+        for (Reminder reminder : reminders) {
+            Task task = tasksById.get(reminder.taskId);
+            if (!ReminderLogic.belongsToOpenTask(reminder, task)) {
+                store.remove(reminder.taskId);
+                ReminderScheduler.cancel(context, reminder.taskId);
+                ReminderScheduler.cancelNotification(context, reminder.taskId);
+            } else {
+                Reminder current = reminder;
+                if (!task.title.equals(reminder.taskTitle)) {
+                    store.updateTaskTitle(task.id, task.title);
+                    current = reminder.withTitle(task.title);
+                }
+                active.add(current);
+            }
+        }
+        ReminderScheduler.rescheduleAll(context, active);
+    }
+
+    private Task findTask(Context context, String taskId) throws Exception {
+        for (Task task : new EncryptedTaskStore(context).load()) {
+            if (task.id.equals(taskId)) return task;
+        }
+        return null;
     }
 
     private void postNotification(Context context, Reminder reminder) {

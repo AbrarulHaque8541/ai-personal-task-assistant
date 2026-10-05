@@ -54,6 +54,7 @@ The manifest retains normal `INTERNET` for the browser and adds only reminder-sp
 ## Reminder acceptance (device/emulator required)
 
 - [ ] **Date/time and relative timer:** create each type for a task; verify one reminder per task, local-only persistence, edits replace the prior alarm, and past/invalid dates and timer values are rejected.
+- [ ] **Open-task synchronization:** mark a task with a reminder complete and verify the reminder is removed only after the task save succeeds; delete a task and verify its reminder is canceled, then Undo and verify the reminder returns only after the task is restored. Trigger or snooze a stale notification for a completed/deleted task and verify it is discarded.
 - [ ] **Doze and inexact limits:** exercise a real device in Doze with exact access granted and denied. Confirm allow-while-idle scheduling is used, reminders may be delayed, alarms are subject to Android's per-app frequency limits, and no UI promises exact delivery.
 - [ ] **Reboot, wall clock, and time zone:** schedule a date/time reminder and a relative timer, reboot, change time zone and wall clock, and verify persisted intent: local reminders remain at the selected local wall time in the new zone; timers retain their saved wall-clock deadline. Confirm no duplicate notification after restoration.
 - [ ] **Cancellation and snooze:** cancel from the task UI and notification action; verify alarm and notification are removed. Snooze a delivered notification and verify a single 10-minute timer is scheduled and restored if rebooted.
