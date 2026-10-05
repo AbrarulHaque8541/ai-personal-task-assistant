@@ -3,6 +3,7 @@ package com.cue.daymark;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
@@ -47,8 +48,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.text.NumberFormat;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.cue.daymark.updater.GitHubReleaseClient;
+import com.cue.daymark.updater.UpdaterCore;
+import com.cue.daymark.updater.UpdaterPublisherConfig;
 
 public final class MainActivity extends Activity {
     private static final String PREFERENCES = "daymark.preferences.v1";
@@ -59,6 +65,8 @@ public final class MainActivity extends Activity {
     private static final String POWER_MODE_KEY = "power_mode";
     private static final String TEXT_SIZE_KEY = "text_size_mode";
     private static final String HIGH_CONTRAST_KEY = "high_contrast";
+    private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
+    private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -70,6 +78,7 @@ public final class MainActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private ExecutorService storageExecutor;
+    private ExecutorService updaterExecutor;
     private EncryptedTaskStore taskStore;
     private boolean storageReady;
     private long saveRevision;
@@ -77,6 +86,8 @@ public final class MainActivity extends Activity {
     private int textSizeMode;
     private boolean powerMode;
     private boolean highContrast;
+    private boolean updateCheckRunning;
+    private boolean activityResumed;
     private float textScale = 1.0f;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
@@ -123,6 +134,7 @@ public final class MainActivity extends Activity {
 
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
+        updaterExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
         buildInterface();
         loadEncryptedTasks();
@@ -132,7 +144,21 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         if (storageExecutor != null) storageExecutor.shutdown();
+        if (updaterExecutor != null) updaterExecutor.shutdownNow();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        activityResumed = true;
+        checkForUpdates(false);
+    }
+
+    @Override
+    protected void onPause() {
+        activityResumed = false;
+        super.onPause();
     }
 
     private int themeResource(int mode) {
@@ -1026,7 +1052,8 @@ public final class MainActivity extends Activity {
                 "Screen reader support",
                 "Reduced motion",
                 "Permission status: " + permissionStatusLabel(),
-                "Advanced details"
+                "Advanced details",
+                "Check now"
         };
         new AlertDialog.Builder(this)
                 .setTitle("More settings")
@@ -1038,7 +1065,8 @@ public final class MainActivity extends Activity {
                     else if (selected == 4) showScreenReaderInfo();
                     else if (selected == 5) showReducedMotionInfo();
                     else if (selected == 6) showPermissionStatus();
-                    else showAdvancedDetails();
+                    else if (selected == 7) showAdvancedDetails();
+                    else checkForUpdates(true);
                 })
                 .setNegativeButton("Close", null)
                 .show();
@@ -1133,6 +1161,108 @@ public final class MainActivity extends Activity {
             message = "Permission status could not be read. No permission was requested by this screen.";
         }
         showInfo("Permission status", message);
+    }
+
+    private void checkForUpdates(boolean manual) {
+        if (!hasInternetPermission()) {
+            if (manual) {
+                showInfo("Updates unavailable",
+                        "This build does not declare the Internet permission, so no update request was made. "
+                                + "Your tasks remain available offline.");
+            }
+            return;
+        }
+        if (updateCheckRunning) {
+            if (manual) Toast.makeText(this, "An update check is already running.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        SharedPreferences preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastCheck = preferences.getLong(LAST_UPDATE_CHECK_KEY, 0L);
+        if (!UpdaterCore.shouldCheck(lastCheck, now, manual)) return;
+        updateCheckRunning = true;
+        preferences.edit().putLong(LAST_UPDATE_CHECK_KEY, now).apply();
+        updaterExecutor.execute(() -> {
+            UpdaterCore.CheckResult result = null;
+            UpdaterCore.UpdateException failure = null;
+            try {
+                long installedVersionCode = currentVersionCode();
+                result = UpdaterCore.check(new GitHubReleaseClient(), getPackageName(), installedVersionCode);
+            } catch (UpdaterCore.UpdateException exception) {
+                failure = exception;
+            } catch (Exception exception) {
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.HTTP,
+                        "Update metadata could not be read.", exception);
+            }
+            final UpdaterCore.CheckResult checked = result;
+            final UpdaterCore.UpdateException error = failure;
+            mainHandler.post(() -> {
+                updateCheckRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (error != null) {
+                    if (manual) showInfo("Update check", updateFailureMessage(error));
+                    return;
+                }
+                if (checked == null || checked.status == UpdaterCore.CheckStatus.NO_UPDATE) {
+                    if (manual) showInfo("Update check", "No newer stable Daymark release was found. The app remains usable offline.");
+                    return;
+                }
+                String dismissedTag = preferences.getString(DISMISSED_UPDATE_TAG_KEY, "");
+                if (!manual && checked.release.tag.equals(dismissedTag)) return;
+                showUpdateDetails(checked.release);
+            });
+        });
+    }
+
+    private boolean hasInternetPermission() {
+        return getPackageManager().checkPermission(Manifest.permission.INTERNET, getPackageName())
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @SuppressWarnings("deprecation")
+    private long currentVersionCode() throws PackageManager.NameNotFoundException {
+        PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+        return Build.VERSION.SDK_INT >= 28 ? packageInfo.getLongVersionCode() : packageInfo.versionCode;
+    }
+
+    private String updateFailureMessage(UpdaterCore.UpdateException error) {
+        switch (error.failure) {
+            case OFFLINE:
+                return "GitHub could not be reached. Check your connection and try Check now later. Daymark tasks remain available offline.";
+            case RATE_LIMITED:
+                return "GitHub is rate-limiting update checks. Wait before trying Check now again. Daymark tasks remain available.";
+            case INVALID_METADATA:
+                return "The GitHub release metadata was incomplete or invalid. No APK was downloaded.";
+            case HTTP:
+                return "GitHub did not return a usable release response. No APK was downloaded.";
+            default:
+                return "The update check could not be completed. No APK was downloaded.";
+        }
+    }
+
+    private void showUpdateDetails(UpdaterCore.Release release) {
+        String message = "Version " + release.versionName + "\n"
+                + release.name + "\n\n"
+                + (release.notes.trim().isEmpty() ? "No release notes were provided." : release.notes.trim())
+                + "\n\nAPK size: " + NumberFormat.getIntegerInstance(Locale.getDefault()).format(release.apkSizeBytes)
+                + " bytes. If you later choose to download, the release APK is retrieved from GitHub; cellular data charges may apply."
+                + "\n\nDaymark sends no task data or history in an update request. Update checks contact the fixed public GitHub Releases endpoint only while the app is foregrounded or when you choose Check now."
+                + "\n\n" + (UpdaterPublisherConfig.isInstallationConfigured()
+                        ? "Android installation handoff is not enabled in this build. No APK was downloaded."
+                        : "Installation is disabled in this build because publisher release signing is not configured. No APK was downloaded.")
+                + " Do not uninstall to work around a signing mismatch; encrypted local tasks may be lost.";
+        new AlertDialog.Builder(this)
+                .setTitle("Update available")
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> rememberDismissedRelease(release.tag))
+                .setOnCancelListener(dialog -> rememberDismissedRelease(release.tag))
+                .setNegativeButton("Dismiss", (dialog, which) -> rememberDismissedRelease(release.tag))
+                .show();
+    }
+
+    private void rememberDismissedRelease(String tag) {
+        getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
+                .putString(DISMISSED_UPDATE_TAG_KEY, tag).apply();
     }
 
     private void showAdvancedDetails() {

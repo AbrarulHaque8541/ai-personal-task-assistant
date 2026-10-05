@@ -2,7 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
-./tools/run-core-tests.sh
+sh ./tools/run-core-tests.sh
 python3 - "$ROOT" <<'PY'
 import pathlib
 import re
@@ -48,8 +48,24 @@ assert "screen text is English only" in activity, "language limitations must rem
 task_logic = (main / "java/com/cue/daymark/TaskLogic.java").read_text(encoding="utf-8")
 assert "Locale.getDefault()" in task_logic, "date formatting should follow the device locale"
 
-print("PASS V1 source policy: no permissions/network, background components, runtime dependencies, or optional media/model binaries")
+updater_dir = main / "java/com/cue/daymark/updater"
+updater_sources = "\n".join(path.read_text(encoding="utf-8") for path in updater_dir.glob("*.java"))
+release_client = (updater_dir / "GitHubReleaseClient.java").read_text(encoding="utf-8")
+updater_core = (updater_dir / "UpdaterCore.java").read_text(encoding="utf-8")
+publisher_config = (updater_dir / "UpdaterPublisherConfig.java").read_text(encoding="utf-8")
+assert 'https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest' in release_client, "updater endpoint must remain fixed"
+assert release_client.count("https://") == 1, "release metadata client must not add other service endpoints"
+assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
+assert not manifest.findall("uses-permission"), "no manifest permission is enabled while installer permission scope is pending"
+assert not any(permission.get("{http://schemas.android.com/apk/res/android}name") == "android.permission.REQUEST_INSTALL_PACKAGES" for permission in manifest.findall("uses-permission")), "installer permission must not be added without owner approval"
+assert "INSTALLATION_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher installer gate must remain fail-closed"
+assert "TaskLogic" not in updater_sources and "EncryptedTaskStore" not in updater_sources, "updater must not depend on or upload task/history data"
+assert updater_core.index("if (!consent.accept(release))") < updater_core.index("temporaryApk = downloader.download(release)"), "download must occur only after explicit consent"
+assert updater_core.index("verifier.inspect(temporaryApk)") < updater_core.index("handoff.handoff(temporaryApk)"), "handoff must follow APK verification"
+assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
+
+print("PASS V1 source policy: no manifest permissions/background components/runtime dependencies or optional media/model binaries; updater endpoint and consent gates are fixed")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
-print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
+print("PASS permission/updater policy: no new permissions, no unapproved installer handoff, fail-closed publisher signer, task data isolated")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"
