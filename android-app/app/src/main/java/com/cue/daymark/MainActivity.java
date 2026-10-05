@@ -449,6 +449,7 @@ public final class MainActivity extends Activity {
         undoBar.setGravity(Gravity.CENTER_VERTICAL);
         undoBar.setPadding(dp(14), dp(5), dp(10), dp(5));
         undoBar.setBackground(shape(palette.surfaceAlt, 12, palette.line));
+        undoBar.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         undoMessage = text("Task deleted", 12, palette.text, Typeface.NORMAL);
         undoBar.addView(undoMessage, new LinearLayout.LayoutParams(0, dp(48), 1f));
         undoButton = plainButton("Undo");
@@ -952,6 +953,9 @@ public final class MainActivity extends Activity {
         pendingDeletedTask = tasks.remove(index);
         undoMessage.setText("Task deleted.");
         undoBar.setVisibility(View.VISIBLE);
+        // Bring focus to Undo so screen-reader and keyboard users can act on the
+        // seven-second recovery window without having to find the control.
+        undoButton.requestFocus();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         undoDismissal = this::hideUndoBar;
         mainHandler.postDelayed(undoDismissal, 7000);
