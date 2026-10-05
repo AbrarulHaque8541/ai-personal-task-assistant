@@ -15,13 +15,31 @@ manifest = ET.parse(root / "app/src/main/AndroidManifest.xml").getroot()
 app = manifest.find("application")
 assert app is not None, "missing application element"
 permissions = [item.get(android + "name") for item in manifest.findall("uses-permission")]
-assert permissions == ["android.permission.INTERNET"], "only INTERNET may be declared for the browser"
+assert permissions == [
+    "android.permission.INTERNET",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.SCHEDULE_EXACT_ALARM",
+], "only browser and user-created local-reminder permissions may be declared"
 assert app.get(android + "allowBackup") == "false", "backup must stay disabled"
 assert app.get(android + "usesCleartextTraffic") == "false", "cleartext must remain disabled in HTTPS-only V1"
 assert any(item.get(android + "name") == "android.webkit.WebView.MetricsOptOut"
            and item.get(android + "value") == "true" for item in app.findall("meta-data")), "WebView diagnostic metrics must be opted out"
 assert not list(app.findall("service")), "browser must not add a service"
-assert not list(app.findall("receiver")), "browser must not add a receiver"
+receivers = app.findall("receiver")
+assert len(receivers) == 1, "only the private local-reminder receiver may be declared"
+receiver = receivers[0]
+assert receiver.get(android + "name") == ".ReminderReceiver" and receiver.get(android + "exported") == "false"
+receiver_actions = {item.get(android + "name") for item in receiver.findall("intent-filter/action")}
+assert {
+    "android.intent.action.BOOT_COMPLETED",
+    "android.intent.action.TIMEZONE_CHANGED",
+    "android.intent.action.TIME_CHANGED",
+    "com.cue.daymark.action.REMINDER_FIRE",
+    "com.cue.daymark.action.REMINDER_FALLBACK",
+    "com.cue.daymark.action.REMINDER_SNOOZE",
+    "com.cue.daymark.action.REMINDER_CANCEL",
+}.issubset(receiver_actions), "reminder receiver must restore and handle only scoped local alarm actions"
 assert not list(app.findall("provider")), "browser must not add a provider"
 
 main = root / "app/src/main"
@@ -41,10 +59,59 @@ settings_policy = (main / "java/com/cue/daymark/BrowserSettingsPolicy.java").rea
 settings_smoke = (root / "tools/BrowserSettingsPolicySmoke.java").read_text(encoding="utf-8")
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
     assert expected in activity, f"missing task source feature marker: {expected}"
-for expected in ("Permission status:", "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "no Android permissions are declared"):
+for expected in ("Permission status:", "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "POST_NOTIFICATIONS is requested only when you save a reminder"):
     assert expected in activity, f"missing permission-status behavior: {expected}"
-for forbidden in ("requestPermissions(", "ActivityResultContracts.RequestPermission", "registerForActivityResult"):
-    assert forbidden not in activity, f"browser must not add runtime permission prompt code: {forbidden}"
+assert "requestPermissions(" in activity and "Manifest.permission.POST_NOTIFICATIONS" in activity
+assert "ACTION_RINGTONE_PICKER" in activity and "Use exact reminder timing?" in activity
+assert "shouldOfferExactAccess(Build.VERSION.SDK_INT" in activity, "exact access must be offered only for a user-created reminder"
+assert "ReminderScheduler.canScheduleExactAlarms(this)" in activity, "exact-alarm access must be checked"
+assert "lastKnownNotificationAccess" in activity, "notification settings changes must be rechecked on resume"
+assert "dueReminderNeedsRearm" in activity, "overdue reminders must be recovered after a missed notification-permission transition"
+assert "if (persisted)" in activity and "reminderStore.put(previous)" in activity, "a failed replacement must restore the previous encrypted reminder"
+for forbidden in ("ActivityResultContracts.RequestPermission", "registerForActivityResult"):
+    assert forbidden not in activity, f"unexpected runtime-permission framework dependency: {forbidden}"
+
+reminder = (main / "java/com/cue/daymark/Reminder.java").read_text(encoding="utf-8")
+reminder_logic = (main / "java/com/cue/daymark/ReminderLogic.java").read_text(encoding="utf-8")
+reminder_store = (main / "java/com/cue/daymark/EncryptedReminderStore.java").read_text(encoding="utf-8")
+reminder_scheduler = (main / "java/com/cue/daymark/ReminderScheduler.java").read_text(encoding="utf-8")
+reminder_receiver = (main / "java/com/cue/daymark/ReminderReceiver.java").read_text(encoding="utf-8")
+for expected in ("MODE_LOCAL_DATE_TIME", "MODE_TIMER", "soundUri", "triggerAtMillis", "zoneId", "offsetSeconds", "deliveryPending"):
+    assert expected in reminder, f"reminder record must include validated {expected} state"
+for expected in ("resolveLocalDateTime", "absoluteEpochMillis", "afterTimezoneChange", "shouldRestoreAfterReboot", "deliveryRecoveryAction", "beginDelivery", "completeDelivery", "revocationFallbackAtMillis", "snooze", "removeForTask", "MIN_IDLE_ALARM_INTERVAL_MILLIS", "needsInexactRevocationFallback"):
+    assert expected in reminder_logic, f"missing testable reminder rule: {expected}"
+for expected in ("AES/GCM/NoPadding", "AndroidKeyStore", "updateAAD(MAGIC)", "reminders.enc", "synchronized (FILE_LOCK)", "markDeliveryPending", "markDelivered", "migrateLegacyReminder", "document.put(\"version\", 2)"):
+    assert expected in reminder_store, f"reminder storage must preserve encryption/serialization protection: {expected}"
+for expected in ("canScheduleExactAlarms()", "setExactAndAllowWhileIdle", "setAndAllowWhileIdle", "fallbackPendingIntent", "manager.cancel(fallback)", "getNotificationChannel(id)", "createNotificationChannel(channel)"):
+    assert expected in reminder_scheduler, f"missing alarm/channel safety boundary: {expected}"
+assert "if (enabled) schedule(context, reminder)" in reminder_scheduler and "else cancel(context, reminder.taskId)" in reminder_scheduler, "notification revocation must cancel alarms without deleting active reminder data"
+assert "setSound(sound, attributes)" in reminder_scheduler
+assert reminder_scheduler.index("getNotificationChannel(id) != null") < reminder_scheduler.index("createNotificationChannel(channel)"), "existing channel settings must never be rewritten"
+for expected in ("ACTION_BOOT_COMPLETED", "ACTION_TIMEZONE_CHANGED", "ACTION_TIME_CHANGED", "ACTION_FALLBACK", "ACTION_SNOOZE", "ACTION_CANCEL", "markDeliveryPending", "markDelivered", "reconcilePendingNotifications"):
+    assert expected in reminder_receiver or expected in reminder_receiver.replace("Intent.", ""), f"missing receiver action: {expected}"
+assert "goAsync()" in reminder_receiver and "setExact" not in reminder_receiver
+assert "shouldDeliverForTask(pending, task)" in reminder_receiver and "belongsToOpenTask(current, task)" in reminder_receiver, "fire and snooze actions must verify the task is still open"
+assert "reconcileAndReschedule(context, store)" in reminder_receiver, "boot/time/permission restoration must reconcile reminders against current tasks"
+assert "if (task == null || task.completed)" in activity, "startup reconciliation must remove reminders for deleted or completed tasks"
+assert "saveTasksAsync(() ->" in activity and "cancelReminderAsync(task.id, false)" in activity, "task completion/deletion must cancel reminders only after a successful task save"
+assert "restoreReminderAsync(restore)" in activity, "undo must restore a reminder only after the task save succeeds"
+delivery_flow = reminder_receiver.split("private void deliverIfCurrent", 1)[1].split("private boolean isSystemRescheduleAction", 1)[0]
+assert delivery_flow.index("store.markDeliveryPending(taskId)") < delivery_flow.rindex("postPendingNotification(context, store, taskId)"), "persist retryable pending state before attempting the notification post"
+pending_flow = reminder_receiver.split("private void postPendingNotification", 1)[1].split("private Task findTask", 1)[0]
+assert pending_flow.index("if (!postNotification(context, pending)) return;") < pending_flow.index("store.markDelivered(taskId)"), "do not mark delivered until Android accepts a notification post"
+assert "manager.notify(ReminderScheduler.notificationTag(reminder.taskId)" in reminder_receiver, "restart retries must replace the same stable tagged notification"
+assert "manager.cancel(notificationTag(taskId), notificationId(taskId))" in reminder_scheduler, "cancellation must target the stable notification identity"
+assert "reconcilePendingNotifications(getApplicationContext(), reminderStore" in activity, "app start/resume must reconcile durable pending posts"
+for expected in ("showOverlapOccurrenceChoice", "Time doesn't exist", "will not shift it automatically", "Time zone:", "choiceLabel"):
+    assert expected in activity, f"missing explicit DST UX: {expected}"
+reminder_smoke = (root / "tools/ReminderLogicSmoke.java").read_text(encoding="utf-8")
+for expected in ("dstGapsAreRejectedAndBothOverlapOffsetsMatchTheirPreview", "absoluteReminderBoundsAreEpochMillisBoundsWithoutShortHorizon", "notificationPostingSurvivesEveryCrashWindow", "Long.MAX_VALUE"):
+    assert expected in reminder_smoke, f"missing focused reminder regression test: {expected}"
+assert "<uses-permission android:name=\"android.permission.USE_EXACT_ALARM\"" not in (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+for blanket in ("android.permission.READ_MEDIA_AUDIO", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WAKE_LOCK", "android.permission.FOREGROUND_SERVICE"):
+    assert blanket not in (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), f"unexpected broad permission: {blanket}"
+build = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
+assert "compileSdk = 35" in build and "targetSdk = 35" in build, "do not move this branch beyond the existing API 35 toolchain"
 
 add_task = re.search(r"private void addQuickTask\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert add_task and re.search(r"if \(webMode \|\| !storageReady\) return;", add_task.group(1)), "Web mode must never create a task"
@@ -190,7 +257,8 @@ print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redire
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
 print("PASS local browser data: capped origin-only site history, legacy-origin migration, reopen/dedup, secret redaction, and explicit history/cookie/cache/WebStorage clear")
-print("PASS manifest/dependencies: INTERNET only, no background components, no added runtime dependency or optional media/model binaries")
+print("PASS reminder safety: only scoped reminder permissions/private receiver; encrypted local store; exact/inexact idle alarms; unchanged notification channels")
+print("PASS manifest/dependencies: existing browser INTERNET plus reminder-only permissions, no service, no runtime dependency or optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, live status, explicit English-only scope, device-locale dates")
 PY
 python3 "$ROOT/tools/check-suggestion-navigation.py"
