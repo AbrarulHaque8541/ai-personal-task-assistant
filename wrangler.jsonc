@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "team-project",
+  "name": "daymark-web-prototype",
   "compatibility_date": "2026-10-04",
   "observability": {
     "enabled": true

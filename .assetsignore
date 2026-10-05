@@ -1,0 +1,11 @@
+# Only the web prototype should be published as static assets.
+# Everything below is source, tooling, or the Android project.
+android-app/
+tests/
+.git/
+.gitignore
+.assetsignore
+package.json
+package-lock.json
+README.md
+wrangler.jsonc

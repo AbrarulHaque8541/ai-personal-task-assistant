@@ -2,6 +2,8 @@
   'use strict';
 
   const STORAGE_KEY = 'daymark.tasks.v1';
+  const BACKUP_KEY = 'daymark.tasks.v1.backup';
+  const PRIORITIES = ['low', 'medium', 'high'];
   const logic = window.DaymarkLogic;
   const state = { tasks: [], filter: 'all', query: '', toastTimer: null, toastAction: null, currentDay: null, dayTimer: null };
   const $ = (selector) => document.querySelector(selector);
@@ -17,12 +19,20 @@
   }
 
   function loadTasks() {
+    let saved = null;
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) {
-        setStorageStatus('Local storage ready');
-        return [];
-      }
+      saved = localStorage.getItem(STORAGE_KEY);
+    } catch (error) {
+      console.warn('Could not read Daymark storage:', error);
+      setStorageStatus('Storage unavailable', true);
+      showToast('Browser storage is unavailable. You can still use this page for now.');
+      return [];
+    }
+    if (!saved) {
+      setStorageStatus('Local storage ready');
+      return [];
+    }
+    try {
       const parsed = JSON.parse(saved);
       if (!Array.isArray(parsed)) throw new Error('Saved task data is not a list.');
       const validated = logic.validateStoredTasks(parsed);
@@ -34,8 +44,15 @@
       return validated.tasks;
     } catch (error) {
       console.warn('Could not load saved Daymark tasks:', error);
-      setStorageStatus('Storage unavailable', true);
-      showToast('Saved tasks could not be read. You can still use this page for now.');
+      setStorageStatus('Saved data could not be read', true);
+      // Preserve the unreadable payload instead of silently discarding it, so a
+      // future fix or manual recovery can still reach the original data.
+      try {
+        localStorage.setItem(BACKUP_KEY, saved);
+      } catch (backupError) {
+        console.warn('Could not keep a backup of unreadable Daymark tasks:', backupError);
+      }
+      showToast('Saved tasks could not be read. The original data was kept in a browser backup.');
       return [];
     }
   }
@@ -65,6 +82,12 @@
     return String(value).replace(/[&<>"']/g, (character) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[character]);
+  }
+
+  function readPriority(input) {
+    // Guard against unexpected select values so every stored task stays valid
+    // and reloadable by validateStoredTasks on the next visit.
+    return PRIORITIES.includes(input.value) ? input.value : 'medium';
   }
 
   function formatDate(dateString) {
@@ -235,7 +258,7 @@
     titleInput.removeAttribute('aria-invalid');
     const now = new Date().toISOString();
     const dueDateValue = $('#new-due-date').value;
-    state.tasks.push({ id: makeId(), title, dueDate: logic.isDateOnly(dueDateValue) ? dueDateValue : null, priority: $('#new-priority').value, completed: false, createdAt: now, updatedAt: now });
+    state.tasks.push({ id: makeId(), title, dueDate: logic.isDateOnly(dueDateValue) ? dueDateValue : null, priority: readPriority($('#new-priority')), completed: false, createdAt: now, updatedAt: now });
     const saved = persistTasks();
     form.reset();
     $('#new-priority').value = 'medium';
@@ -281,7 +304,7 @@
     task.title = title;
     const dueDateValue = $('#edit-due-date').value;
     task.dueDate = logic.isDateOnly(dueDateValue) ? dueDateValue : null;
-    task.priority = $('#edit-priority').value;
+    task.priority = readPriority($('#edit-priority'));
     task.updatedAt = new Date().toISOString();
     const saved = persistTasks();
     render();
