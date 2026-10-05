@@ -37,7 +37,12 @@
       if (!Array.isArray(parsed)) throw new Error('Saved task data is not a list.');
       const validated = logic.validateStoredTasks(parsed);
       if (validated.rejectedCount > 0) {
-        setStorageStatus('Some saved tasks were ignored', true);
+        // Some records failed validation and are about to be dropped. Keep the
+        // original payload in a recovery backup so nothing is silently lost,
+        // mirroring the protection used for a completely unreadable payload.
+        setStorageStatus(backUpRawPayload(saved)
+          ? 'Some saved tasks were ignored; the originals were kept in a backup'
+          : 'Some saved tasks were ignored', true);
       } else {
         setStorageStatus('Saved on this device');
         // The main store is healthy again, so a recovery backup left over from an
@@ -51,17 +56,21 @@
       setStorageStatus('Saved data could not be read', true);
       // Preserve the unreadable payload instead of silently discarding it, so a
       // future fix or manual recovery can still reach the original data.
-      let backupSaved = false;
-      try {
-        localStorage.setItem(BACKUP_KEY, saved);
-        backupSaved = true;
-      } catch (backupError) {
-        console.warn('Could not keep a backup of unreadable Daymark tasks:', backupError);
-      }
+      const backupSaved = backUpRawPayload(saved);
       showToast(backupSaved
         ? 'Saved tasks could not be read. The original data was kept in a browser backup.'
         : 'Saved tasks could not be read. Browser storage could not create a recovery backup; the original entry was left unchanged.');
       return [];
+    }
+  }
+
+  function backUpRawPayload(raw) {
+    try {
+      localStorage.setItem(BACKUP_KEY, raw);
+      return true;
+    } catch (backupError) {
+      console.warn('Could not keep a backup of raw Daymark tasks:', backupError);
+      return false;
     }
   }
 
