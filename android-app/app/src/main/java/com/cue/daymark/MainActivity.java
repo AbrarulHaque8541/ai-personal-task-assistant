@@ -1093,7 +1093,7 @@ public final class MainActivity extends Activity {
             List<Task> committed = null;
             Exception failure = null;
             boolean saveAttempted = false;
-            boolean rollbackFailed = false;
+            boolean cleanupDeferred = false;
             try {
                 synchronized (AndroidAttachmentStore.transactionLock()) {
                     AndroidAttachmentStore.Imported imported = attachmentStore.importSelected(selectedUri, newId,
@@ -1122,16 +1122,22 @@ public final class MainActivity extends Activity {
                 }
             } catch (Exception exception) {
                 failure = exception;
-                try {
-                    synchronized (AndroidAttachmentStore.transactionLock()) { attachmentStore.delete(newId); }
-                } catch (Exception ignored) { rollbackFailed = true; }
+                if (saveAttempted) {
+                    // The task snapshot may have committed before a later verification failed.
+                    // Keep the payload until a successful load can reconcile its references.
+                    cleanupDeferred = true;
+                } else {
+                    try {
+                        synchronized (AndroidAttachmentStore.transactionLock()) { attachmentStore.delete(newId); }
+                    } catch (Exception ignored) { cleanupDeferred = true; }
+                }
             } finally {
                 synchronized (attachmentCancelLock) { attachmentCanCancel = false; }
             }
             List<Task> saved = committed;
             Exception error = failure;
-            boolean persisted = saveAttempted && error != null;
-            boolean cleanupPending = rollbackFailed;
+            boolean saveOutcomeAmbiguous = saveAttempted && error != null;
+            boolean cleanupPending = cleanupDeferred;
             mainHandler.post(() -> {
                 if (isFinishing()) return;
                 attachmentBusy = false;
@@ -1146,13 +1152,13 @@ public final class MainActivity extends Activity {
                     storageStatus.setText("Encrypted storage ready");
                     storageStatus.setTextColor(palette.accent);
                     showToast("Attachment saved privately on this device.");
-                } else if (persisted) {
+                } else if (saveOutcomeAmbiguous) {
                     storageReady = false;
                     storageSaveFailed = true;
-                    storageStatus.setText("Attachment not saved · storage unavailable");
+                    storageStatus.setText("Attachment save could not be verified");
                     storageStatus.setTextColor(palette.danger);
-                    captureFeedback.setText("The attachment was not saved. Existing task data were not cleared; editing is paused.");
-                    showToast("Attachment not saved. Existing task data remain; editing is paused.");
+                    captureFeedback.setText("The attachment save could not be verified. No automatic reset was performed; editing is paused. Reopen Daymark to reconcile the saved snapshot.");
+                    showToast("Attachment save could not be verified. The encrypted copy was retained; reopen Daymark to check saved data.");
                 } else {
                     storageStatus.setText(storageReady ? "Encrypted storage ready" : "Saved tasks unavailable");
                     storageStatus.setTextColor(storageReady ? palette.accent : palette.danger);
@@ -1193,7 +1199,7 @@ public final class MainActivity extends Activity {
         } else {
             message = "The attachment could not be saved.";
         }
-        return cleanupPending ? message + " An incomplete local copy will be retried for cleanup on next launch." : message;
+        return cleanupPending ? message + " An encrypted copy was retained; the next successful task load will keep it if referenced or remove it if orphaned." : message;
     }
 
     private void confirmRemoveAttachment(String taskId, AttachmentRef attachment) {

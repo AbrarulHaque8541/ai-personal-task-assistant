@@ -42,4 +42,15 @@ assert "openPipeHelper" in provider and "openDecrypted(id)" in provider
 assert 'if (!"r".equals(mode))' in provider
 assert "findReference(uri)" in provider, "provider must serve only IDs referenced by encrypted task metadata"
 assert "The app you choose may retain it" in main or "may retain it" in main
+attachment_import = main.split("private void importAttachment(", 1)[1].split(
+    "private void requestAttachmentCancel()", 1)[0]
+failure_cleanup = attachment_import.split("} catch (Exception exception) {", 1)[1].split("} finally", 1)[0]
+assert "if (saveAttempted)" in failure_cleanup and "cleanupDeferred = true" in failure_cleanup, \
+    "retain the encrypted payload when task-snapshot commit status may be ambiguous"
+assert failure_cleanup.index("if (saveAttempted)") < failure_cleanup.index("else {") \
+    < failure_cleanup.index("attachmentStore.delete(newId)"), \
+    "only delete an imported payload immediately before any task-snapshot save attempt"
+assert "saveOutcomeAmbiguous = saveAttempted && error != null" in attachment_import
+assert "Attachment save could not be verified" in attachment_import and "Reopen Daymark" in attachment_import, \
+    "save-attempt failures must not be reported as definite rollback; prompt a safe reload/reconciliation"
 print("PASS attachment source policy: arbitrary SAF imports, no broad permission, encrypted quotas/cancel/low-space, no persistent provider URI, grant-only read bridge, confirm-gated allowlisted open")

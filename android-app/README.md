@@ -9,7 +9,7 @@ These labels describe the current source, not a delivery promise. **Later opt-in
 | Requirement area | Status | Current boundary |
 |---|---|---|
 | Offline task capture, edit, completion, delete/undo, filters, priorities, due dates, deterministic suggestions | **V1 implemented** | Source-level functionality; device/offline runtime checks remain pending. Suggestions are rules, not AI. |
-| Encrypted local tasks and attachments | **V1 implemented** | Task snapshot plus AES-GCM attachment payloads in app-private storage with Android Keystore keys. Attachments use Android's user-driven document picker and require no broad storage permission; device behavior remains untested. |
+| Encrypted local tasks and attachments | **Source-only · not shipped** | This open stacked feature branch contains task and AES-GCM attachment source; it is not shipped or release-qualified. No APK was installed or uploaded for this review. Attachments use Android's user-driven document picker and require no broad storage permission; device behavior remains untested. |
 | Room/SQLCipher repositories, schedules, profiles, schema migrations, encrypted export/recovery | **Later opt-in** | Not in this prototype; first resolve database, key lifecycle, backup, migration, and recovery decisions. |
 | GGUF/ONNX/MLC model manager, local file/Hugging Face sources, signed catalogs, artifact verification | **Later opt-in** | No model picker, registry, catalog, importer, or model files ship in V1. |
 | CPU inference engine, model runtime, GPU/NPU backends, hardware benchmarks | **Later opt-in** | No inference runtime or model artifact is bundled. Pin, license-review, benchmark, and test each device/ABI before any addition. |

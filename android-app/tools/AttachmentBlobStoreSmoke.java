@@ -151,7 +151,9 @@ public final class AttachmentBlobStoreSmoke {
         File directory = new File(root, "corrupt");
         AttachmentBlobStore store = new AttachmentBlobStore(directory, new KeyVault());
         String id = AttachmentBlobStore.newId();
-        store.importStream(id, new ByteArrayInputStream(new byte[] { 1, 2, 3, 4, 5 }));
+        byte[] plaintext = new byte[1024 * 1024];
+        Arrays.fill(plaintext, (byte) 0x53);
+        store.importStream(id, new ByteArrayInputStream(plaintext));
         File file = new File(directory, id + ".enc");
         try (RandomAccessFile bytes = new RandomAccessFile(file, "rw")) {
             bytes.seek(bytes.length() - 1);
@@ -159,9 +161,20 @@ public final class AttachmentBlobStoreSmoke {
             bytes.seek(bytes.length() - 1);
             bytes.write(last ^ 1);
         }
-        expectIOException(() -> {
-            try (InputStream input = store.openInput(id)) { input.readAllBytes(); }
-        }, "modified attachment ciphertext fails AES-GCM authentication");
+        AtomicInteger plaintextReleased = new AtomicInteger();
+        boolean rejected = false;
+        try (InputStream input = store.openInput(id)) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count > 0) plaintextReleased.addAndGet(count);
+            }
+        } catch (IOException expected) {
+            rejected = true;
+        }
+        check(rejected, "modified attachment ciphertext fails AES-GCM authentication");
+        check(plaintextReleased.get() == 0,
+                "a tampered multi-chunk GCM payload emits no plaintext before authentication fails");
     }
 
     private static boolean emptyDirectory(File directory) {
