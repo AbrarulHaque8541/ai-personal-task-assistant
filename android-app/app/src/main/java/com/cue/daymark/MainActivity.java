@@ -4,8 +4,12 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.app.TimePickerDialog;
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -17,12 +21,15 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.InputFilter;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -42,6 +49,8 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -50,11 +59,14 @@ import android.webkit.CookieManager;
 import android.webkit.WebStorage;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -72,9 +84,13 @@ public final class MainActivity extends Activity {
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
+    private static final int REQUEST_POST_NOTIFICATIONS = 7131;
+    private static final int REQUEST_REMINDER_SOUND = 7132;
+    private static final int REQUEST_EXACT_ALARM_SETTINGS = 7133;
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
+    private final Map<String, Reminder> reminders = new HashMap<>();
     private final List<String> filterKeys = Arrays.asList(
             TaskLogic.FILTER_ALL, TaskLogic.FILTER_TODAY,
             TaskLogic.FILTER_UPCOMING, TaskLogic.FILTER_COMPLETED);
@@ -84,7 +100,16 @@ public final class MainActivity extends Activity {
 
     private ExecutorService storageExecutor;
     private EncryptedTaskStore taskStore;
+    private EncryptedReminderStore reminderStore;
     private boolean storageReady;
+    private boolean reminderStorageReady;
+    private boolean exactSettingsLaunched;
+    private boolean lastKnownExactAccess;
+    private boolean lastKnownNotificationAccess;
+    private Reminder pendingReminderPermission;
+    private Uri reminderSoundSelection;
+    private Button reminderSoundButton;
+    private Reminder pendingDeletedReminder;
     private long saveRevision;
     private int themeMode;
     private int textSizeMode;
@@ -167,6 +192,7 @@ public final class MainActivity extends Activity {
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
+        reminderStore = new EncryptedReminderStore(this);
         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
         searchEngine = BrowserAddress.SearchEngine.fromName(
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
@@ -174,7 +200,61 @@ public final class MainActivity extends Activity {
         browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
         sanitizeStoredBrowserHistory();
         buildInterface();
+        lastKnownExactAccess = ReminderScheduler.canScheduleExactAlarms(this);
+        lastKnownNotificationAccess = ReminderScheduler.notificationsEnabled(this);
         loadEncryptedTasks();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        boolean exactAccess = ReminderScheduler.canScheduleExactAlarms(this);
+        boolean notificationAccess = ReminderScheduler.notificationsEnabled(this);
+        boolean dueReminderNeedsRearm = false;
+        if (reminderStorageReady) {
+            long now = System.currentTimeMillis();
+            for (Reminder reminder : reminders.values()) {
+                if (!reminder.delivered && reminder.triggerAtMillis <= now) {
+                    dueReminderNeedsRearm = true;
+                    break;
+                }
+            }
+        }
+        if (exactSettingsLaunched || exactAccess != lastKnownExactAccess
+                || notificationAccess != lastKnownNotificationAccess || dueReminderNeedsRearm) {
+            exactSettingsLaunched = false;
+            refreshAndRescheduleReminders();
+        }
+        lastKnownExactAccess = exactAccess;
+        lastKnownNotificationAccess = notificationAccess;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_POST_NOTIFICATIONS) return;
+        Reminder pending = pendingReminderPermission;
+        pendingReminderPermission = null;
+        if (pending == null) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED
+                && ReminderScheduler.notificationsEnabled(this)) {
+            lastKnownNotificationAccess = true;
+            persistAndScheduleReminder(pending);
+        } else {
+            lastKnownNotificationAccess = ReminderScheduler.notificationsEnabled(this);
+            showInfo("Notifications are off", "The reminder was not created because Daymark cannot post notifications. Your task list remains available. You can enable notifications in Android Settings and try again.");
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_REMINDER_SOUND || resultCode != RESULT_OK || data == null) return;
+        reminderSoundSelection = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+        if (reminderSoundButton != null) {
+            reminderSoundButton.setText(reminderSoundSelection == null ? "Silent" : "Selected sound");
+        }
     }
 
     private boolean readBrowserOnlinePreference() {
@@ -363,7 +443,7 @@ public final class MainActivity extends Activity {
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setPadding(dp(8), 0, 0, 0);
         copy.addView(text("Tasks are encrypted on this device", 13, palette.text, Typeface.BOLD));
-        copy.addView(text("Web requests only after your tap · no task sync", 12, palette.muted, Typeface.NORMAL));
+        copy.addView(text("Web requests only after your tap · no task or reminder sync", 12, palette.muted, Typeface.NORMAL));
         card.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         storageStatus = text("Opening encrypted storage…", 12, palette.muted, Typeface.NORMAL);
@@ -952,7 +1032,7 @@ public final class MainActivity extends Activity {
     private View emptyStateView;
 
     private void addLocalStorageNote(LinearLayout content) {
-        TextView note = text("Your tasks stay in this app on this device. They are not backed up or synced.",
+        TextView note = text("Your tasks and reminders stay encrypted in this app on this device. They are not backed up or synced.",
                 12, palette.muted, Typeface.NORMAL);
         note.setGravity(Gravity.CENTER);
         note.setPadding(dp(4), dp(10), dp(4), dp(6));
@@ -1017,8 +1097,19 @@ public final class MainActivity extends Activity {
             } catch (Exception exception) {
                 failure = exception;
             }
+            List<Reminder> loadedReminders = null;
+            Exception reminderFailure = null;
+            try {
+                loadedReminders = reminderStore.rebaseForCurrentTimezone();
+                if (failure == null) loadedReminders = reconcileReminders(loaded, loadedReminders);
+                ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
+            } catch (Exception exception) {
+                reminderFailure = exception;
+            }
             List<Task> result = loaded;
             Exception error = failure;
+            List<Reminder> reminderResult = loadedReminders;
+            Exception reminderError = reminderFailure;
             mainHandler.post(() -> {
                 if (isFinishing()) return;
                 if (error == null) {
@@ -1037,7 +1128,66 @@ public final class MainActivity extends Activity {
                     storageStatus.setTextColor(palette.danger);
                     showToast("Could not unlock encrypted task storage. Existing data was left untouched.");
                 }
+                reminders.clear();
+                if (reminderError == null) {
+                    for (Reminder reminder : reminderResult) reminders.put(reminder.taskId, reminder);
+                    reminderStorageReady = true;
+                } else {
+                    reminderStorageReady = false;
+                    showToast("Encrypted reminder storage is unavailable. Existing reminder data was left untouched.");
+                }
                 render();
+            });
+        });
+    }
+
+    private List<Reminder> reconcileReminders(List<Task> loadedTasks, List<Reminder> storedReminders)
+            throws Exception {
+        Map<String, Task> byId = new HashMap<>();
+        for (Task task : loadedTasks) byId.put(task.id, task);
+        List<Reminder> reconciled = new ArrayList<>();
+        for (Reminder reminder : storedReminders) {
+            Task task = byId.get(reminder.taskId);
+            if (task == null) {
+                reminderStore.remove(reminder.taskId);
+                ReminderScheduler.cancel(getApplicationContext(), reminder.taskId);
+                ReminderScheduler.cancelNotification(getApplicationContext(), reminder.taskId);
+            } else {
+                Reminder current = reminder;
+                if (!task.title.equals(reminder.taskTitle)) {
+                    reminderStore.updateTaskTitle(task.id, task.title);
+                    current = reminder.withTitle(task.title);
+                }
+                reconciled.add(current);
+            }
+        }
+        return reconciled;
+    }
+
+    private void refreshAndRescheduleReminders() {
+        if (storageExecutor == null || reminderStore == null) return;
+        storageExecutor.execute(() -> {
+            List<Reminder> loaded = null;
+            Exception failure = null;
+            try {
+                loaded = reminderStore.rebaseForCurrentTimezone();
+                ReminderScheduler.rescheduleAll(getApplicationContext(), loaded);
+            } catch (Exception exception) {
+                failure = exception;
+            }
+            List<Reminder> result = loaded;
+            Exception error = failure;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                if (error != null) {
+                    reminderStorageReady = false;
+                    showToast("Could not refresh encrypted reminders. Existing data was left untouched.");
+                    return;
+                }
+                reminders.clear();
+                for (Reminder reminder : result) reminders.put(reminder.taskId, reminder);
+                reminderStorageReady = true;
+                renderTaskList();
             });
         });
     }
@@ -1576,6 +1726,14 @@ public final class MainActivity extends Activity {
         edit.setEnabled(storageReady);
         edit.setOnClickListener(view -> showTaskEditor(task));
         row.addView(edit);
+        Reminder reminderRecord = reminders.get(task.id);
+        Button reminderButton = compactButton(reminderRecord == null ? "Remind" : "On", false);
+        reminderButton.setContentDescription(reminderRecord == null
+                ? "Set an offline reminder for: " + task.title
+                : "Review or cancel the reminder for: " + task.title);
+        reminderButton.setEnabled(storageReady && reminderStorageReady);
+        reminderButton.setOnClickListener(view -> showReminderActions(task));
+        row.addView(reminderButton);
         Button delete = compactButton("Delete", true);
         delete.setContentDescription("Delete task: " + task.title);
         delete.setEnabled(storageReady);
@@ -1607,6 +1765,381 @@ public final class MainActivity extends Activity {
         if (due.equals(LocalDate.now())) return palette.warning;
         if ("high".equals(task.priority)) return palette.danger;
         return palette.muted;
+    }
+
+    private void showReminderActions(Task task) {
+        if (!storageReady || !reminderStorageReady) {
+            showToast("Encrypted storage is unavailable; reminders are paused.");
+            return;
+        }
+        Reminder current = reminders.get(task.id);
+        if (current == null) {
+            showReminderEditor(task, null);
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Reminder")
+                .setMessage(reminderSummary(current) + "\n\nStored encrypted on this device. Android may delay delivery in power-saving modes.")
+                .setNegativeButton("Done", null)
+                .setNeutralButton("Cancel reminder", (dialog, which) -> cancelReminderAsync(task.id))
+                .setPositiveButton("Change", (dialog, which) -> showReminderEditor(task, current))
+                .show();
+    }
+
+    private String reminderSummary(Reminder reminder) {
+        if (Reminder.MODE_LOCAL_DATE_TIME.equals(reminder.mode)) {
+            LocalDateTime local = LocalDateTime.parse(reminder.localDateTime);
+            String formatted = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy 'at' h:mm a", Locale.getDefault())
+                    .format(local);
+            return (reminder.delivered ? "Delivered · " : "Scheduled · ") + formatted;
+        }
+        long remaining = Math.max(0L, reminder.triggerAtMillis - System.currentTimeMillis());
+        long minutes = (remaining + 59_999L) / 60_000L;
+        return reminder.delivered ? "Reminder delivered" : "Scheduled in about " + minutes + (minutes == 1 ? " minute" : " minutes");
+    }
+
+    private void showReminderEditor(Task task, Reminder existing) {
+        if (!storageReady || !reminderStorageReady || task.completed) {
+            showToast("Reminders are available for open tasks when encrypted storage is ready.");
+            return;
+        }
+        LocalDateTime initial = existing != null && Reminder.MODE_LOCAL_DATE_TIME.equals(existing.mode)
+                ? LocalDateTime.parse(existing.localDateTime)
+                : LocalDateTime.now().withSecond(0).withNano(0).plusHours(1);
+        final String[] selectedLocalDateTime = { initial.toString() };
+        final int[] initialMinutes = { 30 };
+        if (existing != null && Reminder.MODE_TIMER.equals(existing.mode) && !existing.delivered) {
+            long remaining = Math.max(60_000L, existing.triggerAtMillis - System.currentTimeMillis());
+            initialMinutes[0] = (int) Math.min(ReminderLogic.MAX_TIMER_MINUTES, (remaining + 59_999L) / 60_000L);
+        }
+        reminderSoundSelection = existing == null || existing.soundUri == null
+                ? (existing == null ? RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION) : null)
+                : Uri.parse(existing.soundUri);
+
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(22), dp(8), dp(22), dp(5));
+        RadioGroup modeGroup = new RadioGroup(this);
+        modeGroup.setOrientation(RadioGroup.VERTICAL);
+        RadioButton dateMode = new RadioButton(this);
+        dateMode.setId(View.generateViewId());
+        dateMode.setText("At a date and time");
+        dateMode.setTextSize(14 * textScale);
+        dateMode.setMinHeight(dp(48));
+        RadioButton timerMode = new RadioButton(this);
+        timerMode.setId(View.generateViewId());
+        timerMode.setText("After a timer");
+        timerMode.setTextSize(14 * textScale);
+        timerMode.setMinHeight(dp(48));
+        modeGroup.addView(dateMode);
+        modeGroup.addView(timerMode);
+        form.addView(modeGroup, bottomMargin(dp(4)));
+
+        LinearLayout dateControls = new LinearLayout(this);
+        dateControls.setGravity(Gravity.CENTER_VERTICAL);
+        Button dateButton = compactButton("Choose date", false);
+        Button timeButton = compactButton("Choose time", false);
+        LinearLayout.LayoutParams pickerParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
+        pickerParams.setMargins(0, 0, dp(6), 0);
+        dateControls.addView(dateButton, pickerParams);
+        dateControls.addView(timeButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        form.addView(dateControls, bottomMargin(dp(8)));
+        Runnable updateDateTimeLabels = () -> {
+            LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
+            dateButton.setText(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy", Locale.getDefault()).format(value));
+            timeButton.setText(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault()).format(value));
+        };
+        updateDateTimeLabels.run();
+        dateButton.setOnClickListener(view -> {
+            LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
+            new DatePickerDialog(this, (picker, year, month, day) -> {
+                LocalDateTime current = LocalDateTime.parse(selectedLocalDateTime[0]);
+                selectedLocalDateTime[0] = current.withYear(year).withMonth(month + 1).withDayOfMonth(day).toString();
+                updateDateTimeLabels.run();
+            }, value.getYear(), value.getMonthValue() - 1, value.getDayOfMonth()).show();
+        });
+        timeButton.setOnClickListener(view -> {
+            LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
+            new TimePickerDialog(this, (picker, hour, minute) -> {
+                LocalDateTime current = LocalDateTime.parse(selectedLocalDateTime[0]);
+                selectedLocalDateTime[0] = current.withHour(hour).withMinute(minute).withSecond(0).withNano(0).toString();
+                updateDateTimeLabels.run();
+            }, value.getHour(), value.getMinute(), android.text.format.DateFormat.is24HourFormat(this)).show();
+        });
+
+        LinearLayout timerControls = new LinearLayout(this);
+        timerControls.setGravity(Gravity.CENTER_VERTICAL);
+        EditText minutesInput = new EditText(this);
+        minutesInput.setSingleLine(true);
+        minutesInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        minutesInput.setTextSize(16 * textScale);
+        minutesInput.setHint("30");
+        minutesInput.setContentDescription("Timer duration in minutes, from 1 minute to 7 days");
+        minutesInput.setText(String.valueOf(initialMinutes[0]));
+        minutesInput.setMinimumHeight(dp(48));
+        minutesInput.setPadding(dp(10), 0, dp(10), 0);
+        minutesInput.setBackground(shape(palette.surface, 9, palette.line));
+        timerControls.addView(minutesInput, new LinearLayout.LayoutParams(dp(100), dp(48)));
+        TextView minutesLabel = text("minutes from now (1–10,080)", 13, palette.muted, Typeface.NORMAL);
+        minutesLabel.setPadding(dp(10), 0, 0, 0);
+        timerControls.addView(minutesLabel);
+        form.addView(timerControls, bottomMargin(dp(10)));
+
+        TextView soundLabel = text("Notification sound", 13, palette.muted, Typeface.BOLD);
+        form.addView(soundLabel, bottomMargin(dp(4)));
+        reminderSoundButton = compactButton(reminderSoundSelection == null ? "Silent" : "Choose sound", false);
+        reminderSoundButton.setContentDescription("Choose the notification sound for this reminder");
+        reminderSoundButton.setOnClickListener(view -> {
+            Intent picker = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
+            picker.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION);
+            picker.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Choose reminder sound");
+            picker.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true);
+            picker.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true);
+            picker.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, reminderSoundSelection);
+            try {
+                startActivityForResult(picker, REQUEST_REMINDER_SOUND);
+            } catch (Exception exception) {
+                showToast("Android's sound picker is unavailable on this device.");
+            }
+        });
+        form.addView(reminderSoundButton, bottomMargin(dp(8)));
+        TextView timingNote = text("Reminders are scheduled locally. Android can defer alarms in Doze or other power-saving modes.",
+                12, palette.muted, Typeface.NORMAL);
+        form.addView(timingNote, bottomMargin(dp(4)));
+
+        boolean startWithTimer = existing != null && Reminder.MODE_TIMER.equals(existing.mode);
+        modeGroup.check(startWithTimer ? timerMode.getId() : dateMode.getId());
+        dateControls.setVisibility(startWithTimer ? View.GONE : View.VISIBLE);
+        timerControls.setVisibility(startWithTimer ? View.VISIBLE : View.GONE);
+        modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            boolean timerSelected = checkedId == timerMode.getId();
+            dateControls.setVisibility(timerSelected ? View.GONE : View.VISIBLE);
+            timerControls.setVisibility(timerSelected ? View.VISIBLE : View.GONE);
+        });
+
+        ScrollView formScroll = new ScrollView(this);
+        formScroll.addView(form);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(existing == null ? "Set reminder" : "Change reminder")
+                .setView(formScroll)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save reminder", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            try {
+                String sound = reminderSoundSelection == null ? null : reminderSoundSelection.toString();
+                Reminder next;
+                if (modeGroup.getCheckedRadioButtonId() == dateMode.getId()) {
+                    next = ReminderLogic.atLocalDateTime(task.id, task.title,
+                            LocalDateTime.parse(selectedLocalDateTime[0]), java.time.ZoneId.systemDefault(),
+                            System.currentTimeMillis(), sound);
+                } else {
+                    String value = minutesInput.getText() == null ? "" : minutesInput.getText().toString().trim();
+                    int minutes = Integer.parseInt(value);
+                    next = ReminderLogic.afterMinutes(task.id, task.title, minutes,
+                            System.currentTimeMillis(), sound);
+                }
+                dialog.dismiss();
+                requestNotificationAndSave(next);
+            } catch (NumberFormatException exception) {
+                minutesInput.setError("Enter a number of minutes");
+            } catch (IllegalArgumentException exception) {
+                showInfo("Check reminder time", exception.getMessage());
+            }
+        }));
+        dialog.show();
+    }
+
+    private void requestNotificationAndSave(Reminder reminder) {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            pendingReminderPermission = reminder;
+            new AlertDialog.Builder(this)
+                    .setTitle("Allow task reminders?")
+                    .setMessage("Daymark needs notification permission to show this reminder. If you decline, the reminder will not be created; your tasks remain available.")
+                    .setNegativeButton("Not now", (dialog, which) -> pendingReminderPermission = null)
+                    .setPositiveButton("Continue", (dialog, which) -> requestPermissions(
+                            new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQUEST_POST_NOTIFICATIONS))
+                    .show();
+            return;
+        }
+        if (!ReminderScheduler.notificationsEnabled(this)) {
+            showInfo("Notifications are off", "Enable Daymark notifications in Android Settings, then create the reminder again. No reminder was created.");
+            return;
+        }
+        persistAndScheduleReminder(reminder);
+    }
+
+    private void persistAndScheduleReminder(Reminder reminder) {
+        if (!storageReady || !reminderStorageReady || storageExecutor == null) {
+            showToast("Encrypted storage is unavailable; the reminder was not saved.");
+            return;
+        }
+        Context appContext = getApplicationContext();
+        storageExecutor.execute(() -> {
+            Reminder previous = null;
+            ReminderLogic.SchedulePlan plan = ReminderLogic.SchedulePlan.NO_SCHEDULE;
+            Exception failure = null;
+            boolean persisted = false;
+            boolean restorationFailed = false;
+            try {
+                if (!ReminderScheduler.notificationsEnabled(appContext)) {
+                    throw new IllegalStateException("Notifications are disabled.");
+                }
+                previous = reminderStore.find(reminder.taskId);
+                reminderStore.put(reminder);
+                persisted = true;
+                plan = ReminderScheduler.schedule(appContext, reminder);
+                if (plan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
+                    throw new IllegalStateException("Notifications became unavailable.");
+                }
+            } catch (Exception exception) {
+                failure = exception;
+                if (persisted) {
+                    try {
+                        ReminderScheduler.cancel(appContext, reminder.taskId);
+                        if (previous == null) reminderStore.remove(reminder.taskId);
+                        else {
+                            reminderStore.put(previous);
+                            if (ReminderScheduler.notificationsEnabled(appContext)) {
+                                ReminderScheduler.schedule(appContext, previous);
+                            }
+                        }
+                    } catch (Exception rollbackException) {
+                        restorationFailed = true;
+                    }
+                }
+            }
+            Exception error = failure;
+            boolean rollbackError = restorationFailed;
+            ReminderLogic.SchedulePlan resultPlan = plan;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                if (error != null) {
+                    showInfo("Reminder not saved", rollbackError
+                            ? "Daymark could not safely finish saving or restoring reminder state. Do not assume the reminder is scheduled; reopen the app and check its reminder and permission status."
+                            : "Daymark could not save this reminder. Any previous reminder was restored when possible; check notification and exact-alarm status before relying on it.");
+                    return;
+                }
+                reminders.put(reminder.taskId, reminder);
+                renderTaskList();
+                String message = resultPlan == ReminderLogic.SchedulePlan.EXACT_ALLOW_WHILE_IDLE
+                        ? "Reminder saved. Android may still delay alarms under power-saving limits."
+                        : "Reminder saved with inexact timing. Android may deliver it late.";
+                captureFeedback.setText(message);
+                showToast(message);
+                if (ReminderLogic.shouldOfferExactAccess(Build.VERSION.SDK_INT,
+                        ReminderScheduler.canScheduleExactAlarms(this))) showExactAlarmAccessPrompt();
+            });
+        });
+    }
+
+    private void showExactAlarmAccessPrompt() {
+        new AlertDialog.Builder(this)
+                .setTitle("Use exact reminder timing?")
+                .setMessage("Android currently allows only inexact timing. You can open Alarms & reminders access for closer timing. This is optional; inexact alarms may be delayed, and Android can still limit alarms in Doze.")
+                .setNegativeButton("Keep inexact", (dialog, which) -> showToast("Using inexact timing; Android may deliver this reminder late."))
+                .setPositiveButton("Open Settings", (dialog, which) -> {
+                    Intent settings = new Intent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
+                            Uri.parse("package:" + getPackageName()));
+                    try {
+                        exactSettingsLaunched = true;
+                        startActivityForResult(settings, REQUEST_EXACT_ALARM_SETTINGS);
+                    } catch (Exception exception) {
+                        exactSettingsLaunched = false;
+                        showToast("Exact-alarm settings are unavailable. The reminder remains inexact.");
+                    }
+                })
+                .show();
+    }
+
+    private void cancelReminderAsync(String taskId) {
+        cancelReminderAsync(taskId, true);
+    }
+
+    private void cancelReminderAsync(String taskId, boolean showConfirmation) {
+        if (taskId == null || storageExecutor == null) return;
+        Context appContext = getApplicationContext();
+        storageExecutor.execute(() -> {
+            Exception failure = null;
+            try {
+                reminderStore.remove(taskId);
+                ReminderScheduler.cancel(appContext, taskId);
+                ReminderScheduler.cancelNotification(appContext, taskId);
+            } catch (Exception exception) {
+                failure = exception;
+            }
+            Exception error = failure;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                if (error == null) {
+                    reminders.remove(taskId);
+                    renderTaskList();
+                    if (showConfirmation) showToast("Reminder canceled.");
+                } else showToast("Could not cancel the reminder safely. Existing encrypted data was left untouched.");
+            });
+        });
+    }
+
+    private void updateReminderTitleAsync(Task task) {
+        Reminder current = reminders.get(task.id);
+        if (current == null || current.taskTitle.equals(task.title) || storageExecutor == null) return;
+        storageExecutor.execute(() -> {
+            boolean updated = false;
+            try {
+                updated = reminderStore.updateTaskTitle(task.id, task.title);
+            } catch (Exception ignored) { }
+            boolean result = updated;
+            mainHandler.post(() -> {
+                if (!isFinishing() && result) {
+                    reminders.put(task.id, current.withTitle(task.title));
+                    renderTaskList();
+                }
+            });
+        });
+    }
+
+    private void restoreReminderAsync(Reminder reminder) {
+        if (reminder == null || storageExecutor == null) return;
+        Context appContext = getApplicationContext();
+        storageExecutor.execute(() -> {
+            ReminderLogic.SchedulePlan plan = ReminderLogic.SchedulePlan.NO_SCHEDULE;
+            Exception failure = null;
+            boolean persisted = false;
+            boolean rollbackFailed = false;
+            try {
+                reminderStore.put(reminder);
+                persisted = true;
+                plan = ReminderScheduler.schedule(appContext, reminder);
+            } catch (Exception exception) {
+                failure = exception;
+                if (persisted) {
+                    try {
+                        ReminderScheduler.cancel(appContext, reminder.taskId);
+                        reminderStore.remove(reminder.taskId);
+                    } catch (Exception rollbackException) {
+                        rollbackFailed = true;
+                    }
+                }
+            }
+            Exception error = failure;
+            boolean uncertainRollback = rollbackFailed;
+            ReminderLogic.SchedulePlan resultPlan = plan;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                if (error == null) {
+                    reminders.put(reminder.taskId, reminder);
+                    renderTaskList();
+                    if (resultPlan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
+                        showToast(ReminderScheduler.notificationsEnabled(this)
+                                ? "Task restored. Its reminder is saved, but Android could not arm it; reopen Daymark to retry."
+                                : "Task restored. The reminder is saved, but notifications are off; reopen Daymark after enabling them to re-arm it.");
+                    }
+                } else showToast(uncertainRollback
+                        ? "Task restored, but reminder state may need review before relying on it."
+                        : "Task restored, but its reminder could not be safely re-armed. Set it again from the task list.");
+            });
+        });
     }
 
     private void showTaskEditor(Task editing) {
@@ -1705,17 +2238,20 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 String priority = priorityValue(prioritySpinner.getSelectedItemPosition());
+                Task renamedTask = null;
                 try {
                     if (editing == null) {
                         tasks.add(TaskLogic.create(normalized, selectedDate[0], priority));
                         quickCaptureInput.setText("");
                         captureFeedback.setText("Task added. You can edit it later in your list.");
                     } else {
-                        replaceTask(TaskLogic.update(editing, normalized, selectedDate[0], priority));
+                        renamedTask = TaskLogic.update(editing, normalized, selectedDate[0], priority);
+                        replaceTask(renamedTask);
                     }
                     dialog.dismiss();
                     render();
                     saveTasksAsync();
+                    if (renamedTask != null) updateReminderTitleAsync(renamedTask);
                     showToast(editing == null ? "Task added." : "Task updated.");
                 } catch (IllegalArgumentException exception) {
                     validation.setText(exception.getMessage());
@@ -1774,6 +2310,8 @@ public final class MainActivity extends Activity {
         if (index < 0) return;
         pendingDeletedIndex = index;
         pendingDeletedTask = tasks.remove(index);
+        pendingDeletedReminder = reminders.get(task.id);
+        cancelReminderAsync(task.id, false);
         undoMessage.setText("Task deleted.");
         undoBar.setVisibility(View.VISIBLE);
         // Bring focus to Undo so screen-reader and keyboard users can act on the
@@ -1803,11 +2341,13 @@ public final class MainActivity extends Activity {
                 return;
             }
         }
+        Reminder restore = pendingDeletedReminder;
         tasks.add(Math.min(pendingDeletedIndex, tasks.size()), pendingDeletedTask);
         pendingDeletedTask = null;
         hideUndoBar();
         render();
         saveTasksAsync();
+        restoreReminderAsync(restore);
         showToast("Task restored.");
     }
 
@@ -1815,6 +2355,7 @@ public final class MainActivity extends Activity {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         undoDismissal = null;
         pendingDeletedTask = null;
+        pendingDeletedReminder = null;
         if (undoBar != null) undoBar.setVisibility(View.GONE);
     }
 
@@ -1929,14 +2470,10 @@ public final class MainActivity extends Activity {
     }
 
     private String permissionStatusLabel() {
-        try {
-            String[] requested = readPermissionPackageInfo().requestedPermissions;
-            if (requested == null || requested.length == 0) return "None needed";
-            if (requested.length == 1 && "android.permission.INTERNET".equals(requested[0])) return "Browser only";
-            return requested.length + " declared";
-        } catch (Exception ignored) {
-            return "Unavailable";
-        }
+        boolean notifications = ReminderScheduler.notificationsEnabled(this);
+        boolean exact = ReminderScheduler.canScheduleExactAlarms(this);
+        return "Browser + reminders · notifications " + (notifications ? "on" : "off")
+                + " · exact access " + (exact ? "available" : "not granted");
     }
 
     private void showPermissionStatus() {
@@ -1955,9 +2492,14 @@ public final class MainActivity extends Activity {
                     if ("android.permission.INTERNET".equals(permission)) internetDeclared = true;
                 }
                 if (internetDeclared) {
-                    details.append("\nINTERNET is used for embedded browser requests only after you tap Go or choose a listed site. It does not synchronize tasks or copy task text automatically. Open pages may contact their own or third-party endpoints, which may log requests.");
+                    details.append("\n\nINTERNET is used for embedded browser requests only after you tap Go or choose a listed site. It does not synchronize tasks or copy task text automatically. Open pages may contact their own or third-party endpoints, which may log requests.");
                 }
-                details.append("\nThis screen reports manifest declarations; it does not request or grant access. INTERNET is a normal permission and does not show a runtime prompt. Other runtime permission requests must follow a user action for the feature that needs them.");
+                details.append("\nPOST_NOTIFICATIONS is requested only when you save a reminder; if denied, that reminder is not created. Current notification state: ")
+                        .append(ReminderScheduler.notificationsEnabled(this) ? "enabled." : "disabled.");
+                details.append("\nSCHEDULE_EXACT_ALARM is special app access. Current state: ")
+                        .append(ReminderScheduler.canScheduleExactAlarms(this) ? "available." : "not granted; reminders use inexact timing.");
+                details.append("\nRECEIVE_BOOT_COMPLETED is used only to restore encrypted local reminders after restart. No reminder or task data is sent to a server.");
+                details.append("\nThis screen reports access; it does not request or grant it. Notification permission is requested only after you choose to save a reminder. Exact-alarm settings are offered in that same reminder flow.");
                 message = details.toString();
             }
         } catch (Exception ignored) {
@@ -1972,7 +2514,7 @@ public final class MainActivity extends Activity {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
         String details = "Daymark " + version + "\n\n"
-                + "Tasks: schema v1, encrypted in an app-private file.\n\n"
+                + "Tasks: schema v1, encrypted in an app-private file. Reminders: separate schema-v1 AES-GCM encrypted app-private file.\n\n"
                 + "Encryption: AES-GCM; the key is stored in Android Keystore. Hardware protection depends on the device.\n\n"
                 + "Suggestions: due-date and priority rules only; no AI service.\n\n"
                 + "Tasks stay local and are never sent automatically. The embedded browser uses the Internet only after Go or an AI-site tap; page resources may also contact their own or third-party endpoints. No account, task sync, analytics, or background search is built in.\n\n"
