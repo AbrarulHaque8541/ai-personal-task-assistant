@@ -17,12 +17,22 @@ Research checked on 2026-10-05. This file preserves official sources and exact v
 
 ## Android permission boundaries
 
-Reviewed on 2026-10-05. The current app has no permission declarations or permission-request flows; the references below are for documenting Android's boundaries and any future, feature-specific permission work.
+Reviewed on 2026-10-05. The current app declares only the normal `INTERNET` permission for the embedded browser; it has no runtime permission requests or special-access flows. Task CRUD needs no permission.
 
 - [Permissions on Android](https://developer.android.com/guide/topics/permissions/overview): distinguishes install-time, runtime, and special permissions; recommends a minimal set, requests associated with the action that needs them, and transparent explanations.
 - [Request runtime permissions](https://developer.android.com/training/permissions/requesting): request in context after the user invokes the feature, inspect the user's response, and gracefully degrade on denial. Repeated denial can prevent another system prompt; respect the choice rather than nagging.
 - [Request special permissions](https://developer.android.com/training/permissions/requesting-special): special app access is granted by the user through Android Settings, not a runtime permission dialog. Explain before redirecting, then re-check access after the user returns.
 - [Manifest `<permission>` element](https://developer.android.com/guide/topics/manifest/permission-element): documents protection levels. A `signature` permission is limited to apps signed with the same certificate as the app that defined it; an ordinary app cannot self-grant arbitrary privileged/system or signature-only access.
+
+## Embedded browser boundaries
+
+The app uses Android System WebView, not a bundled engine or Custom Tab. Android's [WebView integration guide](https://developer.android.com/develop/ui/views/layout/webapps/webview) describes embedding web content in an Activity; [`WebSettings`](https://developer.android.com/reference/android/webkit/WebSettings) documents JavaScript, Safe Browsing, mixed-content, file-access, and window settings. Daymark enables JavaScript for normal site compatibility without adding a JavaScript-to-native bridge, enables Safe Browsing, blocks mixed content, and disables file/content access.
+
+The [`WebViewClient`](https://developer.android.com/reference/android/webkit/WebViewClient) reference says `shouldOverrideUrlLoading(WebView, WebResourceRequest)` is called for page/user navigation, including HTTP redirects, and returning `true` aborts the current WebView load. It is not called for app-initiated `loadUrl()`; Daymark validates those URLs through `BrowserAddress` before calling it. [`WebResourceRequest.isForMainFrame()` and `isRedirect()`](https://developer.android.com/reference/android/webkit/WebResourceRequest) identify main-frame navigation and server redirects. Daymark rejects HTTP and non-HTTPS destinations and reports HTTP downgrade attempts; the manifest also keeps cleartext traffic disabled.
+
+Android's [network security configuration guidance](https://developer.android.com/privacy-and-security/security-config#CleartextTrafficPermitted) says cleartext is disabled by default for apps targeting API 28+ and can be enabled at a broad base-config or narrowed to domains. Because this browser accepts arbitrary public sites, no cleartext opt-in or per-site exception is implemented in this branch. HTTPS is used for searches and bare domains; typed HTTP and HTTP redirect/navigation attempts are blocked. A site-specific HTTP exception would need a separate explicit request.
+
+Android's [`WebChromeClient`](https://developer.android.com/reference/android/webkit/WebChromeClient) APIs cover website-origin permission requests and new-window creation; this app denies location and WebView resource permission requests, and rejects pop-up/new-window requests. Download requests are not handed to a download service. [`WebStorage.deleteAllData()`](https://developer.android.com/reference/android/webkit/WebStorage) clears Web SQL and HTML5 Web Storage data; [`CookieManager.removeAllCookies()`](https://developer.android.com/reference/android/webkit/CookieManager) removes cookies asynchronously. The app's clear action also clears WebView history, cache, form data, and SSL preferences. None of these local operations erases records held by a remote site or search provider.
 
 ## Android background, sandbox, accessibility, and user-space boundaries
 
@@ -57,11 +67,15 @@ Checked 2026-10-05. These are roadmap research references, not implemented integ
 The project has an official Android CLI executable, JDK, and Gradle Wrapper. It does **not** have Android SDK Platform 35, Build Tools 35.0.0, Platform Tools/adb, or an APK. The attempted Gradle build fails with `SDK location not found`. The Android SDK license gate remains pending.
 
 
-## Installation/build facts after the chronology correction and prospective consent (2026-10-05)
+## Installation/build facts after the chronology correction and prospective consent — pre-browser snapshot (2026-10-05)
 
 The verified Android CLI binary (`1.0.16500706`, SHA-256 `54b6e2d382444b91511fcc7ab34ddec6561f257d6d1cdce16bb91af6789b6de2`) initially installed only `platforms/android-35` 2.0.0, `build-tools/35.0.0` 35.0.0, and `platform-tools` 37.0.1. It created `licenses/android-sdk-license` (41 bytes; SHA-256 `c43fa37686457c3f18caa3607945f4ec52a9d1beaaad8117e50dc4e863270c85`); no other SDK license file/package is recorded. The initial acceptance/install remains **unapproved** after the user's correction. The user's later explicit YES allowed only prospective use of these existing packages for a debug rebuild/verification; no further license/package was accepted or installed.
 
-The first debug build before the correction succeeded after the unavailable framework DayNight theme reference was replaced with supported light/night resource-qualified themes. The subsequent post-consent rebuild used only the already-installed packages. Source checks passed 25 core assertions, accessibility/localization source checks, permission/dependency policy, and palette contrast (minimum 5.00:1). The fresh root/output debug APK copies are byte-identical at 45,031 bytes, SHA-256 `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`; APK Signature Scheme v2 verification succeeded, the packaged manifest declares no permissions, and the six-entry archive has no optional model/runtime/plugin/locale/voice/demo payload. No Android device/emulator was available for installation or launch. No release APK exists; the `<15 MB` release target remains unmeasured.
+At that pre-browser point, the post-consent debug rebuild used only already-installed packages. The resulting root/output APK copies were byte-identical at 45,031 bytes, SHA-256 `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`; the APK verified with APK Signature Scheme v2, its manifest declared no permissions, and the six-entry archive had no optional model/runtime/plugin/locale/voice/demo payload. This artifact predates the current browser source and is stale; it is not evidence for this branch. No APK was assembled or signed for the browser change. No Android device/emulator was available for installation or launch. No release APK exists; the `<15 MB` release target remains unmeasured.
+
+## Browser feature source and compile checks (2026-10-05)
+
+The current source policy check passes the 25 task-logic assertions, browser address/history regressions, manifest and WebView policy assertions, accessibility/localization source checks, and palette contrast (minimum 5.00:1). The browser regressions cover engine selection/query encoding, HTTPS-first bare domains, explicit HTTP/non-HTTPS rejection, and clearing capped local history. API 35 `:app:compileDebugJavaWithJavac --offline` completed successfully using the already-installed SDK. This was compile-only; no APK was assembled/signed/installed. Device-level WebView networking, redirect, website compatibility, TalkBack, and visual checks remain pending.
 
 ## Accessibility contrast check (2026-10-05)
 
