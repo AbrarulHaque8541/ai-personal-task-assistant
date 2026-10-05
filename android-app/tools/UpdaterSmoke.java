@@ -22,13 +22,13 @@ public final class UpdaterSmoke {
         offlineHttpRateLimitAndInvalidMetadataAreHandled();
         missingAndUnstableReleasesAreIgnored();
         stableNewerReleaseIsFound();
-        cancellationDoesNotDownloadOrHandoff();
-        sizeMismatchNeverHandsOff();
-        hashMismatchNeverHandsOff();
-        packageAndVersionMismatchesNeverHandOff();
-        signingCertificateMismatchNeverHandsOff();
+        cancellationDoesNotDownload();
+        sizeMismatchFailsClosed();
+        hashMismatchFailsClosed();
+        packageAndVersionMismatchesFailClosed();
+        signingCertificateMismatchFailsClosed();
         emptyPublisherSignerBlocksConsentAndDownload();
-        verifiedArtifactReachesHandoffExactlyOnce();
+        verifiedArtifactIsReportedWithoutInstallHandoff();
         System.out.println("PASS updater host tests: " + assertions + " assertions");
     }
 
@@ -67,6 +67,15 @@ public final class UpdaterSmoke {
                 "userinfo redirect is rejected");
         check(!UpdaterCore.isAllowedAssetRedirectUrl("https://release-assets.githubusercontent.com:444/a.apk"),
                 "nonstandard redirect port is rejected");
+        check(UpdaterCore.isAllowedAssetUrl(assetUrl()), "HTTPS GitHub release download URL is allowed");
+        check(UpdaterCore.isAllowedAssetUrl("https://github.com:443/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+                "explicit default HTTPS port is allowed for the GitHub release host");
+        check(!UpdaterCore.isAllowedAssetUrl("https://github.com:444/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+                "unusual port on the GitHub release asset host is rejected");
+        check(!UpdaterCore.isAllowedAssetUrl("https://evil.example/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+                "non-GitHub release asset host is rejected");
+        check(!UpdaterCore.isAllowedAssetUrl("http://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+                "cleartext GitHub release asset URL is rejected");
     }
 
     private static void offlineHttpRateLimitAndInvalidMetadataAreHandled() throws Exception {
@@ -105,113 +114,101 @@ public final class UpdaterSmoke {
         check(result.release == stable, "the stable release details are retained for consent UI");
     }
 
-    private static void cancellationDoesNotDownloadOrHandoff() throws Exception {
+    private static void cancellationDoesNotDownload() throws Exception {
         AtomicInteger downloads = new AtomicInteger();
-        AtomicInteger handoffs = new AtomicInteger();
-        UpdaterCore.InstallStatus status = UpdaterCore.downloadVerifyAndHandoff(
+        UpdaterCore.VerificationResult result = UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> false,
                 release -> { downloads.incrementAndGet(); return writeTemp(APK_BYTES); },
-                apk -> identity(),
-                apk -> handoffs.incrementAndGet());
-        check(status == UpdaterCore.InstallStatus.CANCELLED, "cancel returns without changing app state");
+                apk -> identity());
+        check(result.status == UpdaterCore.VerificationStatus.CANCELLED, "cancel returns without changing app state");
         check(downloads.get() == 0, "cancel occurs before APK download");
-        check(handoffs.get() == 0, "cancel never reaches installer handoff");
     }
 
-    private static void sizeMismatchNeverHandsOff() throws Exception {
-        AtomicInteger handoffs = new AtomicInteger();
-        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+    private static void sizeMismatchFailsClosed() throws Exception {
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
-                release -> true, release -> writeTemp(new byte[] { 1, 2 }), apk -> identity(),
-                apk -> handoffs.incrementAndGet()), "actual file size must match declared bytes");
-        check(handoffs.get() == 0, "size mismatch never reaches installer handoff");
+                release -> true, release -> writeTemp(new byte[] { 1, 2 }), apk -> identity()),
+                "actual file size must match declared bytes");
     }
 
-    private static void hashMismatchNeverHandsOff() throws Exception {
-        AtomicInteger handoffs = new AtomicInteger();
+    private static void hashMismatchFailsClosed() throws Exception {
         UpdaterCore.Release wrongHash = release("v1.1.0", 2L, repeat('0', 64), SIGNER, false, false);
-        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 wrongHash, UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
-                release -> true, release -> writeTemp(APK_BYTES), apk -> identity(),
-                apk -> handoffs.incrementAndGet()), "SHA-256 must match release metadata");
-        check(handoffs.get() == 0, "hash mismatch never reaches installer handoff");
+                release -> true, release -> writeTemp(APK_BYTES), apk -> identity()),
+                "SHA-256 must match release metadata");
     }
 
-    private static void packageAndVersionMismatchesNeverHandOff() throws Exception {
-        AtomicInteger handoffs = new AtomicInteger();
-        expectFailure(UpdaterCore.Failure.INVALID_METADATA, () -> UpdaterCore.downloadVerifyAndHandoff(
+    private static void packageAndVersionMismatchesFailClosed() throws Exception {
+        expectFailure(UpdaterCore.Failure.INVALID_METADATA, () -> UpdaterCore.downloadAndVerify(
                 new UpdaterCore.Release("v1.1.0", "1.1.0", "Daymark 1.1.0", "Notes",
                         "com.attacker.app", 2L, 26, APK_BYTES.length, hash(APK_BYTES), SIGNER,
                         assetUrl(), false, false), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
-                release -> true, release -> writeTemp(APK_BYTES), apk -> identity(),
-                apk -> handoffs.incrementAndGet()), "release package ID must be fixed to Daymark");
-        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+                release -> true, release -> writeTemp(APK_BYTES), apk -> identity()),
+                "release package ID must be fixed to Daymark");
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.1", 2L, 26, SIGNER),
-                apk -> handoffs.incrementAndGet()), "APK version name must match release metadata");
-        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.1", 2L, 26, SIGNER)),
+                "APK version name must match release metadata");
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.attacker.app", "1.1.0", 2L, 26, SIGNER),
-                apk -> handoffs.incrementAndGet()), "APK package ID must match the installed application");
-        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+                apk -> new UpdaterCore.ApkIdentity("com.attacker.app", "1.1.0", 2L, 26, SIGNER)),
+                "APK package ID must match the installed application");
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 3L, 26, SIGNER),
-                apk -> handoffs.incrementAndGet()), "APK version code must match release metadata");
-        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 3L, 26, SIGNER)),
+                "APK version code must match release metadata");
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 28, SIGNER),
-                apk -> handoffs.incrementAndGet()), "APK minimum SDK must match release metadata");
-        check(handoffs.get() == 0, "package/version mismatch never reaches installer handoff");
+                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 28, SIGNER)),
+                "APK minimum SDK must match release metadata");
     }
 
-    private static void signingCertificateMismatchNeverHandsOff() throws Exception {
+    private static void signingCertificateMismatchFailsClosed() throws Exception {
         AtomicInteger downloads = new AtomicInteger();
-        AtomicInteger handoffs = new AtomicInteger();
-        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, repeat('b', 64),
                 release -> true, release -> { downloads.incrementAndGet(); return writeTemp(APK_BYTES); },
-                apk -> identity(), apk -> handoffs.incrementAndGet()),
+                apk -> identity()),
                 "publisher configuration must match running app signer");
         check(downloads.get() == 0, "publisher mismatch blocks download");
-        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 26, repeat('b', 64)),
-                apk -> handoffs.incrementAndGet()), "APK signer must match installed and configured signer");
-        check(handoffs.get() == 0, "signing-certificate mismatch never reaches installer handoff");
+                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 26, repeat('b', 64))),
+                "APK signer must match installed and configured signer");
     }
 
     private static void emptyPublisherSignerBlocksConsentAndDownload() throws Exception {
         AtomicInteger consents = new AtomicInteger();
         AtomicInteger downloads = new AtomicInteger();
-        AtomicInteger handoffs = new AtomicInteger();
-        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, "",
                 release -> { consents.incrementAndGet(); return true; },
                 release -> { downloads.incrementAndGet(); return writeTemp(APK_BYTES); },
-                apk -> identity(), apk -> handoffs.incrementAndGet()),
+                apk -> identity()),
                 "empty publisher signer must reject the update before consent or download");
         check(consents.get() == 0, "empty publisher signer blocks consent prompt");
         check(downloads.get() == 0, "empty publisher signer blocks APK network/download path");
-        check(handoffs.get() == 0, "empty publisher signer blocks installer handoff");
     }
 
-    private static void verifiedArtifactReachesHandoffExactlyOnce() throws Exception {
-        AtomicInteger handoffs = new AtomicInteger();
-        UpdaterCore.InstallStatus status = UpdaterCore.downloadVerifyAndHandoff(
+    private static void verifiedArtifactIsReportedWithoutInstallHandoff() throws Exception {
+        File[] downloadedFile = new File[1];
+        UpdaterCore.VerificationResult result = UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
-                release -> true, release -> writeTemp(APK_BYTES), apk -> identity(),
-                apk -> {
-                    check(apk.isFile(), "verified temp APK is available to handoff adapter");
-                    handoffs.incrementAndGet();
-                });
-        check(status == UpdaterCore.InstallStatus.HANDED_OFF, "verified release completes handoff path");
-        check(handoffs.get() == 1, "verified APK is handed off exactly once");
+                release -> true,
+                release -> { downloadedFile[0] = writeTemp(APK_BYTES); return downloadedFile[0]; },
+                apk -> { check(apk.isFile(), "temporary APK is available to the verifier"); return identity(); });
+        check(result.status == UpdaterCore.VerificationStatus.VERIFIED, "verified release returns a verification-only result");
+        check(result.verifiedApk != null && result.verifiedApk.isFile(),
+                "verified APK remains available for user-directed saving");
+        check(downloadedFile[0] == result.verifiedApk, "verification returns the exact inspected temporary APK");
+        check(result.verifiedApk.delete(), "caller can discard the verified temporary APK after saving or cancellation");
     }
 
     private static UpdaterCore.Release validRelease() {

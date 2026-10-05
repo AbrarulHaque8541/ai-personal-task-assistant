@@ -21,12 +21,12 @@ public final class UpdaterCore {
     public enum Failure {
         OFFLINE,
         RATE_LIMITED,
+        NETWORK_POLICY,
         HTTP,
         INVALID_METADATA,
         DOWNLOAD,
         APK_MISMATCH,
-        SIGNER_MISMATCH,
-        HANDOFF
+        SIGNER_MISMATCH
     }
 
     public static final class UpdateException extends Exception {
@@ -62,11 +62,6 @@ public final class UpdaterCore {
         ApkIdentity inspect(File apk) throws UpdateException;
     }
 
-    public interface VerifiedHandoff {
-        /** Receives an APK only after every metadata, size, hash, package, version, and signer check passes. */
-        void handoff(File verifiedApk) throws UpdateException;
-    }
-
     public enum CheckStatus { UPDATE_AVAILABLE, NO_UPDATE }
 
     public static final class CheckResult {
@@ -87,7 +82,7 @@ public final class UpdaterCore {
         }
     }
 
-    public enum InstallStatus { CANCELLED, HANDED_OFF }
+    public enum VerificationStatus { CANCELLED, VERIFIED }
 
     public static final class Release {
         public final String tag;
@@ -141,6 +136,16 @@ public final class UpdaterCore {
         }
     }
 
+    public static final class VerificationResult {
+        public final VerificationStatus status;
+        public final File verifiedApk;
+
+        private VerificationResult(VerificationStatus status, File verifiedApk) {
+            this.status = status;
+            this.verifiedApk = verifiedApk;
+        }
+    }
+
     /** Wall-clock rate limit, persisted by the Android UI; manual checks pass force=true. */
     public static boolean shouldCheck(long lastAttemptMillis, long nowMillis, boolean force) {
         if (force || lastAttemptMillis <= 0L || nowMillis < lastAttemptMillis) return true;
@@ -160,16 +165,14 @@ public final class UpdaterCore {
     }
 
     /**
-     * Consent is asked before download. Any failed check prevents handoff and removes the
-     * private temporary file. The platform adapter must only be invoked after this method
-     * returns HANDED_OFF; this class does not perform a silent install.
+     * Consent is asked before download. Any failed check prevents a verified result and
+     * removes the private temporary file. A verified file is returned for user-directed saving.
      */
-    public static InstallStatus downloadVerifyAndHandoff(Release release,
+    public static VerificationResult downloadAndVerify(Release release,
             String installedApplicationId, long installedVersionCode, int deviceSdk,
             String runningSignerSha256, String configuredPublisherSignerSha256,
-            Consent consent, Downloader downloader, ApkVerifier verifier,
-            VerifiedHandoff handoff) throws UpdateException {
-        if (release == null || consent == null || downloader == null || verifier == null || handoff == null) {
+            Consent consent, Downloader downloader, ApkVerifier verifier) throws UpdateException {
+        if (release == null || consent == null || downloader == null || verifier == null) {
             throw invalid("Updater operation is missing a required component.");
         }
         validateRelease(release);
@@ -192,9 +195,10 @@ public final class UpdaterCore {
             throw new UpdateException(Failure.SIGNER_MISMATCH,
                     "Publisher, release, and installed-app signing certificates do not match.");
         }
-        if (!consent.accept(release)) return InstallStatus.CANCELLED;
+        if (!consent.accept(release)) return new VerificationResult(VerificationStatus.CANCELLED, null);
 
         File temporaryApk = null;
+        boolean keepVerifiedApk = false;
         try {
             temporaryApk = downloader.download(release);
             if (temporaryApk == null || !temporaryApk.isFile()) {
@@ -224,16 +228,15 @@ public final class UpdaterCore {
                 throw new UpdateException(Failure.SIGNER_MISMATCH,
                         "APK signing certificate does not match the installed app and publisher configuration.");
             }
-            handoff.handoff(temporaryApk);
-            return InstallStatus.HANDED_OFF;
+            keepVerifiedApk = true;
+            return new VerificationResult(VerificationStatus.VERIFIED, temporaryApk);
         } catch (UpdateException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new UpdateException(Failure.HANDOFF, "Verified APK could not be handed to Android.", exception);
+            throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK could not be safely verified.", exception);
         } finally {
-            if (temporaryApk != null && temporaryApk.exists()) {
-                // An Android PackageInstaller adapter copies the verified bytes to its session before returning.
-                // Keeping no private APK cache avoids an unsolicited retry or stale installer payload.
+            if (!keepVerifiedApk && temporaryApk != null && temporaryApk.exists()) {
+                // Failed or cancelled downloads never leave an APK behind.
                 temporaryApk.delete();
             }
         }
@@ -263,6 +266,7 @@ public final class UpdaterCore {
             String path = uri.getPath();
             return "https".equalsIgnoreCase(uri.getScheme())
                     && "github.com".equalsIgnoreCase(uri.getHost())
+                    && (uri.getPort() == -1 || uri.getPort() == 443)
                     && uri.getUserInfo() == null
                     && uri.getQuery() == null
                     && uri.getFragment() == null

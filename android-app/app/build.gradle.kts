@@ -11,11 +11,11 @@ android {
     productFlavors {
         create("githubSideload") {
             dimension = "distribution"
-            buildConfigField("boolean", "UPDATER_INSTALLATION_ENABLED", "true")
+            buildConfigField("boolean", "UPDATER_ENABLED", "true")
         }
         create("play") {
             dimension = "distribution"
-            buildConfigField("boolean", "UPDATER_INSTALLATION_ENABLED", "false")
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
         }
     }
 

@@ -18,26 +18,40 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
     private static final int MAX_REDIRECTS = 5;
     private final Context context;
     private final ConnectionFactory connectionFactory;
+    private final boolean allowMobileData;
+    private final NetworkPolicy networkPolicy;
 
     interface ConnectionFactory {
         HttpURLConnection open(URL url) throws IOException;
     }
 
-    public GitHubApkDownloader(Context context) {
-        this(context, url -> (HttpURLConnection) url.openConnection());
+    public interface NetworkPolicy {
+        boolean isWifiConnected();
+    }
+
+    public GitHubApkDownloader(Context context, boolean allowMobileData, NetworkPolicy networkPolicy) {
+        this(context, url -> (HttpURLConnection) url.openConnection(), allowMobileData, networkPolicy);
     }
 
     GitHubApkDownloader(Context context, ConnectionFactory connectionFactory) {
-        if (context == null || connectionFactory == null) {
-            throw new IllegalArgumentException("Context and connection factory are required.");
+        this(context, connectionFactory, true, () -> true);
+    }
+
+    GitHubApkDownloader(Context context, ConnectionFactory connectionFactory,
+            boolean allowMobileData, NetworkPolicy networkPolicy) {
+        if (context == null || connectionFactory == null || networkPolicy == null) {
+            throw new IllegalArgumentException("Context, connection factory, and network policy are required.");
         }
         this.context = context.getApplicationContext();
         this.connectionFactory = connectionFactory;
+        this.allowMobileData = allowMobileData;
+        this.networkPolicy = networkPolicy;
     }
 
     @Override
     public File download(UpdaterCore.Release release) throws UpdaterCore.UpdateException {
         UpdaterCore.validateRelease(release);
+        ensureNetworkAllowed();
         if (!UpdaterCore.isAllowedAssetUrl(release.assetUrl)) {
             throw new UpdaterCore.UpdateException(UpdaterCore.Failure.INVALID_METADATA,
                     "APK URL is not a Daymark GitHub release asset.");
@@ -54,6 +68,7 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
             URL currentUrl = new URL(release.assetUrl);
             int redirects = 0;
             while (true) {
+                ensureNetworkAllowed();
                 connection = connectionFactory.open(currentUrl);
                 connection.setInstanceFollowRedirects(false);
                 connection.setRequestMethod("GET");
@@ -93,7 +108,8 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
                     throw new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,
                             "GitHub APK byte count did not match release metadata.");
                 }
-                copyExact(connection.getInputStream(), apk, release.apkSizeBytes);
+                copyExact(connection.getInputStream(), apk, release.apkSizeBytes,
+                        allowMobileData, networkPolicy);
                 return apk;
             }
         } catch (UpdaterCore.UpdateException exception) {
@@ -119,13 +135,25 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
                 || status == 307 || status == 308;
     }
 
-    private static void copyExact(InputStream input, File destination, long expectedBytes)
+    private void ensureNetworkAllowed() throws UpdaterCore.UpdateException {
+        if (!allowMobileData && !networkPolicy.isWifiConnected()) {
+            throw new UpdaterCore.UpdateException(UpdaterCore.Failure.NETWORK_POLICY,
+                    "Wi-Fi only was selected. Connect to Wi-Fi or explicitly allow mobile data before downloading.");
+        }
+    }
+
+    private static void copyExact(InputStream input, File destination, long expectedBytes,
+            boolean allowMobileData, NetworkPolicy networkPolicy)
             throws IOException, UpdaterCore.UpdateException {
         long copied = 0L;
         try (InputStream stream = input; FileOutputStream output = new FileOutputStream(destination)) {
             byte[] buffer = new byte[16 * 1024];
             int count;
             while ((count = stream.read(buffer)) != -1) {
+                if (!allowMobileData && !networkPolicy.isWifiConnected()) {
+                    throw new UpdaterCore.UpdateException(UpdaterCore.Failure.NETWORK_POLICY,
+                            "Wi-Fi was disconnected during download. The APK download was stopped.");
+                }
                 copied += count;
                 if (copied > expectedBytes || copied > UpdaterCore.MAX_APK_BYTES) {
                     throw new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,

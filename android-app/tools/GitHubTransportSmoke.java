@@ -18,6 +18,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Host fixtures exercise the production release parser and HTTP transport without network access. */
 public final class GitHubTransportSmoke {
@@ -34,6 +35,7 @@ public final class GitHubTransportSmoke {
         releaseClientConstrainsRequestAndClassifiesResponses();
         releaseClientRejectsRedirectAndOversizedBody();
         downloaderFollowsOnlyValidatedRedirectsAndCopiesExactBytes();
+        downloaderEnforcesExplicitNetworkChoice();
         downloaderRejectsUntrustedRedirectsAndCleansTemporaryFiles();
         downloaderEnforcesRedirectAndBodyBounds();
         System.out.println("PASS updater transport/parser fixtures: " + assertions + " assertions");
@@ -243,6 +245,31 @@ public final class GitHubTransportSmoke {
                 () -> new GitHubApkDownloader(new TestContext(cache), url -> longResponse).download(validRelease()),
                 "body exceeding declared size is rejected");
         check(listFiles(new File(cache, "daymark-update-tmp")).isEmpty(), "size failures remove all temporary APK files");
+        deleteTree(cache);
+    }
+
+    private static void downloaderEnforcesExplicitNetworkChoice() throws Exception {
+        File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
+        AtomicInteger blockedRequests = new AtomicInteger();
+        GitHubApkDownloader wifiOnly = new GitHubApkDownloader(new TestContext(cache), url -> {
+            blockedRequests.incrementAndGet();
+            return response(HttpURLConnection.HTTP_OK, APK);
+        }, false, () -> false);
+        expectDownloadFailure(UpdaterCore.Failure.NETWORK_POLICY, () -> wifiOnly.download(validRelease()),
+                "Wi-Fi-only selection blocks non-Wi-Fi before the HTTP request");
+        check(blockedRequests.get() == 0, "Wi-Fi-only policy makes no request over mobile data");
+
+        FakeHttpConnection mobileResponse = response(HttpURLConnection.HTTP_OK, APK);
+        mobileResponse.header("Content-Length", Integer.toString(APK.length));
+        AtomicInteger allowedRequests = new AtomicInteger();
+        GitHubApkDownloader mobileAllowed = new GitHubApkDownloader(new TestContext(cache), url -> {
+            allowedRequests.incrementAndGet();
+            return mobileResponse;
+        }, true, () -> false);
+        File downloaded = mobileAllowed.download(validRelease());
+        check(allowedRequests.get() == 1, "explicit mobile-data choice permits the bounded APK request");
+        check(Arrays.equals(APK, Files.readAllBytes(downloaded.toPath())), "mobile-data download is still exact-byte bounded");
+        check(downloaded.delete(), "test removes the mobile-data fixture APK");
         deleteTree(cache);
     }
 

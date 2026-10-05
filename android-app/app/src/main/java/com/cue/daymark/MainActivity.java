@@ -6,6 +6,7 @@ import android.app.DatePickerDialog;
 import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
@@ -17,12 +18,15 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.net.Uri;
-import android.provider.Settings;
+import android.provider.DocumentsContract;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
@@ -47,6 +51,12 @@ import android.widget.Toast;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -56,7 +66,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.cue.daymark.updater.AndroidApkVerifier;
-import com.cue.daymark.updater.AndroidPackageInstallerHandoff;
 import com.cue.daymark.updater.GitHubApkDownloader;
 import com.cue.daymark.updater.GitHubReleaseClient;
 import com.cue.daymark.updater.UpdaterCore;
@@ -73,7 +82,7 @@ public final class MainActivity extends Activity {
     private static final String HIGH_CONTRAST_KEY = "high_contrast";
     private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
     private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
-    private static final int REQUEST_INSTALL_SOURCE_SETTINGS = 7342;
+    private static final int REQUEST_SAVE_VERIFIED_APK = 7343;
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -96,7 +105,8 @@ public final class MainActivity extends Activity {
     private boolean updateCheckRunning;
     private boolean updateTransferRunning;
     private boolean activityResumed;
-    private UpdaterCore.Release pendingInstallSourceRelease;
+    private File pendingVerifiedApk;
+    private UpdaterCore.Release pendingVerifiedRelease;
     private float textScale = 1.0f;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
@@ -152,6 +162,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
+        discardPendingVerifiedApk();
         if (storageExecutor != null) storageExecutor.shutdown();
         if (updaterExecutor != null) updaterExecutor.shutdownNow();
         super.onDestroy();
@@ -174,16 +185,42 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_INSTALL_SOURCE_SETTINGS) return;
-        UpdaterCore.Release pending = pendingInstallSourceRelease;
-        pendingInstallSourceRelease = null;
-        if (pending == null) return;
-        if (canRequestPackageInstalls()) {
-            // The Android settings approval is separate from consent to download; ask again.
-            showUpdateDetails(pending);
-        } else {
-            showInfo("No APK downloaded", "Android install-source approval was not granted. No APK was downloaded or installed; your existing app and encrypted tasks are unchanged.");
+        if (requestCode != REQUEST_SAVE_VERIFIED_APK) return;
+        File verifiedApk = pendingVerifiedApk;
+        UpdaterCore.Release release = pendingVerifiedRelease;
+        pendingVerifiedApk = null;
+        pendingVerifiedRelease = null;
+        if (verifiedApk == null || release == null) return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            verifiedApk.delete();
+            showInfo("APK not saved", "The verified APK was discarded. No update was installed.");
+            return;
         }
+        Uri destination = data.getData();
+        updaterExecutor.execute(() -> {
+            boolean saved = false;
+            String failureMessage = null;
+            try {
+                copyVerifiedApkToDocument(verifiedApk, destination, release);
+                saved = true;
+            } catch (Exception exception) {
+                failureMessage = "The verified APK could not be saved safely. No update was installed.";
+                try { DocumentsContract.deleteDocument(getContentResolver(), destination); }
+                catch (Exception ignored) { }
+            } finally {
+                verifiedApk.delete();
+            }
+            final boolean savedResult = saved;
+            final String saveFailure = failureMessage;
+            mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (savedResult) {
+                    showInfo("Verified APK saved", "The APK passed the size, hash, package, version, minimum Android version, and signer checks. Daymark did not open an installer or install it. If you choose to continue, open the saved APK yourself from Files; Android controls any install-source approval and final confirmation.");
+                } else {
+                    showInfo("APK not saved", saveFailure);
+                }
+            });
+        });
     }
 
     private int themeResource(int mode) {
@@ -1189,10 +1226,10 @@ public final class MainActivity extends Activity {
     }
 
     private void checkForUpdates(boolean manual) {
-        boolean publisherConfigured = UpdaterPublisherConfig.isInstallationConfigured();
+        boolean publisherConfigured = UpdaterPublisherConfig.isUpdaterConfigured();
         if (!UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)) {
             if (manual) {
-                String reason = !BuildConfig.UPDATER_INSTALLATION_ENABLED
+                String reason = !BuildConfig.UPDATER_ENABLED
                         ? "Update checks are available only in the GitHub sideload distribution."
                         : publisherConfigured
                         ? "This build does not declare the Internet permission."
@@ -1261,6 +1298,8 @@ public final class MainActivity extends Activity {
                 return "GitHub could not be reached. Check your connection and try Check now later. Daymark tasks remain available offline.";
             case RATE_LIMITED:
                 return "GitHub is rate-limiting update checks. Wait before trying Check now again. Daymark tasks remain available.";
+            case NETWORK_POLICY:
+                return "Wi-Fi only was selected. Connect to Wi-Fi or explicitly allow mobile data before downloading. No APK was saved.";
             case INVALID_METADATA:
                 return "The GitHub release metadata was incomplete or invalid. No APK was downloaded.";
             case HTTP:
@@ -1271,38 +1310,31 @@ public final class MainActivity extends Activity {
                 return "The release signing certificate did not exactly match this installed app and publisher configuration. Nothing was installed. Do not uninstall Daymark; encrypted local tasks may be lost.";
             case DOWNLOAD:
                 return "The APK download did not complete. Nothing was installed; Daymark tasks remain available.";
-            case HANDOFF:
-                return "Android could not start or complete the user-confirmed installation flow. Nothing was installed; do not uninstall Daymark because encrypted tasks may be lost.";
             default:
                 return "The update check could not be completed. No APK was downloaded.";
         }
     }
 
     private void showUpdateDetails(UpdaterCore.Release release) {
-        boolean installConfigured = BuildConfig.UPDATER_INSTALLATION_ENABLED
-                && UpdaterPublisherConfig.isInstallationConfigured();
-        boolean installSourceAllowed = canRequestPackageInstalls();
+        boolean updaterConfigured = BuildConfig.UPDATER_ENABLED
+                && UpdaterPublisherConfig.isUpdaterConfigured() && hasInternetPermission();
         String message = "Version " + release.versionName + "\n"
                 + release.name + "\n\n"
                 + (release.notes.trim().isEmpty() ? "No release notes were provided." : release.notes.trim())
                 + "\n\nAPK size: " + NumberFormat.getIntegerInstance(Locale.getDefault()).format(release.apkSizeBytes)
-                + " bytes. A download uses GitHub and may use mobile/cellular data. No APK is downloaded until you choose Download and verify."
+                + " bytes. Choose Wi-Fi only (the default) or explicitly allow mobile data below. No APK is downloaded until you choose Download and verify."
                 + "\n\nDaymark sends no task data or history in an update request. Update checks contact the fixed public GitHub Releases endpoint only while the app is foregrounded or when you choose Check now."
-                + "\n\n" + (installConfigured
-                        ? (installSourceAllowed
-                                ? "After verification, Android will show its own installation confirmation. The update is installed only if you approve that system prompt."
-                                : "Android first requires you to allow this GitHub sideload as an install source in system Settings. No APK is downloaded before that choice; after returning, review this release and choose Download and verify separately.")
-                        : "APK installation remains disabled until the GitHub sideload release build has an explicitly enabled, protected publisher signing configuration. No APK was downloaded.")
-                + " Cancel at either prompt to keep the existing app. Do not uninstall to work around a signing mismatch; encrypted local tasks may be lost.";
+                + "\n\nAfter verification, you choose where to save the APK and open it yourself from Files if you want to continue. Daymark does not open an installer or install it; Android controls any install-source approval and final confirmation."
+                + "\n\nDo not uninstall to work around a signing mismatch; encrypted local tasks may be lost.";
         AlertDialog.Builder dialog = new AlertDialog.Builder(this)
                 .setTitle("Update available")
                 .setMessage(message);
-        if (installConfigured) {
-            dialog.setPositiveButton(installSourceAllowed ? "Download and verify" : "Review system approval",
-                    (ignored, which) -> {
-                        if (canRequestPackageInstalls()) beginUpdateDownload(release);
-                        else requestInstallSourceApproval(release);
-                    });
+        if (updaterConfigured) {
+            boolean[] allowMobileData = { false };
+            dialog.setSingleChoiceItems(new String[] { "Wi-Fi only (recommended)", "Allow mobile data" }, 0,
+                    (choiceDialog, selected) -> allowMobileData[0] = selected == 1);
+            dialog.setPositiveButton("Download and verify",
+                    (ignored, which) -> beginUpdateDownload(release, allowMobileData[0]));
             dialog.setNegativeButton("Cancel", null);
             dialog.setNeutralButton("Dismiss release", (ignored, which) -> rememberDismissedRelease(release.tag));
         } else {
@@ -1312,66 +1344,126 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
 
-    private boolean canRequestPackageInstalls() {
-        return Build.VERSION.SDK_INT >= 26 && getPackageManager().canRequestPackageInstalls();
-    }
-
-    private void requestInstallSourceApproval(UpdaterCore.Release release) {
-        pendingInstallSourceRelease = release;
-        Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:" + getPackageName()));
-        try {
-            startActivityForResult(settingsIntent, REQUEST_INSTALL_SOURCE_SETTINGS);
-        } catch (Exception exception) {
-            pendingInstallSourceRelease = null;
-            showInfo("Install-source settings unavailable", "Android could not open the system approval screen. No APK was downloaded; your existing app and encrypted tasks are unchanged.");
-        }
-    }
-
-    private void beginUpdateDownload(UpdaterCore.Release release) {
+    private void beginUpdateDownload(UpdaterCore.Release release, boolean allowMobileData) {
         if (updateTransferRunning) {
             Toast.makeText(this, "An update download is already running.", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (!BuildConfig.UPDATER_INSTALLATION_ENABLED || !UpdaterPublisherConfig.isInstallationConfigured()
-                || !hasInternetPermission() || !canRequestPackageInstalls()) {
-            showInfo("Update unavailable", "The GitHub sideload build, Internet access, protected publisher signer, and Android install-source approval are all required. No APK was downloaded; tasks remain usable.");
+        if (!BuildConfig.UPDATER_ENABLED || !UpdaterPublisherConfig.isUpdaterConfigured()
+                || !hasInternetPermission()) {
+            showInfo("Update unavailable", "The GitHub sideload build, Internet access, and a protected publisher signer are required. No APK was downloaded; tasks remain usable.");
             return;
         }
         updateTransferRunning = true;
-        Toast.makeText(this, "Downloading and verifying the APK. Daymark tasks remain usable.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, allowMobileData
+                ? "Downloading and verifying the APK using the network you allowed."
+                : "Downloading and verifying the APK over Wi-Fi only.", Toast.LENGTH_LONG).show();
         updaterExecutor.execute(() -> {
-            UpdaterCore.InstallStatus status = null;
+            UpdaterCore.VerificationResult result = null;
             UpdaterCore.UpdateException failure = null;
             try {
                 AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
                 String installedSigner = verifier.installedSignerSha256();
-                status = UpdaterCore.downloadVerifyAndHandoff(release,
+                result = UpdaterCore.downloadAndVerify(release,
                         getPackageName(), currentVersionCode(), Build.VERSION.SDK_INT,
                         installedSigner, UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256,
                         consentedRelease -> true,
-                        new GitHubApkDownloader(getApplicationContext()), verifier,
-                        new AndroidPackageInstallerHandoff(getApplicationContext()));
+                        new GitHubApkDownloader(getApplicationContext(), allowMobileData,
+                                () -> isWifiConnected(getApplicationContext())), verifier);
             } catch (UpdaterCore.UpdateException exception) {
                 failure = exception;
             } catch (Exception exception) {
-                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.HANDOFF,
-                        "Verified update could not be handed to Android.", exception);
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,
+                        "Downloaded update could not be safely verified.", exception);
             }
-            final UpdaterCore.InstallStatus completedStatus = status;
+            final UpdaterCore.VerificationResult completedResult = result;
             final UpdaterCore.UpdateException completedFailure = failure;
             mainHandler.post(() -> {
                 updateTransferRunning = false;
-                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (!activityResumed || isFinishing() || isDestroyed()) {
+                    if (completedResult != null && completedResult.verifiedApk != null) {
+                        completedResult.verifiedApk.delete();
+                    }
+                    return;
+                }
                 if (completedFailure != null) {
-                    showInfo("Update not installed", updateFailureMessage(completedFailure));
-                } else if (completedStatus == UpdaterCore.InstallStatus.HANDED_OFF) {
-                    showInfo("Android installation approval", "The fully verified APK was handed to Android. Installation will proceed only if you approve Android's system confirmation. Until then, the current app remains installed.");
+                    showInfo("Update verification failed", updateFailureMessage(completedFailure));
+                } else if (completedResult != null
+                        && completedResult.status == UpdaterCore.VerificationStatus.VERIFIED
+                        && completedResult.verifiedApk != null) {
+                    offerManualApkSave(release, completedResult.verifiedApk);
                 } else {
-                    showInfo("Update cancelled", "No update was installed. The existing app and encrypted tasks remain unchanged.");
+                    showInfo("Verification cancelled", "No update was installed. The existing app and encrypted tasks remain unchanged.");
                 }
             });
         });
+    }
+
+    private static boolean isWifiConnected(Context context) {
+        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (manager == null) return false;
+        Network activeNetwork = manager.getActiveNetwork();
+        NetworkCapabilities capabilities = activeNetwork == null ? null : manager.getNetworkCapabilities(activeNetwork);
+        return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void offerManualApkSave(UpdaterCore.Release release, File verifiedApk) {
+        new AlertDialog.Builder(this)
+                .setTitle("APK verified — not installed")
+                .setMessage("The APK passed the declared size, SHA-256, package, version, minimum Android version, and signer checks. Daymark will not open an installer. Save a copy to a location you choose; if you decide to continue, open it yourself from Files. Android controls any install-source approval and final confirmation.")
+                .setPositiveButton("Save verified APK", (ignored, which) -> startVerifiedApkSave(release, verifiedApk))
+                .setNegativeButton("Discard", (ignored, which) -> verifiedApk.delete())
+                .setOnCancelListener(ignored -> verifiedApk.delete())
+                .show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void startVerifiedApkSave(UpdaterCore.Release release, File verifiedApk) {
+        pendingVerifiedApk = verifiedApk;
+        pendingVerifiedRelease = release;
+        Intent saveIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        saveIntent.addCategory(Intent.CATEGORY_OPENABLE);
+        saveIntent.setType("application/vnd.android.package-archive");
+        saveIntent.putExtra(Intent.EXTRA_TITLE, "Daymark-v" + release.versionName + ".apk");
+        try {
+            startActivityForResult(saveIntent, REQUEST_SAVE_VERIFIED_APK);
+        } catch (Exception exception) {
+            discardPendingVerifiedApk();
+            showInfo("APK not saved", "Android's file picker could not be opened. The verified temporary APK was discarded; no update was installed.");
+        }
+    }
+
+    private void discardPendingVerifiedApk() {
+        if (pendingVerifiedApk != null) pendingVerifiedApk.delete();
+        pendingVerifiedApk = null;
+        pendingVerifiedRelease = null;
+    }
+
+    private void copyVerifiedApkToDocument(File source, Uri destination, UpdaterCore.Release release)
+            throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        long copied = 0L;
+        try (InputStream input = new FileInputStream(source);
+                OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
+            if (output == null) throw new IOException("The selected location could not be opened.");
+            byte[] buffer = new byte[16 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                copied += count;
+                if (copied > release.apkSizeBytes || copied > UpdaterCore.MAX_APK_BYTES) {
+                    throw new IOException("The saved APK exceeded its verified size.");
+                }
+                digest.update(buffer, 0, count);
+                output.write(buffer, 0, count);
+            }
+            output.flush();
+        }
+        StringBuilder actualHash = new StringBuilder(64);
+        for (byte value : digest.digest()) actualHash.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+        if (copied != release.apkSizeBytes || !actualHash.toString().equalsIgnoreCase(release.apkSha256)) {
+            throw new IOException("The saved APK did not match the verified release size and digest.");
+        }
     }
 
     private void rememberDismissedRelease(String tag) {
@@ -1384,8 +1476,8 @@ public final class MainActivity extends Activity {
         try {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
-        String distributionDetails = BuildConfig.UPDATER_INSTALLATION_ENABLED
-                ? "GitHub sideload distribution: declares updater network/install permissions; update checks and installation remain disabled until protected publisher signing is explicitly configured."
+        String distributionDetails = BuildConfig.UPDATER_ENABLED
+                ? "GitHub sideload distribution: declares INTERNET and ACCESS_NETWORK_STATE for foreground checks and consented, Wi-Fi/mobile-choice downloads. Verified APKs can be saved for manual opening; Daymark does not launch an installer. The protected publisher release gate is closed."
                 : "Play distribution: no network or package-install permissions are declared. Tasks remain local and offline.";
         String details = "Daymark " + version + "\n\n"
                 + "Tasks: schema v1, encrypted in an app-private file.\n\n"
