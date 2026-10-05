@@ -54,8 +54,10 @@ assert "browserOnlineEnabled = readBrowserOnlinePreference();" in activity
 assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "missing/corrupt online preference must default Offline"
 assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
 assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
-assert "Offline by default" in activity and "each search or site still needs a tap" in activity
-assert "Daymark sends no task text or telemetry" in activity
+assert "Website access starts Offline" in activity and "tap Go or a site for each request" in activity
+assert "Android System WebView Safe Browsing" in activity and "Google/Play Services" in activity
+assert "partial URL hashes" in activity and "not Daymark's Online switch" in activity, "Safe Browsing service data flow must be distinguished from the website-load toggle"
+assert "Daymark sends no task text or app analytics" in activity
 assert "Recent URLs, including search terms and URL tokens, are kept in app-private history without encryption" in activity
 assert "other URL tokens are not redacted" in activity and "uri.getRawUserInfo() != null" in address, "history privacy disclosure must match URL credential handling"
 for method in ("navigateFromInput", "navigateBrowserTo", "loadBrowserAddress"):
