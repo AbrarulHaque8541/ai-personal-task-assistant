@@ -17,6 +17,8 @@ public final class UpdaterSmoke {
 
     public static void main(String[] args) throws Exception {
         rateLimitAllowsForegroundCadenceAndManualCheck();
+        publisherConfigurationGatesNetworkChecks();
+        assetRedirectsAreRestrictedToTrustedHosts();
         offlineHttpRateLimitAndInvalidMetadataAreHandled();
         missingAndUnstableReleasesAreIgnored();
         stableNewerReleaseIsFound();
@@ -25,6 +27,7 @@ public final class UpdaterSmoke {
         hashMismatchNeverHandsOff();
         packageAndVersionMismatchesNeverHandOff();
         signingCertificateMismatchNeverHandsOff();
+        emptyPublisherSignerBlocksConsentAndDownload();
         verifiedArtifactReachesHandoffExactlyOnce();
         System.out.println("PASS updater host tests: " + assertions + " assertions");
     }
@@ -37,6 +40,33 @@ public final class UpdaterSmoke {
         check(UpdaterCore.shouldCheck(now, now + UpdaterCore.CHECK_INTERVAL_MILLIS, false),
                 "foreground check is due after 24 hours");
         check(UpdaterCore.shouldCheck(now, now + 1, true), "manual check bypasses rate limit");
+    }
+
+    private static void publisherConfigurationGatesNetworkChecks() {
+        check(UpdaterCore.isNetworkCheckAllowed(true, true), "network check requires permission and publisher config");
+        check(!UpdaterCore.isNetworkCheckAllowed(false, true), "missing Internet permission blocks metadata request");
+        check(!UpdaterCore.isNetworkCheckAllowed(true, false), "unknown publisher signer blocks metadata request");
+        check(!UpdaterCore.isNetworkCheckAllowed(false, false), "missing permission and signer fail closed");
+    }
+
+    private static void assetRedirectsAreRestrictedToTrustedHosts() {
+        check(UpdaterCore.isAllowedAssetRedirectUrl(
+                "https://release-assets.githubusercontent.com/download/asset?token=signed"),
+                "GitHub release asset host with signed query is allowed");
+        check(UpdaterCore.isAllowedAssetRedirectUrl(
+                "https://objects.githubusercontent.com/github-production/asset"),
+                "GitHub object asset host is allowed");
+        check(UpdaterCore.isAllowedAssetRedirectUrl(assetUrl()), "original fixed GitHub asset path is allowed");
+        check(!UpdaterCore.isAllowedAssetRedirectUrl("https://evil.example/Daymark.apk"),
+                "untrusted redirect host is rejected");
+        check(!UpdaterCore.isAllowedAssetRedirectUrl("http://release-assets.githubusercontent.com/a.apk"),
+                "cleartext redirect is rejected");
+        check(!UpdaterCore.isAllowedAssetRedirectUrl("https://release-assets.githubusercontent.com.evil/a.apk"),
+                "lookalike asset host is rejected");
+        check(!UpdaterCore.isAllowedAssetRedirectUrl("https://user@release-assets.githubusercontent.com/a.apk"),
+                "userinfo redirect is rejected");
+        check(!UpdaterCore.isAllowedAssetRedirectUrl("https://release-assets.githubusercontent.com:444/a.apk"),
+                "nonstandard redirect port is rejected");
     }
 
     private static void offlineHttpRateLimitAndInvalidMetadataAreHandled() throws Exception {
@@ -154,6 +184,21 @@ public final class UpdaterSmoke {
                 apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 26, repeat('b', 64)),
                 apk -> handoffs.incrementAndGet()), "APK signer must match installed and configured signer");
         check(handoffs.get() == 0, "signing-certificate mismatch never reaches installer handoff");
+    }
+
+    private static void emptyPublisherSignerBlocksConsentAndDownload() throws Exception {
+        AtomicInteger consents = new AtomicInteger();
+        AtomicInteger downloads = new AtomicInteger();
+        AtomicInteger handoffs = new AtomicInteger();
+        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadVerifyAndHandoff(
+                validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, "",
+                release -> { consents.incrementAndGet(); return true; },
+                release -> { downloads.incrementAndGet(); return writeTemp(APK_BYTES); },
+                apk -> identity(), apk -> handoffs.incrementAndGet()),
+                "empty publisher signer must reject the update before consent or download");
+        check(consents.get() == 0, "empty publisher signer blocks consent prompt");
+        check(downloads.get() == 0, "empty publisher signer blocks APK network/download path");
+        check(handoffs.get() == 0, "empty publisher signer blocks installer handoff");
     }
 
     private static void verifiedArtifactReachesHandoffExactlyOnce() throws Exception {

@@ -274,6 +274,36 @@ public final class UpdaterCore {
         }
     }
 
+    /** Metadata checks stay disabled unless both network access and a pinned publisher are configured. */
+    public static boolean isNetworkCheckAllowed(boolean internetPermissionGranted,
+            boolean publisherConfigurationValid) {
+        return internetPermissionGranted && publisherConfigurationValid;
+    }
+
+    /** Accept only the original GitHub release URL or known GitHub release-asset redirect hosts. */
+    public static boolean isAllowedAssetRedirectUrl(String value) {
+        if (value == null) return false;
+        try {
+            URI uri = URI.create(value);
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null
+                    || uri.getUserInfo() != null || uri.getFragment() != null
+                    || (uri.getPort() != -1 && uri.getPort() != 443)) {
+                return false;
+            }
+            if ("github.com".equalsIgnoreCase(host)) {
+                String path = uri.getPath();
+                return uri.getQuery() == null && path != null
+                        && path.startsWith(RELEASE_ASSET_PREFIX) && path.endsWith(".apk");
+            }
+            return "release-assets.githubusercontent.com".equalsIgnoreCase(host)
+                    || "objects.githubusercontent.com".equalsIgnoreCase(host)
+                    || "github-production-release-asset-2e65be.s3.amazonaws.com".equalsIgnoreCase(host);
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
     public static String normalizeSha256(String value) {
         if (value == null) return null;
         String normalized = value.replace(":", "").trim().toLowerCase(Locale.ROOT);

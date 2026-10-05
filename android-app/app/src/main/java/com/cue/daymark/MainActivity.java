@@ -1164,11 +1164,14 @@ public final class MainActivity extends Activity {
     }
 
     private void checkForUpdates(boolean manual) {
-        if (!hasInternetPermission()) {
+        boolean publisherConfigured = UpdaterPublisherConfig.isInstallationConfigured();
+        if (!UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)) {
             if (manual) {
-                showInfo("Updates unavailable",
-                        "This build does not declare the Internet permission, so no update request was made. "
-                                + "Your tasks remain available offline.");
+                String reason = publisherConfigured
+                        ? "This build does not declare the Internet permission."
+                        : "A trusted publisher signing certificate is not configured, so update checks are disabled.";
+                showInfo("Updates unavailable", reason + " No network request was made. "
+                        + "Your tasks remain available offline.");
             }
             return;
         }

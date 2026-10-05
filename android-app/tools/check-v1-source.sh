@@ -53,12 +53,16 @@ updater_sources = "\n".join(path.read_text(encoding="utf-8") for path in updater
 release_client = (updater_dir / "GitHubReleaseClient.java").read_text(encoding="utf-8")
 updater_core = (updater_dir / "UpdaterCore.java").read_text(encoding="utf-8")
 publisher_config = (updater_dir / "UpdaterPublisherConfig.java").read_text(encoding="utf-8")
+downloader = (updater_dir / "GitHubApkDownloader.java").read_text(encoding="utf-8")
 assert 'https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest' in release_client, "updater endpoint must remain fixed"
 assert release_client.count("https://") == 1, "release metadata client must not add other service endpoints"
 assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
 assert not manifest.findall("uses-permission"), "no manifest permission is enabled while installer permission scope is pending"
 assert not any(permission.get("{http://schemas.android.com/apk/res/android}name") == "android.permission.REQUEST_INSTALL_PACKAGES" for permission in manifest.findall("uses-permission")), "installer permission must not be added without owner approval"
 assert "INSTALLATION_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher installer gate must remain fail-closed"
+assert "UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)" in activity, "publisher configuration must gate even release-metadata network checks"
+assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new GitHubReleaseClient()"), "network policy must run before release-client construction"
+assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
 assert "TaskLogic" not in updater_sources and "EncryptedTaskStore" not in updater_sources, "updater must not depend on or upload task/history data"
 assert updater_core.index("if (!consent.accept(release))") < updater_core.index("temporaryApk = downloader.download(release)"), "download must occur only after explicit consent"
 assert updater_core.index("verifier.inspect(temporaryApk)") < updater_core.index("handoff.handoff(temporaryApk)"), "handoff must follow APK verification"
@@ -66,6 +70,6 @@ assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_so
 
 print("PASS V1 source policy: no manifest permissions/background components/runtime dependencies or optional media/model binaries; updater endpoint and consent gates are fixed")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
-print("PASS permission/updater policy: no new permissions, no unapproved installer handoff, fail-closed publisher signer, task data isolated")
+print("PASS permission/updater policy: no new permissions, publisher-gated metadata network, validated release-asset redirects, no unapproved installer handoff, task data isolated")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"
