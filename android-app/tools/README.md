@@ -1,1 +1,0 @@
-Run `./tools/run-core-tests.sh` from `android-app/`. It compiles `Task.java`, `TaskLogic.java`, and `TaskLogicSmoke.java` with the local JDK only; it does not need Android SDK, Gradle, network access, or external libraries.

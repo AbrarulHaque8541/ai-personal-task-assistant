@@ -1,9 +1,0 @@
-.gradle/
-.idea/
-local.properties
-**/build/
-*.iml
-*.apk
-*.aab
-
-# Keep the debug artifact out of commits until Asif's separate private-repository publication step.
