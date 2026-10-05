@@ -9,6 +9,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
@@ -52,22 +53,21 @@ import android.widget.Toast;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.text.NumberFormat;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.cue.daymark.updater.AndroidApkVerifier;
 import com.cue.daymark.updater.GitHubApkDownloader;
 import com.cue.daymark.updater.GitHubReleaseClient;
+import com.cue.daymark.updater.SafApkSaver;
 import com.cue.daymark.updater.UpdaterCore;
 import com.cue.daymark.updater.UpdaterPublisherConfig;
 import com.cue.daymark.updater.UpdaterRecoveryStore;
@@ -221,9 +221,7 @@ public final class MainActivity extends Activity {
                 copyVerifiedApkToDocument(verifiedApk, destination, release);
                 saved = true;
             } catch (Exception exception) {
-                failureMessage = "The verified APK could not be saved safely. It remains in app-private storage for retry or explicit discard.";
-                try { DocumentsContract.deleteDocument(getContentResolver(), destination); }
-                catch (Exception ignored) { }
+                failureMessage = "The verified APK could not be saved safely. Interrupted partial copies are staged with a .daymark-incomplete marker; if the provider failed during finalization, check the chosen folder before retrying. The verified source remains in app-private storage for retry or explicit discard.";
             }
             final boolean savedResult = saved;
             final String saveFailure = failureMessage;
@@ -1631,27 +1629,57 @@ public final class MainActivity extends Activity {
 
     private void copyVerifiedApkToDocument(File source, Uri destination, UpdaterCore.Release release)
             throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        long copied = 0L;
-        try (InputStream input = new FileInputStream(source);
-                OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
-            if (output == null) throw new IOException("The selected location could not be opened.");
-            byte[] buffer = new byte[16 * 1024];
-            int count;
-            while ((count = input.read(buffer)) != -1) {
-                copied += count;
-                if (copied > release.apkSizeBytes || copied > UpdaterCore.MAX_APK_BYTES) {
-                    throw new IOException("The saved APK exceeded its verified size.");
-                }
-                digest.update(buffer, 0, count);
-                output.write(buffer, 0, count);
+        // ACTION_CREATE_DOCUMENT returns a newly created document; all operations remain scoped
+        // to that URI. Never open an existing document by a guessed display name.
+        SafApkSaver.copyVerifiedApk(source, release, new SafApkSaver.Document() {
+            private Uri documentUri = destination;
+
+            @Override public String displayName() throws IOException {
+                return queryDocumentDisplayName(documentUri);
             }
-            output.flush();
-        }
-        StringBuilder actualHash = new StringBuilder(64);
-        for (byte value : digest.digest()) actualHash.append(String.format(Locale.ROOT, "%02x", value & 0xff));
-        if (copied != release.apkSizeBytes || !actualHash.toString().equalsIgnoreCase(release.apkSha256)) {
-            throw new IOException("The saved APK did not match the verified release size and digest.");
+
+            @Override public String renameTo(String requestedName) throws IOException {
+                try {
+                    Uri renamed = DocumentsContract.renameDocument(getContentResolver(), documentUri, requestedName);
+                    if (renamed == null) return null;
+                    documentUri = renamed;
+                    return queryDocumentDisplayName(documentUri);
+                } catch (Exception exception) {
+                    throw new IOException("The selected document provider could not rename the app-created document.", exception);
+                }
+            }
+
+            @Override public OutputStream openForWrite() throws IOException {
+                try {
+                    return getContentResolver().openOutputStream(documentUri, "w");
+                } catch (Exception exception) {
+                    throw new IOException("The selected document could not be opened for writing.", exception);
+                }
+            }
+
+            @Override public boolean delete() throws IOException {
+                try {
+                    return DocumentsContract.deleteDocument(getContentResolver(), documentUri);
+                } catch (Exception exception) {
+                    throw new IOException("The app-created document could not be removed.", exception);
+                }
+            }
+        }, UUID.randomUUID().toString());
+    }
+
+    private String queryDocumentDisplayName(Uri documentUri) throws IOException {
+        try (Cursor cursor = getContentResolver().query(documentUri,
+                new String[] { DocumentsContract.Document.COLUMN_DISPLAY_NAME }, null, null, null)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                throw new IOException("The selected document name could not be read.");
+            }
+            int nameColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            if (nameColumn < 0) throw new IOException("The selected provider omitted the document name.");
+            return cursor.getString(nameColumn);
+        } catch (IOException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IOException("The selected document name could not be read.", exception);
         }
     }
 

@@ -3,9 +3,12 @@ package com.cue.daymark.updater;
 import android.content.Context;
 
 import java.io.ByteArrayInputStream;
+import java.io.FilterOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.UnknownHostException;
@@ -42,6 +45,10 @@ public final class GitHubTransportSmoke {
         productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver();
         downloaderCancellationMidTransferCleansPartial();
         interruptedTransferIsRemovedOnRestartWithoutTouchingUserData();
+        promotedCandidateIsRecoveredAndRevalidatedAfterRestart();
+        interruptedSafCopyLeavesClearlyMarkedPartialDocument();
+        safProviderWithoutRenameDoesNotWriteFinalDocument();
+        safFinalizationCollisionPreservesUnrelatedDocument();
         System.out.println("PASS updater transport/parser fixtures: " + assertions + " assertions");
     }
 
@@ -329,22 +336,137 @@ public final class GitHubTransportSmoke {
 
         File savedApk = new File(cache, "Daymark-v1.2.3.apk");
         File taskData = new File(cache, "encrypted-tasks.data");
-        UpdaterRecoveryStore.PendingUpdate pending = recoveryStore.readPending();
-        File verifiedTemp = pending.verifiedApk;
         Files.write(savedApk.toPath(), APK);
         Files.write(taskData.toPath(), new byte[] { 1, 2, 3 });
-        if (!verifiedTemp.getParentFile().isDirectory()) {
-            check(verifiedTemp.getParentFile().mkdirs(), "test verified-cache directory is created");
-        }
-        Files.write(verifiedTemp.toPath(), APK);
 
         GitHubApkDownloader.cleanupPartialDownloads(context);
         check(partialFiles(tempDirectory).isEmpty(), "startup cleanup removes only leftover partial APKs");
         check(savedApk.isFile(), "startup cleanup leaves a user-selected saved APK untouched");
         check(taskData.isFile(), "startup cleanup leaves task data untouched");
-        check(verifiedTemp.isFile(), "startup cleanup leaves a persistent verified artifact untouched");
-        check(recoveryStore.hasPendingRecord(), "startup cleanup preserves the recovery record for the verified cache artifact");
+        UpdaterRecoveryStore restartedStore = new UpdaterRecoveryStore(filesDirectory);
+        UpdaterRecoveryStore.PendingUpdate pending = restartedStore.readPending();
+        check(pending != null && !pending.verifiedApk.exists(),
+                "an interrupted pre-verification transfer retains metadata but no fabricated verified artifact");
+        check(restartedStore.hasPendingRecord(), "startup cleanup preserves the pending record while removing only partial downloads");
         deleteTree(cache);
+    }
+
+    private static void promotedCandidateIsRecoveredAndRevalidatedAfterRestart() throws Exception {
+        File cache = Files.createTempDirectory("daymark-updater-restart-").toFile();
+        TestContext context = new TestContext(cache);
+        File filesDirectory = context.getNoBackupFilesDir();
+        UpdaterCore.Release release = validRelease();
+        UpdaterRecoveryStore beforeTransfer = new UpdaterRecoveryStore(filesDirectory);
+        beforeTransfer.recordPending(release);
+
+        FakeHttpConnection response = response(HttpURLConnection.HTTP_OK, APK);
+        response.header("Content-Length", Integer.toString(APK.length));
+        AtomicInteger verifierCalls = new AtomicInteger();
+        UpdaterCore.ApkVerifier verifier = apk -> {
+            verifierCalls.incrementAndGet();
+            return new UpdaterCore.ApkIdentity(UpdaterCore.APPLICATION_ID, release.versionName,
+                    release.versionCode, release.minSdkVersion, SIGNER);
+        };
+        UpdaterCore.VerificationResult downloaded = UpdaterCore.downloadAndVerify(release,
+                UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER, ignored -> true,
+                new GitHubApkDownloader(context, url -> response), verifier);
+        File promoted = downloaded.verifiedApk;
+        check(downloaded.status == UpdaterCore.VerificationStatus.VERIFIED,
+                "production downloader and verifier complete the consented update path");
+        check(promoted.isFile() && promoted.getName().equals(UpdaterCore.verifiedArtifactFileName(release.apkSha256)),
+                "the production verification path promotes the candidate to its digest-addressed private artifact");
+        check(Arrays.equals(APK, Files.readAllBytes(promoted.toPath())),
+                "the promoted artifact contains the bytes returned by the production downloader");
+        check(verifierCalls.get() == 1, "initial promotion runs the APK identity verifier once");
+
+        UpdaterRecoveryStore afterRestart = new UpdaterRecoveryStore(filesDirectory);
+        UpdaterRecoveryStore.PendingUpdate recovered = afterRestart.readPending();
+        check(recovered != null && recovered.verifiedApk.getCanonicalFile().equals(promoted.getCanonicalFile()),
+                "a recreated recovery-store object resolves the actual promoted candidate");
+        check(recovered.release.apkSha256.equals(release.apkSha256)
+                        && recovered.release.versionCode == release.versionCode
+                        && recovered.release.signerSha256.equals(release.signerSha256),
+                "restart recovery reloads the stored digest, version, and signer expectations");
+        UpdaterCore.verifyDownloadedArtifact(recovered.release, recovered.verifiedApk,
+                UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER, verifier);
+        check(verifierCalls.get() == 2,
+                "the recovered promoted candidate is rechecked through production digest and APK-identity validation");
+
+        Files.write(recovered.verifiedApk.toPath(), Arrays.copyOf(APK, APK.length + 1));
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH,
+                () -> UpdaterCore.verifyDownloadedArtifact(recovered.release, recovered.verifiedApk,
+                        UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER, verifier),
+                "restart revalidation rejects a modified promoted candidate against persisted expectations");
+        deleteTree(cache);
+    }
+
+    private static void interruptedSafCopyLeavesClearlyMarkedPartialDocument() throws Exception {
+        File directory = Files.createTempDirectory("daymark-saf-interruption-").toFile();
+        File source = new File(directory, "verified-source.apk");
+        Files.write(source.toPath(), APK);
+        File chosenDocument = new File(directory, "Daymark-v1.2.3.apk");
+        check(chosenDocument.createNewFile(), "host document provider creates a new picker-selected document");
+        File unrelated = new File(directory, "unrelated.txt");
+        byte[] unrelatedBytes = "preserve-me".getBytes(StandardCharsets.UTF_8);
+        Files.write(unrelated.toPath(), unrelatedBytes);
+        FakeSafDocument document = new FakeSafDocument(chosenDocument, true, false, true);
+        try {
+            SafApkSaver.copyVerifiedApk(source, validRelease(), document, "process-death-test");
+            throw new AssertionError("simulated process interruption did not occur during SAF copy");
+        } catch (SimulatedProcessDeath expected) {
+            assertions++;
+        }
+        check(document.displayName().contains(".daymark-incomplete-process-death-test"),
+                "an interrupted SAF copy remains under a conspicuous non-final name");
+        check(document.file().isFile() && document.file().length() > 0
+                        && document.file().length() < APK.length,
+                "the interrupted provider document contains an identifiable partial copy");
+        check(!chosenDocument.exists(), "the final-looking APK name is not left with partial bytes");
+        check(Arrays.equals(unrelatedBytes, Files.readAllBytes(unrelated.toPath())),
+                "interrupted staging never changes an unrelated document");
+        deleteTree(directory);
+    }
+
+    private static void safProviderWithoutRenameDoesNotWriteFinalDocument() throws Exception {
+        File directory = Files.createTempDirectory("daymark-saf-no-rename-").toFile();
+        File source = new File(directory, "verified-source.apk");
+        Files.write(source.toPath(), APK);
+        File chosenDocument = new File(directory, "Daymark-v1.2.3.apk");
+        check(chosenDocument.createNewFile(), "picker creates a new destination for a provider without rename support");
+        FakeSafDocument document = new FakeSafDocument(chosenDocument, false, false, false);
+        assertions++;
+        try {
+            SafApkSaver.copyVerifiedApk(source, validRelease(), document, "no-rename-test");
+            throw new AssertionError("provider without rename support unexpectedly accepted a copy");
+        } catch (IOException expected) {
+            // A provider that cannot mark the document must not receive partial APK bytes.
+        }
+        check(!document.writeOpened(), "provider without rename support receives no APK bytes");
+        check(!chosenDocument.exists(), "the empty app-created picker document is removed best-effort on safe abort");
+        deleteTree(directory);
+    }
+
+    private static void safFinalizationCollisionPreservesUnrelatedDocument() throws Exception {
+        File directory = Files.createTempDirectory("daymark-saf-collision-").toFile();
+        File source = new File(directory, "verified-source.apk");
+        Files.write(source.toPath(), APK);
+        File chosenDocument = new File(directory, "Daymark-v1.2.3.apk");
+        check(chosenDocument.createNewFile(), "picker creates a fresh destination before copy");
+        FakeSafDocument document = new FakeSafDocument(chosenDocument, false, true, true);
+        byte[] unrelatedBytes = "unrelated-existing-document".getBytes(StandardCharsets.UTF_8);
+        assertions++;
+        try {
+            SafApkSaver.copyVerifiedApk(source, validRelease(), document, "collision-test");
+            throw new AssertionError("finalization collision unexpectedly succeeded");
+        } catch (IOException expected) {
+            // The provider refuses the final rename instead of replacing the document that appeared there.
+        }
+        File unrelated = new File(directory, "Daymark-v1.2.3.apk");
+        check(unrelated.isFile() && Arrays.equals(unrelatedBytes, Files.readAllBytes(unrelated.toPath())),
+                "finalization does not overwrite an unrelated document that occupies the requested name");
+        check(document.file().isFile() && document.displayName().contains(".daymark-incomplete-collision-test"),
+                "failed provider finalization leaves the verified candidate identifiable under its staging name");
+        deleteTree(directory);
     }
 
     private static void downloaderEnforcesExplicitNetworkChoice() throws Exception {
@@ -506,6 +628,62 @@ public final class GitHubTransportSmoke {
     private static void check(boolean condition, String message) {
         assertions++;
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static final class FakeSafDocument implements SafApkSaver.Document {
+        private final String initialName;
+        private final boolean interruptDuringWrite;
+        private final boolean createFinalCollision;
+        private final boolean renameSupported;
+        private File file;
+        private boolean writeOpened;
+
+        FakeSafDocument(File file, boolean interruptDuringWrite,
+                boolean createFinalCollision, boolean renameSupported) {
+            this.file = file;
+            this.initialName = file.getName();
+            this.interruptDuringWrite = interruptDuringWrite;
+            this.createFinalCollision = createFinalCollision;
+            this.renameSupported = renameSupported;
+        }
+
+        @Override public String displayName() { return file.getName(); }
+
+        @Override public String renameTo(String displayName) throws IOException {
+            if (!renameSupported) return null;
+            File target = new File(file.getParentFile(), displayName);
+            if (createFinalCollision && displayName.equals(initialName)) {
+                Files.write(target.toPath(), "unrelated-existing-document".getBytes(StandardCharsets.UTF_8));
+                return null;
+            }
+            if (target.exists() && !target.equals(file)) return null;
+            if (!file.renameTo(target)) return null;
+            file = target;
+            return file.getName();
+        }
+
+        @Override public OutputStream openForWrite() throws IOException {
+            writeOpened = true;
+            OutputStream output = new FileOutputStream(file, false);
+            if (!interruptDuringWrite) return output;
+            return new FilterOutputStream(output) {
+                private boolean interrupted;
+
+                @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+                    if (!interrupted) {
+                        out.write(bytes, offset, Math.max(1, length / 2));
+                        interrupted = true;
+                        throw new SimulatedProcessDeath();
+                    }
+                    out.write(bytes, offset, length);
+                }
+            };
+        }
+
+        @Override public boolean delete() { return file.delete() || !file.exists(); }
+
+        File file() { return file; }
+        boolean writeOpened() { return writeOpened; }
     }
 
     private static final class TestContext extends Context {

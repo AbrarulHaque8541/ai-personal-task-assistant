@@ -9,6 +9,7 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterCore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterRecoveryStore.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/updater/SafApkSaver.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/StrictJsonParser.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubReleaseClient.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubApkDownloader.java" \

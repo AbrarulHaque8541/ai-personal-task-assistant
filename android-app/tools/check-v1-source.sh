@@ -67,6 +67,7 @@ release_client = (updater_dir / "GitHubReleaseClient.java").read_text(encoding="
 updater_core = (updater_dir / "UpdaterCore.java").read_text(encoding="utf-8")
 publisher_config = (updater_dir / "UpdaterPublisherConfig.java").read_text(encoding="utf-8")
 downloader = (updater_dir / "GitHubApkDownloader.java").read_text(encoding="utf-8")
+saf_saver = (updater_dir / "SafApkSaver.java").read_text(encoding="utf-8")
 release_test = (root / "tools/GitHubTransportSmoke.java").read_text(encoding="utf-8")
 assert 'https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest' in release_client, "updater endpoint must remain fixed"
 assert release_client.count("https://") == 1, "release metadata client must not add other service endpoints"
@@ -80,8 +81,15 @@ assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new
 assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
 assert "StrictJsonParser.parse(json)" in release_client and "MAX_RESPONSE_BYTES" in release_client, "release JSON must use the bounded strict parser"
 assert "connectionFactory.open" in release_client and "connectionFactory.open" in downloader, "HTTP transports must remain fixture-testable"
-for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys", "productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver"):
+for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys", "productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver", "promotedCandidateIsRecoveredAndRevalidatedAfterRestart", "interruptedSafCopyLeavesClearlyMarkedPartialDocument", "safFinalizationCollisionPreservesUnrelatedDocument"):
     assert marker in release_test, f"missing updater transport/parser fixture: {marker}"
+assert ".daymark-incomplete-" in saf_saver, "SAF staging names must make incomplete copies conspicuous"
+assert saf_saver.index("renameTo(incompleteName)") < saf_saver.index("destination.openForWrite()") < saf_saver.index("renameTo(finalName)"), \
+    "SAF destinations must be marked before writing and finalized only after verified copying"
+assert "DocumentsContract.renameDocument" in activity and "openOutputStream(documentUri, \"w\")" in activity, \
+    "Android SAF operations must remain scoped to the picker-created URI"
+assert "Files.write(verifiedTemp.toPath(), APK)" not in release_test, \
+    "restart recovery coverage must not fabricate a digest-addressed verified artifact"
 assert "android.permission.REQUEST_INSTALL_PACKAGES" not in (root / "app/src/githubSideload/AndroidManifest.xml").read_text(encoding="utf-8"), "REQUEST_INSTALL_PACKAGES must remain absent"
 assert not any("PackageInstaller" in path.read_text(encoding="utf-8") for path in main.rglob("*.java")), "PackageInstaller handoff must not ship in main source"
 assert not list(updater_dir.glob("*PackageInstaller*.java")), "PackageInstaller adapter/status source must be absent"
