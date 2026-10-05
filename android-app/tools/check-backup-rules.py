@@ -20,6 +20,9 @@ store_source = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.jav
 assert 'new File(context.getFilesDir(), "tasks.enc")' in store_source, (
     "update backup exclusions if the task store path changes"
 )
+assert 'new File(storeFile.getParentFile(), "tasks.enc.tmp")' in store_source, (
+    "update backup exclusions if the temporary file path changes"
+)
 expected = {("file", "tasks.enc"), ("file", "tasks.enc.tmp")}
 
 modern = ET.parse(ROOT / "app/src/main/res/xml/data_extraction_rules.xml").getroot()
