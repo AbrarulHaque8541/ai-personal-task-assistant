@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -15,6 +16,7 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -30,6 +32,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.provider.DocumentsContract;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -43,6 +46,13 @@ import android.widget.Toast;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -51,6 +61,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
+    private static final int REQUEST_ATTACH_DOCUMENT = 7341;
+    private static final int REQUEST_PORTABLE_EXPORT = 7342;
+    private static final int REQUEST_PORTABLE_IMPORT = 7343;
+    private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
+    private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
+    private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
     private static final String PREFERENCES = "daymark.preferences.v1";
     private static final String THEME_KEY = "theme_mode";
     private static final int THEME_SYSTEM = 0;
@@ -71,6 +87,27 @@ public final class MainActivity extends Activity {
 
     private ExecutorService storageExecutor;
     private EncryptedTaskStore taskStore;
+    private AndroidAttachmentStore attachmentStore;
+    private PortableBackupManager portableBackupManager;
+    private boolean attachmentBusy;
+    private volatile boolean portableBusy;
+    private volatile boolean portableCanCancel;
+    private volatile boolean portableCancelRequested;
+    private volatile boolean portableRestoreWorkerActive;
+    private volatile byte[] pendingRecoveryKey;
+    private File pendingExportArchive;
+    private Uri pendingPortableImportUri;
+    private String pendingPortableImportOperationToken;
+    private Uri activePortableImportUri;
+    private String activePortableImportOperationToken;
+    private boolean pendingPortableImportNeedsRepick;
+    private boolean portableImportCleanupActive;
+    private final Object attachmentCancelLock = new Object();
+    private volatile boolean attachmentCancelRequested;
+    private boolean attachmentCanCancel;
+    private String pendingAttachmentTaskId;
+    private Uri pendingPickedAttachmentUri;
+    private String pendingPickedAttachmentTaskId;
     private boolean storageReady;
     private boolean storageLoading = true;
     private boolean storageLoadFailed;
@@ -86,6 +123,9 @@ public final class MainActivity extends Activity {
     private String searchQuery = "";
     private Task pendingDeletedTask;
     private int pendingDeletedIndex;
+    private Task pendingAttachmentCleanupTask;
+    private boolean pendingAttachmentCleanupSaved;
+    private boolean pendingAttachmentCleanupExpired;
     private Runnable undoDismissal;
     private Palette palette;
 
@@ -100,6 +140,7 @@ public final class MainActivity extends Activity {
     private TextView dueTodayCount;
     private TextView taskCount;
     private TextView storageStatus;
+    private Button cancelAttachmentButton;
     private TextView emptyTitle;
     private TextView emptyCopy;
     private Button addTaskButton;
@@ -128,6 +169,27 @@ public final class MainActivity extends Activity {
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
+        attachmentStore = new AndroidAttachmentStore(getApplicationContext());
+        portableBackupManager = new PortableBackupManager(getApplicationContext());
+        if (savedInstanceState != null) {
+            pendingAttachmentTaskId = savedInstanceState.getString(STATE_PENDING_ATTACHMENT_TASK);
+            String savedPortableUri = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_URI);
+            String savedPortableToken = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_TOKEN);
+            if (savedPortableUri != null || savedPortableToken != null) {
+                try {
+                    PortableImportGrantRecovery.Selection restored = portableBackupManager
+                            .restorePendingPortableImportSelection(savedPortableUri, savedPortableToken);
+                    if (restored != null) {
+                        pendingPortableImportUri = Uri.parse(restored.uri);
+                        pendingPortableImportOperationToken = restored.operationToken;
+                    } else {
+                        pendingPortableImportNeedsRepick = true;
+                    }
+                } catch (IOException invalidSavedSelection) {
+                    pendingPortableImportNeedsRepick = true;
+                }
+            }
+        }
         buildInterface();
         loadEncryptedTasks();
     }
@@ -135,8 +197,75 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
+        portableCancelRequested = true;
+        if (!portableRestoreWorkerActive) {
+            PortableBackupCodec.clear(pendingRecoveryKey);
+            pendingRecoveryKey = null;
+        }
+        if (pendingExportArchive != null && pendingExportArchive.exists()) pendingExportArchive.delete();
+        if (!isChangingConfigurations()) discardPendingPortableImport();
         if (storageExecutor != null) storageExecutor.shutdown();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        if (pendingAttachmentTaskId != null) {
+            state.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
+        }
+        PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
+        if (pendingSelection != null) {
+            try {
+                PortableImportGrantRecovery.ActivityState saved = portableBackupManager
+                        .activityStateForSelection(pendingSelection);
+                if (saved != null) {
+                    state.putString(STATE_PENDING_PORTABLE_IMPORT_URI, saved.uri);
+                    state.putString(STATE_PENDING_PORTABLE_IMPORT_TOKEN, saved.operationToken);
+                }
+            } catch (IOException ignored) {
+                // An incomplete or unreadable journal is recovered conservatively on startup.
+            }
+        }
+        super.onSaveInstanceState(state);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_ATTACH_DOCUMENT) {
+            String taskId = pendingAttachmentTaskId;
+            pendingAttachmentTaskId = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            if (taskId == null) {
+                showToast("The task was no longer available. Choose it again to attach this file.");
+                return;
+            }
+            if (!storageReady && storageLoading) {
+                pendingPickedAttachmentUri = data.getData();
+                pendingPickedAttachmentTaskId = taskId;
+                showToast("Opening encrypted tasks; the selected file will be read after they are ready.");
+                return;
+            }
+            importAttachment(taskId, data.getData());
+            return;
+        }
+        if (requestCode == REQUEST_PORTABLE_EXPORT) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+                finishPortableExport("Backup export cancelled. No task data was changed.");
+                return;
+            }
+            if (pendingRecoveryKey == null || pendingExportArchive == null) {
+                finishPortableExport("The recovery key was cleared before export finished. Start a new export.");
+                return;
+            }
+            writePortableExport(data.getData(), pendingExportArchive);
+            return;
+        }
+        if (requestCode == REQUEST_PORTABLE_IMPORT) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            if (!retainPortableImportUri(data.getData(), data.getFlags())) return;
+            showPortableImportKeyDialog();
+        }
     }
 
     private int themeResource(int mode) {
@@ -268,6 +397,11 @@ public final class MainActivity extends Activity {
         storageStatus.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         storageStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         card.addView(storageStatus);
+        cancelAttachmentButton = compactButton("Cancel import", true);
+        cancelAttachmentButton.setContentDescription("Cancel the active import or backup before it is committed");
+        cancelAttachmentButton.setVisibility(View.GONE);
+        cancelAttachmentButton.setOnClickListener(view -> requestOperationCancel());
+        copy.addView(cancelAttachmentButton, topMargin(dp(4)));
         content.addView(card, bottomMargin(dp(15)));
     }
 
@@ -441,7 +575,7 @@ public final class MainActivity extends Activity {
     private View emptyStateView;
 
     private void addLocalStorageNote(LinearLayout content) {
-        TextView note = text("Your tasks stay in this app on this device. They are not backed up or synced.",
+        TextView note = text("Tasks and attachments stay encrypted in this app on this device. No cloud sync or automatic backup.",
                 12, palette.muted, Typeface.NORMAL);
         note.setGravity(Gravity.CENTER);
         note.setPadding(dp(4), dp(10), dp(4), dp(6));
@@ -500,18 +634,29 @@ public final class MainActivity extends Activity {
         storageLoading = true;
         storageStatus.setText("Opening encrypted storage…");
         render();
+        PortableImportGrantRecovery.Selection restoredSelection = pendingPortableImportSelection();
         storageExecutor.execute(() -> {
             List<Task> loaded = null;
             Exception failure = null;
+            boolean portableSelectionPreserved = false;
             try {
-                loaded = taskStore.load();
+                PortableImportGrantRecovery.awaitNoActivityRestoreWorker();
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    loaded = taskStore.load();
+                    portableSelectionPreserved = portableBackupManager.reconcileStartupImportUri(
+                            loaded, attachmentStore, restoredSelection);
+                    try { attachmentStore.cleanupOrphans(attachmentIds(loaded)); }
+                    catch (Exception ignored) { /* Retry orphan cleanup on a later launch. */ }
+                    portableBackupManager.cleanupTransientFiles();
+                }
             } catch (Exception exception) {
                 failure = exception;
             }
             List<Task> result = loaded;
             Exception error = failure;
+            boolean selectionPreserved = portableSelectionPreserved;
             mainHandler.post(() -> {
-                if (isFinishing()) return;
+                if (isFinishing() || isDestroyed()) return;
                 storageLoading = false;
                 if (error == null) {
                     tasks.clear();
@@ -522,9 +667,11 @@ public final class MainActivity extends Activity {
                     storageLoadFailed = false;
                     storageSaveFailed = false;
                     storageFailureDetails = null;
-                    storageStatus.setText("Encrypted storage ready");
-                    storageStatus.setTextColor(palette.accent);
+                    storageStatus.setText(attachmentBusy ? "Importing attachment…" : "Encrypted storage ready");
+                    storageStatus.setTextColor(attachmentBusy ? palette.muted : palette.accent);
                 } else {
+                    pendingPickedAttachmentUri = null;
+                    pendingPickedAttachmentTaskId = null;
                     storageReady = false;
                     storageLoadFailed = true;
                     storageFailureDetails = storageFailureDetails(error);
@@ -533,7 +680,27 @@ public final class MainActivity extends Activity {
                     captureFeedback.setText("Saved tasks could not be opened. The app did not save or clear data; editing is paused.");
                     showToast("Saved tasks are unavailable. The encrypted data was not cleared; editing is paused.");
                 }
+                if (error == null && restoredSelection != null && !selectionPreserved
+                        && restoredSelection.uri.equals(pendingPortableImportUri == null
+                        ? null : pendingPortableImportUri.toString())
+                        && restoredSelection.operationToken.equals(pendingPortableImportOperationToken)) {
+                    pendingPortableImportUri = null;
+                    pendingPortableImportOperationToken = null;
+                    pendingPortableImportNeedsRepick = true;
+                }
                 render();
+                if (pendingPortableImportNeedsRepick) {
+                    pendingPortableImportNeedsRepick = false;
+                    showToast("Access to the selected backup was not retained. Choose the backup again to restore it.");
+                }
+                if (error == null && pendingPortableImportUri != null) showPortableImportKeyDialog();
+                if (error == null && pendingPickedAttachmentUri != null) {
+                    Uri picked = pendingPickedAttachmentUri;
+                    String pickedTaskId = pendingPickedAttachmentTaskId;
+                    pendingPickedAttachmentUri = null;
+                    pendingPickedAttachmentTaskId = null;
+                    importAttachment(pickedTaskId, picked);
+                }
             });
         });
     }
@@ -557,13 +724,22 @@ public final class MainActivity extends Activity {
                 if (error == null) {
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(snapshot);
+                    if (pendingAttachmentCleanupTask != null
+                            && findTaskIn(snapshot, pendingAttachmentCleanupTask.id) == null) {
+                        pendingAttachmentCleanupSaved = true;
+                        cleanupDeletedAttachmentsIfReady();
+                    }
                     if (revision == saveRevision) {
                         storageReady = true;
                         storageSaveFailed = false;
-                        storageStatus.setText("Encrypted storage ready");
-                        storageStatus.setTextColor(palette.accent);
+                        storageStatus.setText(attachmentBusy ? "Importing attachment…" : "Encrypted storage ready");
+                        storageStatus.setTextColor(attachmentBusy ? palette.muted : palette.accent);
                     }
                 } else if (revision == saveRevision) {
+                    if (pendingAttachmentCleanupTask != null && !pendingAttachmentCleanupSaved) {
+                        pendingAttachmentCleanupTask = null;
+                        pendingAttachmentCleanupExpired = false;
+                    }
                     storageReady = false;
                     storageSaveFailed = true;
                     storageStatus.setText("Not saved · unsaved changes are shown");
@@ -623,10 +799,10 @@ public final class MainActivity extends Activity {
         }
         openCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(open));
         dueTodayCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(dueToday));
-        addTaskButton.setEnabled(storageReady);
-        addTaskButton.setAlpha(storageReady ? 1f : 0.55f);
-        addDetailsButton.setEnabled(storageReady);
-        quickCaptureInput.setEnabled(storageReady);
+        addTaskButton.setEnabled(canEdit());
+        addTaskButton.setAlpha(canEdit() ? 1f : 0.55f);
+        addDetailsButton.setEnabled(canEdit());
+        quickCaptureInput.setEnabled(canEdit());
         if (searchInput != null) searchInput.setEnabled(!storageLoading && !storageLoadFailed);
         for (View powerOnly : powerOnlyViews) {
             powerOnly.setVisibility(powerMode ? View.VISIBLE : View.GONE);
@@ -747,7 +923,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addQuickTask() {
-        if (!storageReady) return;
+        if (!canEdit()) return;
         String title = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString().trim();
         if (title.isEmpty()) {
             quickCaptureInput.setError("Type a task first");
@@ -823,7 +999,7 @@ public final class MainActivity extends Activity {
         checkBox.setContentDescription(task.completed
                 ? "Mark “" + task.title + "” as not done"
                 : "Mark “" + task.title + "” as done");
-        checkBox.setEnabled(storageReady);
+        checkBox.setEnabled(canEdit());
         row.addView(checkBox, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         LinearLayout copy = new LinearLayout(this);
@@ -835,21 +1011,27 @@ public final class MainActivity extends Activity {
         TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT),
                 12, dueColor(task), Typeface.NORMAL);
         copy.addView(details, topMargin(dp(4)));
+        Button attachments = compactButton("Files · " + task.attachments.size(), false);
+        attachments.setContentDescription("Manage " + task.attachments.size()
+                + " attachments for task: " + task.title);
+        attachments.setEnabled(canEdit());
+        attachments.setOnClickListener(view -> showAttachmentManager(task));
+        copy.addView(attachments, topMargin(dp(4)));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         Button edit = compactButton("Edit", false);
         edit.setContentDescription("Edit task: " + task.title);
-        edit.setEnabled(storageReady);
+        edit.setEnabled(canEdit());
         edit.setOnClickListener(view -> showTaskEditor(task));
         row.addView(edit);
         Button delete = compactButton("Delete", true);
         delete.setContentDescription("Delete task: " + task.title);
-        delete.setEnabled(storageReady);
+        delete.setEnabled(canEdit() && pendingDeletedTask == null);
         delete.setOnClickListener(view -> confirmDeleteTask(task));
         row.addView(delete);
 
         checkBox.setOnCheckedChangeListener((button, checked) -> {
-            if (!storageReady || checked == task.completed) return;
+            if (!canEdit() || checked == task.completed) return;
             replaceTask(TaskLogic.toggleCompleted(task));
             render();
             saveTasksAsync();
@@ -875,12 +1057,362 @@ public final class MainActivity extends Activity {
         return palette.muted;
     }
 
+    private boolean canEdit() {
+        return storageReady && !attachmentBusy && !portableBusy;
+    }
+
+    private void showAttachmentManager(Task task) {
+        if (!canEdit()) return;
+        Task current = findTask(task.id);
+        if (current == null) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+        TextView limits = text("Up to 5 files per task and 100 files overall · 20 MiB each · 100 MiB total. Files are encrypted here. A limited format allowlist can be sent to another app only after you choose Open; all files remain untrusted, and unknown or active formats cannot be opened by Daymark.",
+                12, palette.muted, Typeface.NORMAL);
+        limits.setLineSpacing(dp(2), 1f);
+        content.addView(limits, bottomMargin(dp(9)));
+        if (current.attachments.isEmpty()) {
+            content.addView(text("No files attached yet.", 13, palette.muted, Typeface.NORMAL), bottomMargin(dp(8)));
+        }
+        for (AttachmentRef attachment : current.attachments) {
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setPadding(dp(9), dp(7), dp(9), dp(7));
+            item.setBackground(shape(palette.surface, 9, palette.line));
+            boolean present = attachmentStore.exists(attachment.id);
+            String detail = attachment.displayName + "\n" + formatFileSize(attachment.sizeBytes)
+                    + " · " + attachment.mimeType + (present ? " · stored" : " · file unavailable");
+            TextView label = text(detail, 12, present ? palette.text : palette.danger, Typeface.NORMAL);
+            label.setContentDescription(detail);
+            item.addView(label, bottomMargin(dp(3)));
+            if (AttachmentLogic.isSafeToOpenExternally(attachment)) {
+                Button open = compactButton("Open with another app", false);
+                open.setContentDescription("Choose another app to open " + attachment.displayName);
+                open.setEnabled(present);
+                open.setOnClickListener(view -> confirmExternalOpen(attachment));
+                item.addView(open, bottomMargin(dp(3)));
+            }
+            Button remove = compactButton("Remove attachment", true);
+            remove.setContentDescription("Remove attachment " + attachment.displayName);
+            remove.setOnClickListener(view -> {
+                confirmRemoveAttachment(current.id, attachment);
+            });
+            item.addView(remove);
+            content.addView(item, bottomMargin(dp(7)));
+        }
+        Button add = compactButton("Attach a photo, audio, video, or document", false);
+        add.setContentDescription("Choose a photo, audio, video, or document using Android's document picker");
+        add.setOnClickListener(view -> {
+            Task latest = findTask(current.id);
+            if (latest != null && AttachmentLogic.canAddToTask(latest, tasks)) {
+                openAttachmentPicker(latest.id);
+            } else {
+                showToast("The attachment limit has been reached.");
+            }
+        });
+        content.addView(add, topMargin(dp(4)));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        new AlertDialog.Builder(this).setTitle("Attachments").setView(scroll)
+                .setPositiveButton("Done", null).show();
+    }
+
+    private void confirmExternalOpen(AttachmentRef attachment) {
+        if (!AttachmentLogic.isSafeToOpenExternally(attachment) || !attachmentStore.exists(attachment.id)) {
+            showToast("No safe external opener is available for this file.");
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Share with another app?")
+                .setMessage("Daymark will stream a read-only decrypted copy of “" + attachment.displayName
+                        + "” to the app you choose. That app may retain it. Files are untrusted; Daymark never opens them automatically or executes them.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Choose app", (dialog, which) -> openWithAnotherApp(attachment))
+                .show();
+    }
+
+    private void openWithAnotherApp(AttachmentRef attachment) {
+        if (!AttachmentLogic.isSafeToOpenExternally(attachment) || !attachmentStore.exists(attachment.id)) {
+            showToast("The attachment is no longer available.");
+            return;
+        }
+        Uri uri = new Uri.Builder().scheme("content")
+                .authority(getPackageName() + ".attachments")
+                .appendPath(attachment.id).build();
+        Intent view = new Intent(Intent.ACTION_VIEW);
+        view.setDataAndType(uri, attachment.mimeType);
+        view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        view.setClipData(ClipData.newRawUri(attachment.displayName, uri));
+        try {
+            startActivity(Intent.createChooser(view, "Choose an app to open attachment"));
+        } catch (android.content.ActivityNotFoundException exception) {
+            showToast("No app can open this file type. It remains attached in Daymark.");
+        }
+    }
+
+    private void openAttachmentPicker(String taskId) {
+        if (!canEdit()) return;
+        Task task = findTask(taskId);
+        if (task == null || !AttachmentLogic.canAddToTask(task, tasks)) {
+            showToast("The attachment limit has been reached.");
+            return;
+        }
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("*/*");
+        pendingAttachmentTaskId = taskId;
+        try {
+            startActivityForResult(picker, REQUEST_ATTACH_DOCUMENT);
+        } catch (android.content.ActivityNotFoundException exception) {
+            pendingAttachmentTaskId = null;
+            showToast("Android's document picker is not available on this device.");
+        }
+    }
+
+    private void importAttachment(String taskId, Uri selectedUri) {
+        if (!canEdit()) return;
+        Task target = findTask(taskId);
+        if (target == null || !AttachmentLogic.canAddToTask(target, tasks)) {
+            showToast("The task or available attachment space is no longer available.");
+            return;
+        }
+        attachmentBusy = true;
+        ++saveRevision;
+        synchronized (attachmentCancelLock) {
+            attachmentCancelRequested = false;
+            attachmentCanCancel = true;
+        }
+        cancelAttachmentButton.setText("Cancel import");
+        cancelAttachmentButton.setEnabled(true);
+        cancelAttachmentButton.setVisibility(View.VISIBLE);
+        List<Task> snapshot = new ArrayList<>(tasks);
+        storageStatus.setText("Importing encrypted attachment…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        storageExecutor.execute(() -> {
+            String newId = AttachmentBlobStore.newId();
+            List<Task> committed = null;
+            Exception failure = null;
+            boolean saveAttempted = false;
+            boolean cleanupDeferred = false;
+            try {
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    AndroidAttachmentStore.Imported imported = attachmentStore.importSelected(selectedUri, taskId, newId,
+                            AttachmentLogic.remainingBytes(snapshot), () -> {
+                                synchronized (attachmentCancelLock) { return attachmentCancelRequested; }
+                            });
+                    Task current = findTaskIn(snapshot, taskId);
+                    if (current == null) throw new AttachmentQuotaException();
+                    List<AttachmentRef> references = new ArrayList<>(current.attachments);
+                    references.add(new AttachmentRef(imported.id, imported.displayName, imported.mimeType,
+                            imported.sizeBytes));
+                    List<Task> next = replaceTaskInSnapshot(snapshot, current.withAttachments(references));
+                    if (!TaskLogic.isValidTaskList(next)) throw new AttachmentQuotaException();
+                    synchronized (attachmentCancelLock) {
+                        if (attachmentCancelRequested) throw new AttachmentBlobStore.CancelledException();
+                        attachmentCanCancel = false;
+                    }
+                    mainHandler.post(() -> {
+                        if (isFinishing()) return;
+                        storageStatus.setText("Saving attachment metadata…");
+                        if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
+                    });
+                    saveAttempted = true;
+                    taskStore.save(next);
+                    committed = next;
+                }
+            } catch (Exception exception) {
+                failure = exception;
+                if (saveAttempted) {
+                    // The task snapshot may have committed before a later verification failed.
+                    // Keep the payload until a successful load can reconcile its references.
+                    cleanupDeferred = true;
+                } else {
+                    try {
+                        synchronized (AndroidAttachmentStore.transactionLock()) { attachmentStore.delete(newId); }
+                    } catch (Exception ignored) { cleanupDeferred = true; }
+                }
+            } finally {
+                synchronized (attachmentCancelLock) { attachmentCanCancel = false; }
+            }
+            List<Task> saved = committed;
+            Exception error = failure;
+            boolean saveOutcomeAmbiguous = saveAttempted && error != null;
+            boolean cleanupPending = cleanupDeferred;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                attachmentBusy = false;
+                if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
+                if (error == null && saved != null) {
+                    tasks.clear();
+                    tasks.addAll(saved);
+                    lastSavedTasks.clear();
+                    lastSavedTasks.addAll(saved);
+                    storageReady = true;
+                    storageSaveFailed = false;
+                    storageStatus.setText("Encrypted storage ready");
+                    storageStatus.setTextColor(palette.accent);
+                    showToast("Attachment saved privately on this device.");
+                } else if (saveOutcomeAmbiguous) {
+                    storageReady = false;
+                    storageSaveFailed = true;
+                    storageStatus.setText("Attachment save could not be verified");
+                    storageStatus.setTextColor(palette.danger);
+                    captureFeedback.setText("The attachment save could not be verified. No automatic reset was performed; editing is paused. Reopen Daymark to reconcile the saved snapshot.");
+                    showToast("Attachment save could not be verified. The encrypted copy was retained; reopen Daymark to check saved data.");
+                } else {
+                    storageStatus.setText(storageReady ? "Encrypted storage ready" : "Saved tasks unavailable");
+                    storageStatus.setTextColor(storageReady ? palette.accent : palette.danger);
+                    showToast(attachmentFailureMessage(error, cleanupPending));
+                }
+                render();
+            });
+        });
+    }
+
+    private void requestAttachmentCancel() {
+        boolean accepted;
+        synchronized (attachmentCancelLock) {
+            accepted = attachmentBusy && attachmentCanCancel;
+            if (accepted) attachmentCancelRequested = true;
+        }
+        if (accepted) {
+            cancelAttachmentButton.setText("Cancelling…");
+            cancelAttachmentButton.setEnabled(false);
+        } else {
+            showToast("The attachment is already being saved and can no longer be cancelled.");
+        }
+    }
+
+    private String attachmentFailureMessage(Exception failure, boolean cleanupPending) {
+        String message;
+        if (failure instanceof AttachmentBlobStore.CancelledException) {
+            message = "Attachment import cancelled. No attachment was saved.";
+        } else if (failure instanceof AttachmentBlobStore.StorageSpaceException) {
+            message = "There is not enough free space to copy this attachment safely.";
+        } else if (failure instanceof AttachmentBlobStore.FileLimitException) {
+            message = "That file exceeds the 20 MiB per-file limit.";
+        } else if (failure instanceof AttachmentBlobStore.StorageLimitException
+                || failure instanceof AttachmentQuotaException) {
+            message = "The attachment count or 100 MiB total storage limit has been reached.";
+        } else if (failure instanceof SecurityException || failure instanceof java.io.IOException) {
+            message = "Daymark could not read or safely copy that file. It may be unavailable from the selected provider.";
+        } else {
+            message = "The attachment could not be saved.";
+        }
+        return cleanupPending ? message + " An encrypted copy was retained; the next successful task load will keep it if referenced or remove it if orphaned." : message;
+    }
+
+    private void confirmRemoveAttachment(String taskId, AttachmentRef attachment) {
+        new AlertDialog.Builder(this).setTitle("Remove attachment?")
+                .setMessage("Remove “" + attachment.displayName + "” from this task and delete its local encrypted copy?")
+                .setNegativeButton("Keep", null)
+                .setPositiveButton("Remove", (dialog, which) -> removeAttachment(taskId, attachment.id))
+                .show();
+    }
+
+    private void removeAttachment(String taskId, String attachmentId) {
+        if (!canEdit()) return;
+        Task current = findTask(taskId);
+        if (current == null) return;
+        List<AttachmentRef> remaining = new ArrayList<>();
+        for (AttachmentRef attachment : current.attachments) {
+            if (!attachment.id.equals(attachmentId)) remaining.add(attachment);
+        }
+        if (remaining.size() == current.attachments.size()) return;
+        List<Task> snapshot = replaceTaskInSnapshot(new ArrayList<>(tasks), current.withAttachments(remaining));
+        attachmentBusy = true;
+        long revision = ++saveRevision;
+        storageStatus.setText("Removing attachment…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        storageExecutor.execute(() -> {
+            Exception failure = null;
+            boolean deleted = false;
+            try {
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    taskStore.save(snapshot);
+                    try {
+                        attachmentStore.delete(attachmentId);
+                        deleted = true;
+                    } catch (Exception cleanupError) {
+                        // The unreferenced encrypted payload is retried by startup cleanup.
+                    }
+                }
+            } catch (Exception exception) {
+                failure = exception;
+            }
+            Exception error = failure;
+            boolean payloadDeleted = deleted;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                attachmentBusy = false;
+                if (error == null) {
+                    tasks.clear();
+                    tasks.addAll(snapshot);
+                    lastSavedTasks.clear();
+                    lastSavedTasks.addAll(snapshot);
+                    storageReady = true;
+                    storageSaveFailed = false;
+                    storageStatus.setText("Encrypted storage ready");
+                    storageStatus.setTextColor(palette.accent);
+                    showToast(payloadDeleted ? "Attachment removed and local copy deleted."
+                            : "Attachment removed; local cleanup will retry on next launch.");
+                } else if (revision == saveRevision) {
+                    storageReady = false;
+                    storageSaveFailed = true;
+                    storageStatus.setText("Attachment removal not saved");
+                    storageStatus.setTextColor(palette.danger);
+                    captureFeedback.setText("Attachment removal was not saved. Editing is paused; the previous saved task remains.");
+                    showToast("Attachment removal was not saved. Editing is paused.");
+                }
+                render();
+            });
+        });
+    }
+
+    private Task findTask(String id) {
+        for (Task task : tasks) if (task.id.equals(id)) return task;
+        return null;
+    }
+
+    private Task findTaskIn(List<Task> snapshot, String id) {
+        for (Task task : snapshot) if (task.id.equals(id)) return task;
+        return null;
+    }
+
+    private List<Task> replaceTaskInSnapshot(List<Task> snapshot, Task replacement) {
+        for (int index = 0; index < snapshot.size(); index++) {
+            if (snapshot.get(index).id.equals(replacement.id)) {
+                snapshot.set(index, replacement);
+                return snapshot;
+            }
+        }
+        throw new IllegalArgumentException("The task is no longer available.");
+    }
+
+    private java.util.Set<String> attachmentIds(List<Task> source) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        if (source != null) {
+            for (Task task : source) for (AttachmentRef attachment : task.attachments) ids.add(attachment.id);
+        }
+        return ids;
+    }
+
+    private String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format(Locale.ROOT, "%.1f KiB", bytes / 1024.0);
+        return String.format(Locale.ROOT, "%.1f MiB", bytes / (1024.0 * 1024.0));
+    }
+
+    private static final class AttachmentQuotaException extends Exception { }
+
     private void showTaskEditor(Task editing) {
         showTaskEditor(editing, "");
     }
 
     private void showTaskEditor(Task editing, String draftTitle) {
-        if (!storageReady) {
+        if (!canEdit()) {
             showToast("Encrypted task storage is unavailable; edits are paused.");
             return;
         }
@@ -1031,7 +1563,7 @@ public final class MainActivity extends Activity {
     }
 
     private void deleteTask(Task task) {
-        if (!storageReady) return;
+        if (!canEdit() || pendingDeletedTask != null) return;
         int index = -1;
         for (int i = 0; i < tasks.size(); i++) {
             if (tasks.get(i).id.equals(task.id)) { index = i; break; }
@@ -1039,13 +1571,16 @@ public final class MainActivity extends Activity {
         if (index < 0) return;
         pendingDeletedIndex = index;
         pendingDeletedTask = tasks.remove(index);
+        pendingAttachmentCleanupTask = pendingDeletedTask;
+        pendingAttachmentCleanupSaved = false;
+        pendingAttachmentCleanupExpired = false;
         undoMessage.setText("Task deleted.");
         undoBar.setVisibility(View.VISIBLE);
         // Bring focus to Undo so screen-reader and keyboard users can act on the
         // seven-second recovery window without having to find the control.
         undoButton.requestFocus();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
-        undoDismissal = this::hideUndoBar;
+        undoDismissal = this::expireUndoWindow;
         mainHandler.postDelayed(undoDismissal, 7000);
         render();
         saveTasksAsync();
@@ -1061,19 +1596,49 @@ public final class MainActivity extends Activity {
     }
 
     private void undoDelete() {
-        if (pendingDeletedTask == null || !storageReady) return;
+        if (pendingDeletedTask == null || !canEdit()) return;
         for (Task task : tasks) {
             if (task.id.equals(pendingDeletedTask.id)) {
+                pendingAttachmentCleanupTask = null;
+                pendingAttachmentCleanupSaved = false;
+                pendingAttachmentCleanupExpired = false;
                 hideUndoBar();
                 return;
             }
         }
         tasks.add(Math.min(pendingDeletedIndex, tasks.size()), pendingDeletedTask);
+        pendingAttachmentCleanupTask = null;
+        pendingAttachmentCleanupSaved = false;
+        pendingAttachmentCleanupExpired = false;
         pendingDeletedTask = null;
         hideUndoBar();
         render();
         saveTasksAsync();
         showToast("Task restored.");
+    }
+
+    private void expireUndoWindow() {
+        pendingAttachmentCleanupExpired = true;
+        hideUndoBar();
+        cleanupDeletedAttachmentsIfReady();
+    }
+
+    private void cleanupDeletedAttachmentsIfReady() {
+        if (pendingAttachmentCleanupTask == null || !pendingAttachmentCleanupSaved
+                || !pendingAttachmentCleanupExpired) return;
+        pendingAttachmentCleanupTask = null;
+        pendingAttachmentCleanupSaved = false;
+        pendingAttachmentCleanupExpired = false;
+        storageExecutor.execute(() -> {
+            try {
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    List<Task> latest = taskStore.load();
+                    attachmentStore.cleanupOrphans(attachmentIds(latest));
+                }
+            } catch (Exception ignored) {
+                // A later launch retries cleanup; task metadata is already durably removed.
+            }
+        });
     }
 
     private void hideUndoBar() {
@@ -1105,6 +1670,580 @@ public final class MainActivity extends Activity {
         render();
     }
 
+    private void showPortableBackupDialog() {
+        if (!canEdit()) {
+            showToast("Encrypted storage must be ready before creating or restoring a backup.");
+            return;
+        }
+        String message = "Create a new encrypted .dmbackup file or add tasks from one. Restore never replaces tasks; repeated imports of the same backup are blocked on this device.\n\n"
+                + "Attachment payloads are limited to 20 MiB each and 100 MiB total (100 attachments overall, five per task). The complete archive is limited to 110 MiB, measured from streamed bytes; import does not trust provider size hints.\n\n"
+                + "Export uses a randomly generated recovery key shown once. Loss of that key means no restore, and Daymark cannot verify where you save it. No passphrase or online service is used.\n\n"
+                + "Task text, attachment names, MIME types and contents are encrypted. The outer format/version, backup ID, record-type flags, record count, exact attachment sizes and opaque task-association tokens remain visible. Daymark has no vendor login, network client, upload or sync; the document provider you choose may be remote and use its own network or sign-in.";
+        new AlertDialog.Builder(this)
+                .setTitle("Encrypted portable backup")
+                .setMessage(message)
+                .setItems(new String[] { "Export encrypted backup", "Import backup as new tasks" },
+                        (dialog, selected) -> {
+                            if (selected == 0) showRecoveryKeyAcknowledgement();
+                            else choosePortableImport();
+                        })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void showRecoveryKeyAcknowledgement() {
+        if (!canEdit()) return;
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        String printable;
+        try {
+            printable = PortableBackupCodec.encodeRecoveryKey(key);
+        } catch (Exception failure) {
+            PortableBackupCodec.clear(key);
+            showToast("A recovery key could not be generated securely.");
+            return;
+        }
+        pendingRecoveryKey = key;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(22), dp(8), dp(22), dp(8));
+        TextView warning = text("Save this key somewhere separate from the backup file. Anyone with the backup and key can read its contents. If you lose the key, the backup cannot be restored. Daymark does not keep a copy.",
+                14, palette.text, Typeface.NORMAL);
+        warning.setLineSpacing(dp(3), 1f);
+        content.addView(warning, bottomMargin(dp(12)));
+        TextView keyView = text(printable, 18, palette.text, Typeface.BOLD);
+        keyView.setTextIsSelectable(false);
+        keyView.setGravity(Gravity.CENTER);
+        keyView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        content.addView(keyView, bottomMargin(dp(12)));
+        CheckBox acknowledgement = new CheckBox(this);
+        acknowledgement.setText("I saved the key separately. I understand losing it means no restore.");
+        acknowledgement.setTextColor(palette.text);
+        acknowledgement.setTextSize(14 * textScale);
+        content.addView(acknowledgement);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Save your recovery key")
+                .setView(scroll)
+                .setNegativeButton("Cancel export", null)
+                .setPositiveButton("Continue to create file", null)
+                .create();
+        Window dialogWindow = dialog.getWindow();
+        if (dialogWindow != null) {
+            dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
+        final boolean[] continueExport = { false };
+        dialog.setOnShowListener(ignored -> {
+            Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            positive.setEnabled(false);
+            acknowledgement.setOnCheckedChangeListener((button, checked) -> positive.setEnabled(checked));
+            positive.setOnClickListener(view -> {
+                if (!acknowledgement.isChecked()) return;
+                continueExport[0] = true;
+                dialog.dismiss();
+                beginPortableExport(key);
+            });
+        });
+        dialog.setOnDismissListener(ignored -> {
+            keyView.setText("");
+            Window window = dialog.getWindow();
+            if (window != null) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            if (!continueExport[0]) {
+                PortableBackupCodec.clear(key);
+                if (pendingRecoveryKey == key) pendingRecoveryKey = null;
+            }
+        });
+        dialog.show();
+    }
+
+    private void beginPortableExport(byte[] recoveryKey) {
+        if (!canEdit()) {
+            PortableBackupCodec.clear(recoveryKey);
+            pendingRecoveryKey = null;
+            showToast("Encrypted storage is not ready for export.");
+            return;
+        }
+        pendingRecoveryKey = recoveryKey;
+        portableBusy = true;
+        portableCanCancel = true;
+        portableCancelRequested = false;
+        cancelAttachmentButton.setText("Cancel backup");
+        cancelAttachmentButton.setEnabled(true);
+        cancelAttachmentButton.setVisibility(View.VISIBLE);
+        List<Task> snapshot = new ArrayList<>(tasks);
+        storageStatus.setText("Encrypting private backup…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        storageExecutor.execute(() -> {
+            File staged = null;
+            Exception failure = null;
+            try {
+                staged = portableBackupManager.createExportStageFile();
+                try (FileOutputStream output = new FileOutputStream(staged)) {
+                    PortableBackupCodec.writeArchive(output, recoveryKey, snapshot,
+                            (task, attachment) -> attachmentStore.openDecrypted(task.id, attachment.id),
+                            new SecureRandom(), () -> portableCancelRequested);
+                    output.flush();
+                    output.getFD().sync();
+                }
+            } catch (Exception exception) {
+                failure = exception;
+            }
+            File completedStage = staged;
+            Exception error = failure;
+            mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    if (completedStage != null && completedStage.exists()) completedStage.delete();
+                    PortableBackupCodec.clear(recoveryKey);
+                    return;
+                }
+                pendingExportArchive = completedStage;
+                if (error != null || completedStage == null) {
+                    String reason = portableCancelRequested
+                            ? "Backup export cancelled. No task data was changed."
+                            : "Daymark could not create a safe encrypted backup. No task data was changed.";
+                    finishPortableExport(reason);
+                    return;
+                }
+                storageStatus.setText("Choose a destination for the new backup file…");
+                Intent picker = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                picker.addCategory(Intent.CATEGORY_OPENABLE);
+                picker.setType("application/octet-stream");
+                picker.putExtra(Intent.EXTRA_TITLE, "daymark-backup.dmbackup");
+                try {
+                    startActivityForResult(picker, REQUEST_PORTABLE_EXPORT);
+                } catch (android.content.ActivityNotFoundException exception) {
+                    finishPortableExport("Android's document picker is not available. No task data was changed.");
+                }
+            });
+        });
+    }
+
+    private void writePortableExport(Uri destination, File stagedArchive) {
+        portableBusy = true;
+        portableCanCancel = true;
+        portableCancelRequested = false;
+        storageStatus.setText("Writing encrypted backup through Android's document picker…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        storageExecutor.execute(() -> {
+            Exception failure = null;
+            OutputStream output = null;
+            try (InputStream input = new FileInputStream(stagedArchive)) {
+                output = getContentResolver().openOutputStream(destination, "w");
+                if (output == null) throw new IOException("The document provider did not open the new file.");
+                byte[] buffer = new byte[32 * 1024];
+                long copied = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    if (portableCancelRequested) throw new IOException("Portable backup cancelled.");
+                    if (copied > PortableBackupCodec.MAX_ARCHIVE_BYTES - read) throw new IOException("The encrypted backup exceeded its size limit.");
+                    output.write(buffer, 0, read);
+                    copied += read;
+                }
+                if (portableCancelRequested) throw new IOException("Portable backup cancelled.");
+                output.flush();
+            } catch (Exception exception) {
+                failure = exception;
+            } finally {
+                if (output != null) {
+                    try { output.close(); }
+                    catch (Exception closeFailure) {
+                        if (failure == null) failure = closeFailure;
+                        else failure.addSuppressed(closeFailure);
+                    }
+                }
+            }
+            Exception error = failure;
+            mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    if (error != null) deleteCreatedDocument(destination);
+                    cleanupPortableExportStage(stagedArchive);
+                    PortableBackupCodec.clear(pendingRecoveryKey);
+                    pendingRecoveryKey = null;
+                    return;
+                }
+                if (error != null) {
+                    boolean removed = deleteCreatedDocument(destination);
+                    String detail = portableCancelRequested
+                            ? "Backup export cancelled. " : "The encrypted backup could not be written. ";
+                    if (!removed) detail += "A partial encrypted document may remain; it contains no plaintext. ";
+                    detail += "Task data was not changed.";
+                    finishPortableExport(detail);
+                } else {
+                    finishPortableExport("Encrypted backup saved. Keep its recovery key separate; Daymark does not store it.");
+                }
+            });
+        });
+    }
+
+    private void finishPortableExport(String message) {
+        cleanupPortableExportStage(pendingExportArchive);
+        pendingExportArchive = null;
+        PortableBackupCodec.clear(pendingRecoveryKey);
+        pendingRecoveryKey = null;
+        portableBusy = false;
+        portableCanCancel = false;
+        portableCancelRequested = false;
+        cancelAttachmentButton.setVisibility(View.GONE);
+        storageStatus.setText(storageReady ? "Encrypted storage ready" : "Saved tasks unavailable");
+        storageStatus.setTextColor(storageReady ? palette.accent : palette.danger);
+        render();
+        showToast(message);
+    }
+
+    private void cleanupPortableExportStage(File stagedArchive) {
+        if (stagedArchive != null && stagedArchive.exists()) stagedArchive.delete();
+    }
+
+    private boolean deleteCreatedDocument(Uri uri) {
+        try { return DocumentsContract.deleteDocument(getContentResolver(), uri); }
+        catch (Exception ignored) { return false; }
+    }
+
+    private void choosePortableImport() {
+        if (portableRestoreWorkerActive || portableImportCleanupActive || activePortableImportUri != null) {
+            showToast("A backup restore is already being finished. Try again after it completes.");
+            return;
+        }
+        if (pendingPortableImportUri != null) {
+            showPortableImportKeyDialog();
+            return;
+        }
+        if (!canEdit()) {
+            showToast("Encrypted storage must be ready before restoring a backup.");
+            return;
+        }
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("*/*");
+        picker.putExtra(Intent.EXTRA_MIME_TYPES,
+                new String[] { "application/octet-stream", "application/vnd.daymark.dmbackup" });
+        try {
+            startActivityForResult(picker, REQUEST_PORTABLE_IMPORT);
+        } catch (android.content.ActivityNotFoundException exception) {
+            showToast("Android's document picker is not available on this device.");
+        }
+    }
+
+    private boolean retainPortableImportUri(Uri uri, int resultFlags) {
+        if (portableRestoreWorkerActive || portableImportCleanupActive || activePortableImportUri != null) {
+            showToast("A backup restore is already being finished. Try again after it completes.");
+            return false;
+        }
+        if (pendingPortableImportUri != null) {
+            if (pendingPortableImportUri.equals(uri) && pendingPortableImportOperationToken != null
+                    && hasPersistedPortableReadGrant(uri)) return true;
+            showToast("Finish or cancel the selected backup before choosing another one.");
+            return false;
+        }
+        int readFlag = resultFlags & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        if (uri == null || !android.content.ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())
+                || readFlag == 0 || (resultFlags & Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) == 0) {
+            showToast("Android could not keep access to that backup. Choose it again to restore.");
+            return false;
+        }
+        try {
+            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException | IllegalArgumentException failure) {
+            showToast("Android could not keep access to that backup. Choose it again to restore.");
+            return false;
+        }
+        if (!hasPersistedPortableReadGrant(uri)) {
+            releasePersistablePortableReadGrant(uri);
+            showToast("Android could not keep access to that backup. Choose it again to restore.");
+            return false;
+        }
+        PortableImportGrantRecovery.Selection selection;
+        try {
+            selection = portableBackupManager.recordActivePortableImportUri(uri);
+        } catch (IOException journalFailure) {
+            // The manager immediately releases only this URI if its durable journal write fails.
+            showToast("The restore could not be prepared safely. Reopen Daymark before trying again.");
+            return false;
+        }
+        pendingPortableImportUri = uri;
+        pendingPortableImportOperationToken = selection.operationToken;
+        return true;
+    }
+
+    private PortableImportGrantRecovery.Selection pendingPortableImportSelection() {
+        if (pendingPortableImportUri == null || pendingPortableImportOperationToken == null) return null;
+        return new PortableImportGrantRecovery.Selection(pendingPortableImportOperationToken,
+                pendingPortableImportUri.toString());
+    }
+
+    private boolean hasPersistedPortableReadGrant(Uri uri) {
+        if (uri == null) return false;
+        try {
+            for (android.content.UriPermission permission : getContentResolver().getPersistedUriPermissions()) {
+                if (uri.equals(permission.getUri()) && permission.isReadPermission()) return true;
+            }
+        } catch (RuntimeException ignored) {
+            // Treat an unavailable grant list as a lost grant and require a fresh picker selection.
+        }
+        return false;
+    }
+
+    private void discardPendingPortableImport() {
+        discardPendingPortableImport(null);
+    }
+
+    private void discardPendingPortableImport(PortableImportGrantRecovery.Selection expected) {
+        PortableImportGrantRecovery.Selection selected = pendingPortableImportSelection();
+        if (selected == null || (expected != null && !expected.matches(selected))) return;
+        pendingPortableImportUri = null;
+        pendingPortableImportOperationToken = null;
+        reconcileAndReleasePortableImportSelection(selected);
+    }
+
+    private void reconcileAndReleasePortableImportSelection(PortableImportGrantRecovery.Selection selected) {
+        if (selected == null) return;
+        portableImportCleanupActive = true;
+        try {
+            storageExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    synchronized (AndroidAttachmentStore.transactionLock()) {
+                        List<Task> latest = taskStore.load();
+                        portableBackupManager.finishPortableImportSelection(selected, latest, attachmentStore);
+                    }
+                } catch (Exception cleanupFailure) {
+                    failure = cleanupFailure;
+                }
+                Exception result = failure;
+                mainHandler.post(() -> {
+                    if (result == null) {
+                        portableImportCleanupActive = false;
+                    } else if (!isFinishing() && !isDestroyed()) {
+                        showToast("Temporary backup access could not be safely released. Reopen Daymark to recover it.");
+                    }
+                });
+            });
+        } catch (RuntimeException schedulingFailure) {
+            if (!isFinishing() && !isDestroyed()) {
+                showToast("Temporary backup access could not be safely released. Reopen Daymark to recover it.");
+            }
+        }
+    }
+
+    private void releasePersistablePortableReadGrant(Uri uri) {
+        if (!hasPersistedPortableReadGrant(uri)) return;
+        try {
+            getContentResolver().releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException | IllegalArgumentException ignored) {
+            // A provider may revoke the grant independently; there is no retained app data to clean up.
+        }
+    }
+
+    private void showPortableImportKeyDialog() {
+        PortableImportGrantRecovery.Selection selectedOperation = pendingPortableImportSelection();
+        if (selectedOperation == null) return;
+        Uri selected = Uri.parse(selectedOperation.uri);
+        if (!hasPersistedPortableReadGrant(selected)) {
+            pendingPortableImportUri = null;
+            pendingPortableImportOperationToken = null;
+            reconcileAndReleasePortableImportSelection(selectedOperation);
+            showToast("Access to the selected backup was not retained. Choose it again to restore.");
+            return;
+        }
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(22), dp(8), dp(22), dp(8));
+        TextView notice = text("Enter the recovery key for this encrypted backup. Restore adds separate copies with fresh task and attachment IDs; it never replaces existing tasks. Importing the same backup again on this device is blocked.",
+                14, palette.text, Typeface.NORMAL);
+        notice.setLineSpacing(dp(3), 1f);
+        content.addView(notice, bottomMargin(dp(10)));
+        EditText keyInput = new EditText(this);
+        keyInput.setSingleLine(true);
+        keyInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        keyInput.setFilters(new InputFilter[] { new InputFilter.LengthFilter(100) });
+        keyInput.setSaveEnabled(false);
+        keyInput.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        keyInput.setHint("Recovery key (DMK1-…)");
+        content.addView(keyInput);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Restore encrypted backup")
+                .setView(scroll)
+                .setNegativeButton("Cancel", (ignored, which) -> discardPendingPortableImport(selectedOperation))
+                .setPositiveButton("Restore as new tasks", null)
+                .create();
+        dialog.setOnCancelListener(ignored -> {
+            if (!isChangingConfigurations()) discardPendingPortableImport(selectedOperation);
+        });
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            byte[] key;
+            try {
+                String entered = keyInput.getText() == null ? "" : keyInput.getText().toString().trim().toUpperCase(Locale.ROOT);
+                key = PortableBackupCodec.decodeRecoveryKey(entered);
+            } catch (Exception failure) {
+                keyInput.setError("Check the recovery key and try again.");
+                return;
+            }
+            keyInput.setText("");
+            pendingPortableImportUri = null;
+            pendingPortableImportOperationToken = null;
+            dialog.dismiss();
+            beginPortableRestore(selectedOperation, key);
+        }));
+        dialog.setOnDismissListener(ignored -> keyInput.setText(""));
+        dialog.show();
+    }
+
+    private void beginPortableRestore(PortableImportGrantRecovery.Selection selectedOperation, byte[] recoveryKey) {
+        Uri selected = Uri.parse(selectedOperation.uri);
+        if (!canEdit()) {
+            PortableBackupCodec.clear(recoveryKey);
+            reconcileAndReleasePortableImportSelection(selectedOperation);
+            showToast("Encrypted storage is not ready for restore.");
+            return;
+        }
+        activePortableImportUri = selected;
+        activePortableImportOperationToken = selectedOperation.operationToken;
+        pendingRecoveryKey = recoveryKey;
+        portableBusy = true;
+        portableCanCancel = true;
+        portableCancelRequested = false;
+        cancelAttachmentButton.setText("Cancel restore");
+        cancelAttachmentButton.setEnabled(true);
+        cancelAttachmentButton.setVisibility(View.VISIBLE);
+        int originalCount = tasks.size();
+        storageStatus.setText("Authenticating and validating the full backup privately…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        portableRestoreWorkerActive = true;
+        PortableImportGrantRecovery.activityRestoreWorkerStarted();
+        try {
+            storageExecutor.execute(() -> {
+                List<Task> restored = null;
+                Exception failure = null;
+                try {
+                    synchronized (AndroidAttachmentStore.transactionLock()) {
+                        try (InputStream source = getContentResolver().openInputStream(selected)) {
+                            if (source == null) throw new IOException("The selected backup could not be opened.");
+                            restored = portableBackupManager.restore(source, recoveryKey, taskStore, attachmentStore,
+                                    () -> portableCancelRequested, () -> {
+                                        portableCanCancel = false;
+                                        mainHandler.post(() -> {
+                                            if (isFinishing() || isDestroyed()) return;
+                                            cancelAttachmentButton.setText("Finishing restore…");
+                                            cancelAttachmentButton.setEnabled(false);
+                                            storageStatus.setText("Committing encrypted task snapshot…");
+                                            storageStatus.setTextColor(palette.muted);
+                                        });
+                                    });
+                        } catch (Exception exception) {
+                            failure = exception;
+                            PortableBackupCodec.clear(recoveryKey);
+                        } finally {
+                            try {
+                                List<Task> current = taskStore.load();
+                                portableBackupManager.finishActivePortableImportUri(
+                                        selectedOperation, current, attachmentStore);
+                            } catch (Exception cleanupFailure) {
+                                if (failure == null) {
+                                    failure = new PortableBackupManager.RestoreOutcomeUncertainException(
+                                            "The restore URI grant could not be safely reconciled. Reopen Daymark before retrying.",
+                                            cleanupFailure);
+                                } else {
+                                    failure.addSuppressed(cleanupFailure);
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    PortableBackupCodec.clear(recoveryKey);
+                    portableRestoreWorkerActive = false;
+                    PortableImportGrantRecovery.activityRestoreWorkerFinished();
+                }
+            List<Task> result = restored;
+            Exception error = failure;
+            mainHandler.post(() -> {
+                if (activePortableImportUri == selected
+                        && selectedOperation.operationToken.equals(activePortableImportOperationToken)) {
+                    activePortableImportUri = null;
+                    activePortableImportOperationToken = null;
+                }
+                if (isFinishing() || isDestroyed()) return;
+                PortableBackupCodec.clear(pendingRecoveryKey);
+                pendingRecoveryKey = null;
+                pendingPortableImportUri = null;
+                pendingPortableImportOperationToken = null;
+                portableBusy = false;
+                portableCanCancel = false;
+                portableCancelRequested = false;
+                cancelAttachmentButton.setVisibility(View.GONE);
+                if (error == null && result != null) {
+                    tasks.clear();
+                    tasks.addAll(result);
+                    lastSavedTasks.clear();
+                    lastSavedTasks.addAll(result);
+                    storageReady = true;
+                    storageLoadFailed = false;
+                    storageSaveFailed = false;
+                    storageFailureDetails = null;
+                    storageStatus.setText("Encrypted storage ready");
+                    storageStatus.setTextColor(palette.accent);
+                    int added = Math.max(0, result.size() - originalCount);
+                    showToast(added == 0 ? "Backup checked. It contained no new tasks." : "Restored " + added + " tasks as new copies.");
+                } else if (error instanceof PortableBackupManager.RestoreOutcomeUncertainException) {
+                    storageReady = false;
+                    storageLoadFailed = true;
+                    storageSaveFailed = true;
+                    storageStatus.setText("Restore outcome not verified · reopen Daymark");
+                    storageStatus.setTextColor(palette.danger);
+                    captureFeedback.setText("Restore commit status could not be verified. Editing is paused; reopen Daymark to reconcile the encrypted snapshot and restore journal.");
+                    showToast("Restore outcome could not be verified. Reopen Daymark before retrying.");
+                } else {
+                    storageStatus.setText(storageReady ? "Encrypted storage ready" : "Saved tasks unavailable");
+                    storageStatus.setTextColor(storageReady ? palette.accent : palette.danger);
+                    showToast(portableRestoreFailure(error));
+                }
+                render();
+            });
+            });
+        } catch (RuntimeException schedulingFailure) {
+            portableRestoreWorkerActive = false;
+            PortableImportGrantRecovery.activityRestoreWorkerFinished();
+            PortableBackupCodec.clear(recoveryKey);
+            activePortableImportUri = null;
+            activePortableImportOperationToken = null;
+            reconcileAndReleasePortableImportSelection(selectedOperation);
+            pendingRecoveryKey = null;
+            showToast("The restore did not start. Reopen Daymark to recover its temporary document access.");
+        }
+    }
+
+    private String portableRestoreFailure(Exception failure) {
+        if (portableCancelRequested || (failure != null && failure.getMessage() != null
+                && failure.getMessage().toLowerCase(Locale.ROOT).contains("cancelled"))) {
+            return "Restore cancelled. Existing tasks were not replaced.";
+        }
+        if (failure != null && failure.getMessage() != null
+                && failure.getMessage().toLowerCase(Locale.ROOT).contains("already imported")) {
+            return "This backup was already imported on this device; repeated restore was blocked.";
+        }
+        return "Backup was not restored. It may be damaged, unsupported, or paired with the wrong recovery key; existing tasks were not replaced.";
+    }
+
+    private void requestOperationCancel() {
+        if (portableBusy) {
+            if (!portableCanCancel) {
+                showToast("The restore is committing its task snapshot and can no longer be cancelled.");
+                return;
+            }
+            portableCancelRequested = true;
+            cancelAttachmentButton.setText("Cancelling…");
+            cancelAttachmentButton.setEnabled(false);
+            return;
+        }
+        requestAttachmentCancel();
+    }
+
     private void showSettingsDialog() {
         String[] options = {
                 "Appearance: " + themeLabel(),
@@ -1114,7 +2253,8 @@ public final class MainActivity extends Activity {
                 "Screen reader support",
                 "Reduced motion",
                 "Permission status: " + permissionStatusLabel(),
-                "Advanced details"
+                "Advanced details",
+                "Encrypted backup / restore"
         };
         new AlertDialog.Builder(this)
                 .setTitle("More settings")
@@ -1126,7 +2266,8 @@ public final class MainActivity extends Activity {
                     else if (selected == 4) showScreenReaderInfo();
                     else if (selected == 5) showReducedMotionInfo();
                     else if (selected == 6) showPermissionStatus();
-                    else showAdvancedDetails();
+                    else if (selected == 7) showAdvancedDetails();
+                    else showPortableBackupDialog();
                 })
                 .setNegativeButton("Close", null)
                 .show();
@@ -1207,7 +2348,7 @@ public final class MainActivity extends Activity {
             String[] requested = readPermissionPackageInfo().requestedPermissions;
             if (requested == null || requested.length == 0) {
                 message = "Status: no Android permissions are declared by this version.\n\n"
-                        + "Task capture, editing, completion, deletion, and encrypted on-device storage need none. Daymark does not ask for permissions when it opens.\n\n"
+                        + "Task capture, editing, completion, deletion, and encrypted on-device storage need none. Attachments use Android's document picker after you choose a file; Daymark does not ask for broad storage permission. Daymark does not ask for permissions when it opens.\n\n"
                         + "A future feature may request a runtime permission only after you choose to use that feature, with a clear explanation. You can deny it; core tasks must remain available. Special app access would open Android Settings. An ordinary app cannot grant signature-only or privileged permissions. Daymark does not request root or superuser access.";
             } else {
                 StringBuilder details = new StringBuilder("Permissions declared by this app:\n");
@@ -1229,8 +2370,9 @@ public final class MainActivity extends Activity {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
         String details = "Daymark " + version + "\n\n"
-                + "Tasks: schema v1, encrypted in an app-private file.\n\n"
+                + "Tasks: encrypted in an app-private file; attachment references use schema v2. Existing v1 task data remains readable.\n\n"
                 + "Encryption: AES-GCM; the key is stored in Android Keystore. Hardware protection depends on the device.\n\n"
+                + "Attachments: encrypted app-private payloads; up to 20 MiB per file, 100 MiB total, and five per task. No attachment is opened or executed by Daymark.\n\n"
                 + "Suggestions: due-date and priority rules only; no AI service.\n\n"
                 + "Offline: no account, network permission, background service, or optional content download.\n\n"
                 + "Not included: voice input, GGUF models, command-line bridge, plugins, or app/OS updates.\n\n"

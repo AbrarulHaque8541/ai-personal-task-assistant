@@ -10,6 +10,7 @@ android {
         applicationId = "com.cue.daymark"
         minSdk = 26
         targetSdk = 35
+        testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
         versionCode = 1
         versionName = "1.0.0"
     }

@@ -34,7 +34,8 @@ final class TaskLogic {
         if (task == null || task.id == null || task.id.trim().isEmpty()
                 || task.title == null || task.title.trim().isEmpty() || task.title.length() > 160
                 || task.priority == null || !isPriority(task.priority)
-                || (task.dueDate != null && !isDateOnly(task.dueDate))) {
+                || (task.dueDate != null && !isDateOnly(task.dueDate))
+                || !AttachmentLogic.isValidTaskAttachments(task.attachments)) {
             return false;
         }
         try {
@@ -52,7 +53,7 @@ final class TaskLogic {
         for (Task task : tasks) {
             if (!isValid(task) || !ids.add(task.id)) return false;
         }
-        return true;
+        return AttachmentLogic.isValidTaskListAttachments(tasks);
     }
 
     static boolean isPriority(String priority) {

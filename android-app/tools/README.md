@@ -1,1 +1,3 @@
 Run `./tools/run-core-tests.sh` from `android-app/`. It compiles `Task.java`, `TaskLogic.java`, and `TaskLogicSmoke.java` with the local JDK only; it does not need Android SDK, Gradle, network access, or external libraries.
+
+Run `./tools/run-portable-backup-tests.sh` for the authenticated archive protocol, exact 100/101 attachment boundary, reproducible manifest/snapshot size calculation, real maximum-metadata streamed archive round-trip, physical over-cap input rejection, and host URI restore lifecycle checks. Run `./tools/run-storage-recovery-tests.sh` for encrypted-store failure/recovery tests; `./tools/check-v1-source.sh` combines the core, attachment, portable backup, schema, source-policy, and accessibility checks.
