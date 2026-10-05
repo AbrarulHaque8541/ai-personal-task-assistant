@@ -40,6 +40,10 @@
         setStorageStatus('Some saved tasks were ignored', true);
       } else {
         setStorageStatus('Saved on this device');
+        // The main store is healthy again, so a recovery backup left over from an
+        // earlier unreadable payload is now stale and should not linger as if it
+        // were current data.
+        clearRecoveryBackup();
       }
       return validated.tasks;
     } catch (error) {
@@ -65,11 +69,21 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks));
       setStorageStatus('Saved on this device');
+      // A successful full save makes any earlier recovery backup stale.
+      clearRecoveryBackup();
       return true;
     } catch (error) {
       console.warn('Could not save Daymark tasks:', error);
       setStorageStatus('Storage unavailable', true);
       return false;
+    }
+  }
+
+  function clearRecoveryBackup() {
+    try {
+      localStorage.removeItem(BACKUP_KEY);
+    } catch (error) {
+      console.warn('Could not clear the Daymark recovery backup:', error);
     }
   }
 
