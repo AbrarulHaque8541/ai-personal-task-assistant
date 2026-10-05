@@ -95,3 +95,12 @@ The current manifest declares no permissions and the source has no runtime-permi
 Any future local or remote provider must implement one `AssistantProvider` contract exposing capabilities, offline/remote status, configuration status, and an inference call. The user must explicitly select the provider, and routing must never silently fall back to cloud. Before a remote call, disclose what information leaves the phone and possible cost, send minimum context, never log prompts or keys, and encrypt user-supplied credentials with an Android Keystore-protected key. This contract, routing, and remote credential support are not in V1.
 
 Telegram is a separate hosted-bot service that needs a backend and bot token. It conflicts with V1's offline/no-backend/no-background design and remains deferred; do not add a mock connection or background phone polling.
+
+## Encrypted task-storage failure acceptance
+
+- [x] JDK storage-protocol tests distinguish a valid empty store from errors and cover truncated ciphertext, modified GCM ciphertext, missing and simulated permanently invalidated keys, an unusable AES key at initialization, a partial update write, an incomplete first-write artifact, and a failed edit that leaves the previous committed ciphertext/plaintext unchanged.
+- [x] Activity/source checks verify that load errors do not clear task state, unavailable data is not rendered as an ordinary empty list, failed edits remain explicitly labeled unsaved, and subsequent edits are paused.
+- [ ] Verify Android Keystore key loss/unavailability, Android `AtomicFile` rollback after process death during an update, storage-full/read-only failures, relaunch behavior, and TalkBack announcement/reflow on a supported device or emulator. The JDK adapter tests and Android build do not substitute for these runtime checks.
+- [ ] Choose an explicit future data-recovery policy before implementing retained backups, task export/recovery secrets, or key rotation. V1 holds at a non-destructive unavailable state; replacing a Keystore key is not recovery for ciphertext encrypted by the original key.
+
+See [STORAGE_RECOVERY.md](STORAGE_RECOVERY.md) for the exact contract and official Android references.

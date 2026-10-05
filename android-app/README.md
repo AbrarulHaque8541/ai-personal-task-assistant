@@ -50,7 +50,9 @@ The app performs ordinary foreground UI, file, and Keystore work while open, so 
 
 ## Task storage and demo suggestions
 
-Task records use schema-versioned JSON encrypted in `files/tasks.enc` with AES-GCM and an AES key kept by Android Keystore. The key is non-exportable; secure-hardware backing depends on the device. Disk and cryptographic operations run on one background executor. A malformed file, unavailable key, or authentication/schema failure leaves the existing file untouched and disables edits. Saves use a temporary file and replacement; failed saves restore the last saved in-memory snapshot and pause further edits.
+Task records use schema-versioned JSON encrypted in `files/tasks.enc` with AES-GCM and an AES key kept by Android Keystore. The key is non-exportable; secure-hardware backing depends on the device. Disk and cryptographic operations run on one background executor. A truly absent store is a valid empty list; malformed data, an unavailable key, or authentication/read failure is a distinct fail-closed state. The app does not replace a missing key for existing ciphertext. Writes use Android `AtomicFile` and its commit/failure path, not a non-atomic replacement fallback. If a save fails, the attempted change remains visible and is explicitly labeled unsaved while edits are paused; leaving the app may discard that visible change, while the last committed encrypted snapshot remains the durable state.
+
+V1 has no automatic corruption repair, task export, retained backup, or key-recovery scheme. See [STORAGE_RECOVERY.md](STORAGE_RECOVERY.md) for the failure contract, tests, Android references, and recovery decisions intentionally left open.
 
 The app's **Demo suggestion** ranking is deterministic local code: open tasks by overdue/nearest due date, then high → medium → low priority for equal dates. It is not an LLM, does not access the network, and does not infer intent. Suggestions are not a downloaded asset.
 
