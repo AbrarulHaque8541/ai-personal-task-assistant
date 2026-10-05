@@ -1,5 +1,7 @@
 package com.cue.daymark.updater;
 
+import com.cue.daymark.BuildConfig;
+
 /**
  * Fail-closed publisher gate. Keep installation disabled until the publisher has a
  * protected release signing setup and has pinned the exact signer certificate SHA-256.
@@ -12,7 +14,8 @@ public final class UpdaterPublisherConfig {
     private UpdaterPublisherConfig() { }
 
     public static boolean isInstallationConfigured() {
-        return INSTALLATION_ENABLED
+        return !BuildConfig.DEBUG
+                && INSTALLATION_ENABLED
                 && UpdaterCore.normalizeSha256(PUBLISHER_SIGNER_SHA256) != null;
     }
 }

@@ -60,6 +60,7 @@ assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "U
 assert not manifest.findall("uses-permission"), "no manifest permission is enabled while installer permission scope is pending"
 assert not any(permission.get("{http://schemas.android.com/apk/res/android}name") == "android.permission.REQUEST_INSTALL_PACKAGES" for permission in manifest.findall("uses-permission")), "installer permission must not be added without owner approval"
 assert "INSTALLATION_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher installer gate must remain fail-closed"
+assert "buildConfig = true" in build and "!BuildConfig.DEBUG" in publisher_config, "updater must be release-only even after signer configuration"
 assert "UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)" in activity, "publisher configuration must gate even release-metadata network checks"
 assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new GitHubReleaseClient()"), "network policy must run before release-client construction"
 assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
@@ -70,6 +71,6 @@ assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_so
 
 print("PASS V1 source policy: no manifest permissions/background components/runtime dependencies or optional media/model binaries; updater endpoint and consent gates are fixed")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
-print("PASS permission/updater policy: no new permissions, publisher-gated metadata network, validated release-asset redirects, no unapproved installer handoff, task data isolated")
+print("PASS permission/updater policy: no new permissions, release-only publisher-gated metadata network, validated release-asset redirects, no unapproved installer handoff, task data isolated")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"

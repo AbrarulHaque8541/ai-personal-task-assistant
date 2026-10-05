@@ -1169,7 +1169,7 @@ public final class MainActivity extends Activity {
             if (manual) {
                 String reason = publisherConfigured
                         ? "This build does not declare the Internet permission."
-                        : "A trusted publisher signing certificate is not configured, so update checks are disabled.";
+                        : "Update checks are disabled for this build; a release build and trusted publisher signing certificate are required.";
                 showInfo("Updates unavailable", reason + " No network request was made. "
                         + "Your tasks remain available offline.");
             }
