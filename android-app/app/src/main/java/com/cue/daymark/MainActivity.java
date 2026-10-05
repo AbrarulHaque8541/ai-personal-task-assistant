@@ -105,6 +105,8 @@ public final class MainActivity extends Activity {
     private boolean updateCheckRunning;
     private boolean updateTransferRunning;
     private boolean activityResumed;
+    private GitHubApkDownloader activeUpdateDownloader;
+    private AlertDialog updateDownloadDialog;
     private File pendingVerifiedApk;
     private UpdaterCore.Release pendingVerifiedRelease;
     private float textScale = 1.0f;
@@ -151,6 +153,7 @@ public final class MainActivity extends Activity {
         setTheme(themeResource(themeMode));
         super.onCreate(savedInstanceState);
 
+        GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
         updaterExecutor = Executors.newSingleThreadExecutor();
@@ -162,6 +165,8 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
+        if (activeUpdateDownloader != null) activeUpdateDownloader.cancel();
+        if (updateDownloadDialog != null && updateDownloadDialog.isShowing()) updateDownloadDialog.dismiss();
         discardPendingVerifiedApk();
         if (storageExecutor != null) storageExecutor.shutdown();
         if (updaterExecutor != null) updaterExecutor.shutdownNow();
@@ -1310,6 +1315,8 @@ public final class MainActivity extends Activity {
                 return "The release signing certificate did not exactly match this installed app and publisher configuration. Nothing was installed. Do not uninstall Daymark; encrypted local tasks may be lost.";
             case DOWNLOAD:
                 return "The APK download did not complete. Nothing was installed; Daymark tasks remain available.";
+            case CANCELLED:
+                return "The APK download was cancelled. No verified APK was saved; Daymark tasks remain available.";
             default:
                 return "The update check could not be completed. No APK was downloaded.";
         }
@@ -1355,6 +1362,16 @@ public final class MainActivity extends Activity {
             return;
         }
         updateTransferRunning = true;
+        GitHubApkDownloader downloader = new GitHubApkDownloader(getApplicationContext(), allowMobileData,
+                () -> isWifiConnected(getApplicationContext()));
+        activeUpdateDownloader = downloader;
+        updateDownloadDialog = new AlertDialog.Builder(this)
+                .setTitle("Downloading and verifying")
+                .setMessage("The APK is being downloaded to temporary app storage. Cancel stops the transfer or discards it if verification has started; nothing is saved until all checks pass.")
+                .setNegativeButton("Cancel", (dialog, which) -> downloader.cancel())
+                .create();
+        updateDownloadDialog.setCancelable(false);
+        updateDownloadDialog.show();
         Toast.makeText(this, allowMobileData
                 ? "Downloading and verifying the APK using the network you allowed."
                 : "Downloading and verifying the APK over Wi-Fi only.", Toast.LENGTH_LONG).show();
@@ -1368,8 +1385,7 @@ public final class MainActivity extends Activity {
                         getPackageName(), currentVersionCode(), Build.VERSION.SDK_INT,
                         installedSigner, UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256,
                         consentedRelease -> true,
-                        new GitHubApkDownloader(getApplicationContext(), allowMobileData,
-                                () -> isWifiConnected(getApplicationContext())), verifier);
+                        downloader, verifier);
             } catch (UpdaterCore.UpdateException exception) {
                 failure = exception;
             } catch (Exception exception) {
@@ -1380,6 +1396,11 @@ public final class MainActivity extends Activity {
             final UpdaterCore.UpdateException completedFailure = failure;
             mainHandler.post(() -> {
                 updateTransferRunning = false;
+                if (updateDownloadDialog != null && updateDownloadDialog.isShowing()) {
+                    updateDownloadDialog.dismiss();
+                }
+                updateDownloadDialog = null;
+                if (activeUpdateDownloader == downloader) activeUpdateDownloader = null;
                 if (!activityResumed || isFinishing() || isDestroyed()) {
                     if (completedResult != null && completedResult.verifiedApk != null) {
                         completedResult.verifiedApk.delete();
@@ -1387,7 +1408,9 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 if (completedFailure != null) {
-                    showInfo("Update verification failed", updateFailureMessage(completedFailure));
+                    showInfo(completedFailure.failure == UpdaterCore.Failure.CANCELLED
+                            ? "Download cancelled" : "Update verification failed",
+                            updateFailureMessage(completedFailure));
                 } else if (completedResult != null
                         && completedResult.status == UpdaterCore.VerificationStatus.VERIFIED
                         && completedResult.verifiedApk != null) {

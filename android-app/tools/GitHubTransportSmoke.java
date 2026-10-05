@@ -5,6 +5,7 @@ import android.content.Context;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.UnknownHostException;
@@ -38,6 +39,9 @@ public final class GitHubTransportSmoke {
         downloaderEnforcesExplicitNetworkChoice();
         downloaderRejectsUntrustedRedirectsAndCleansTemporaryFiles();
         downloaderEnforcesRedirectAndBodyBounds();
+        downloaderRejectsActualBodyOver100MiB();
+        downloaderCancellationMidTransferCleansPartial();
+        interruptedTransferIsRemovedOnRestartWithoutTouchingUserData();
         System.out.println("PASS updater transport/parser fixtures: " + assertions + " assertions");
     }
 
@@ -248,6 +252,69 @@ public final class GitHubTransportSmoke {
         deleteTree(cache);
     }
 
+    private static void downloaderRejectsActualBodyOver100MiB() throws Exception {
+        File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
+        UpdaterCore.Release maxRelease = new UpdaterCore.Release("v1.2.3", "1.2.3", "Daymark 1.2.3", "Notes",
+                UpdaterCore.APPLICATION_ID, 2L, 26, UpdaterCore.MAX_APK_BYTES, sha256(APK), SIGNER,
+                assetUrl(), false, false);
+        FakeHttpConnection oversized = response(HttpURLConnection.HTTP_OK,
+                new SizedInputStream(UpdaterCore.MAX_APK_BYTES + 1L, null, false));
+        expectDownloadFailure(UpdaterCore.Failure.APK_MISMATCH,
+                () -> new GitHubApkDownloader(new TestContext(cache), url -> oversized).download(maxRelease),
+                "an actual streamed body above the 100 MiB ceiling is rejected");
+        check(listFiles(new File(cache, "daymark-update-tmp")).isEmpty(),
+                "actual 100 MiB ceiling rejection deletes the staging file");
+        deleteTree(cache);
+    }
+
+    private static void downloaderCancellationMidTransferCleansPartial() throws Exception {
+        File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
+        GitHubApkDownloader[] downloaderRef = new GitHubApkDownloader[1];
+        InputStream body = new SizedInputStream(APK.length, () -> downloaderRef[0].cancel(), false);
+        FakeHttpConnection response = response(HttpURLConnection.HTTP_OK, body);
+        response.header("Content-Length", Integer.toString(APK.length));
+        downloaderRef[0] = new GitHubApkDownloader(new TestContext(cache), url -> response);
+        expectDownloadFailure(UpdaterCore.Failure.CANCELLED,
+                () -> downloaderRef[0].download(validRelease()),
+                "cancellation after transfer bytes begin stops before verification");
+        check(response.disconnected, "cancelled transfer disconnects its active HTTP connection");
+        check(listFiles(new File(cache, "daymark-update-tmp")).isEmpty(),
+                "mid-transfer cancellation removes the partial APK");
+        deleteTree(cache);
+    }
+
+    private static void interruptedTransferIsRemovedOnRestartWithoutTouchingUserData() throws Exception {
+        File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
+        TestContext context = new TestContext(cache);
+        FakeHttpConnection response = response(HttpURLConnection.HTTP_OK,
+                new SizedInputStream(APK.length, null, true));
+        response.header("Content-Length", Integer.toString(APK.length));
+        try {
+            new GitHubApkDownloader(context, url -> response).download(validRelease());
+            throw new AssertionError("simulated process interruption did not occur");
+        } catch (SimulatedProcessDeath expected) {
+            assertions++;
+        }
+        File tempDirectory = new File(cache, "daymark-update-tmp");
+        List<File> staging = partialFiles(tempDirectory);
+        check(staging.size() == 1 && staging.get(0).length() > 0,
+                "simulated process death leaves one unverified partial staging file");
+
+        File savedApk = new File(cache, "Daymark-v1.2.3.apk");
+        File taskData = new File(cache, "encrypted-tasks.data");
+        File verifiedTemp = new File(tempDirectory, "daymark-update-preserved.verified.apk");
+        Files.write(savedApk.toPath(), APK);
+        Files.write(taskData.toPath(), new byte[] { 1, 2, 3 });
+        Files.write(verifiedTemp.toPath(), APK);
+
+        GitHubApkDownloader.cleanupPartialDownloads(context);
+        check(partialFiles(tempDirectory).isEmpty(), "startup cleanup removes only leftover partial APKs");
+        check(savedApk.isFile(), "startup cleanup leaves a user-selected saved APK untouched");
+        check(taskData.isFile(), "startup cleanup leaves task data untouched");
+        check(verifiedTemp.isFile(), "startup cleanup leaves a verified cache artifact untouched");
+        deleteTree(cache);
+    }
+
     private static void downloaderEnforcesExplicitNetworkChoice() throws Exception {
         File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
         AtomicInteger blockedRequests = new AtomicInteger();
@@ -329,9 +396,26 @@ public final class GitHubTransportSmoke {
         }
     }
 
+    private static FakeHttpConnection response(int status, InputStream body) {
+        try {
+            return new FakeHttpConnection(new URL("https://fixture.invalid/"), status, body);
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
     private static List<File> listFiles(File directory) {
         File[] files = directory.listFiles();
         return files == null ? new ArrayList<>() : Arrays.asList(files);
+    }
+
+    private static List<File> partialFiles(File directory) {
+        List<File> partials = new ArrayList<>();
+        for (File file : listFiles(directory)) {
+            if (file.isFile() && file.getName().startsWith("daymark-update-")
+                    && file.getName().endsWith(".partial")) partials.add(file);
+        }
+        return partials;
     }
 
     private static void deleteTree(File file) {
@@ -380,11 +464,15 @@ public final class GitHubTransportSmoke {
 
     private static final class FakeHttpConnection extends HttpURLConnection {
         private final int status;
-        private final byte[] body;
+        private final InputStream body;
         private final Map<String, String> headers = new HashMap<>();
         private boolean disconnected;
 
         FakeHttpConnection(URL url, int status, byte[] body) {
+            this(url, status, new ByteArrayInputStream(body));
+        }
+
+        FakeHttpConnection(URL url, int status, InputStream body) {
             super(url);
             this.status = status;
             this.body = body;
@@ -400,7 +488,41 @@ public final class GitHubTransportSmoke {
         }
         @Override public java.io.InputStream getInputStream() throws IOException {
             if (status >= 400) throw new IOException("HTTP error");
-            return new ByteArrayInputStream(body);
+            return body;
         }
     }
+
+    private static final class SizedInputStream extends InputStream {
+        private long remaining;
+        private final Runnable afterFirstRead;
+        private final boolean simulateProcessDeath;
+        private boolean firstRead = true;
+
+        SizedInputStream(long byteCount, Runnable afterFirstRead, boolean simulateProcessDeath) {
+            this.remaining = byteCount;
+            this.afterFirstRead = afterFirstRead;
+            this.simulateProcessDeath = simulateProcessDeath;
+        }
+
+        @Override public int read() throws IOException {
+            byte[] single = new byte[1];
+            int count = read(single, 0, 1);
+            return count == -1 ? -1 : single[0] & 0xff;
+        }
+
+        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+            if (!firstRead && simulateProcessDeath) throw new SimulatedProcessDeath();
+            if (remaining <= 0L) return -1;
+            int count = (int) Math.min(Math.min((long) length, 16L * 1024L), remaining);
+            Arrays.fill(buffer, offset, offset + count, (byte) 0x5a);
+            remaining -= count;
+            if (firstRead) {
+                firstRead = false;
+                if (afterFirstRead != null) afterFirstRead.run();
+            }
+            return count;
+        }
+    }
+
+    private static final class SimulatedProcessDeath extends Error { }
 }

@@ -22,8 +22,8 @@ This is a release checklist, not a claim that every device-level item has alread
 
 ## Automated checks available in this workspace
 
-- [x] Core task validation, IDs/timestamps, date-only rules, filters/search, and deterministic suggestions compile/run on the installed JDK (25 assertions). Updater policy tests add 51 assertions; release JSON and fake HTTP transport/download fixtures add 63 assertions.
-- [x] Dependency-free updater host tests cover 24-hour/manual rate-limit policy, offline/HTTP/rate-limit/invalid-metadata results, empty/stable/draft/prerelease releases, cancellation before download, Wi-Fi-only blocking and explicit mobile-data allowance, exact size and SHA-256 mismatch, package/version/signer mismatch, and a verified APK retained for user-directed saving. These are tests with fakes, not live GitHub or Android-device tests.
+- [x] Core task validation, IDs/timestamps, date-only rules, filters/search, and deterministic suggestions compile/run on the installed JDK (25 assertions). Updater policy tests add 59 assertions; release JSON and fake HTTP transport/download fixtures add 74 assertions.
+- [x] Dependency-free updater host tests cover 24-hour/manual rate-limit policy, offline/HTTP/rate-limit/invalid-metadata results, empty/stable/draft/prerelease releases, cancellation before download and mid-transfer, Wi-Fi-only blocking and explicit mobile-data allowance, exact size, streamed 100 MiB ceiling and SHA-256 mismatch, package/version/signer mismatch cleanup, simulated process-death/restart cleanup, and a verified APK retained for user-directed saving. These are tests with fakes, not live GitHub or Android-device tests.
 - [x] The shared and Play manifests have no declared permissions; only `githubSideload` declares `INTERNET` and `ACCESS_NETWORK_STATE`. `REQUEST_INSTALL_PACKAGES`, Android `PackageInstaller`, and install-source Settings code are absent. No runtime dependency or optional model/media asset is included in the source tree.
 - [x] Source-derived palette contrast test checks standard and high-contrast light/dark pairs against the 4.5:1 normal-text threshold; the lowest tested ratio is 5.00:1. It is not a rendered-screen or TalkBack test.
 - [x] Static accessibility/localization checks confirm that every source `setTextSize` call applies the selected app text scale, expected spoken-label strings/live status regions are present, the UI remains explicitly English-only, and date formatting uses the device locale. These source assertions do not test visual reflow, translated flows, or TalkBack traversal.
@@ -34,8 +34,8 @@ This is a release checklist, not a claim that every device-level item has alread
 
 - [x] Source queries only the fixed public GitHub `releases/latest` URL and accepts only a non-draft, non-prerelease newer release. Metadata is bounded and must include one APK asset, GitHub's SHA-256 digest, the Daymark application ID, version code, min SDK, and publisher signer fingerprint. No task/history payload, provider, or telemetry code is attached.
 - [x] Checks are called from app foreground (`onResume`) and the explicit **More → Check now** action; persisted wall-clock throttling is 24 hours, and manual check bypasses it. There is no worker, receiver, service, or background polling. Source gates remain closed until the production signer is configured.
-- [x] The user must choose **Wi-Fi only (recommended)** (default) or **Allow mobile data**, then separately press **Download and verify**. Wi-Fi-only is enforced before HTTP requests and during transfer; cancellation starts no APK download, and retries are not automatic.
-- [x] Download/verifier core uses app-private temporary storage, exact expected/actual byte bounds, SHA-256, package/version/minSdk inspection, and release/running/configured signer equality. After verification, the app offers a user-selected document save; the user must open that saved APK themselves. Daymark does not invoke Android's installer or install-source Settings.
+- [x] The user must choose **Wi-Fi only (recommended)** (default) or **Allow mobile data**, then separately press **Download and verify**. Wi-Fi-only is enforced before HTTP requests and during transfer; pre-transfer or in-transfer cancellation stops the operation, and retries are not automatic.
+- [x] Download/verifier core uses app-private temporary storage, exact expected/actual byte bounds, SHA-256, package/version/minSdk inspection, and release/running/configured signer equality. Unverified bytes use a strict `.partial` staging name; verified bytes are promoted only after all checks pass. Once per process, startup cleanup removes only those named partial files in the dedicated cache subdirectory; it leaves verified cache files, task data, and user-selected saved APKs untouched. After verification, the app offers a user-selected document save; the user must open that saved APK themselves. Daymark does not invoke Android's installer or install-source Settings.
 - [x] Permission scope is flavor-specific: shared/Play manifests declare none; `githubSideload` declares `INTERNET` and `ACCESS_NETWORK_STATE`. `REQUEST_INSTALL_PACKAGES` is absent. Publisher updater config defaults disabled and has no real certificate fingerprint.
 - [ ] On devices, test the Wi-Fi-only gate, mobile-data choice, document picker save/cancel/error paths, opening the saved APK from Files, and Android's source approval/final confirmation. The real APK signer parser, system Settings/PackageInstaller UI, and device installation have not been validated.
 - [ ] Before publishing, configure an external protected release signing key and pin its SHA-256 fingerprint; publish no APK until the APK's package ID/version/versionCode/minSdk/hash/signer match release metadata and the running app. Never use the debug key or tell users to uninstall to work around a signing mismatch.
@@ -56,7 +56,7 @@ Create a non-draft, non-prerelease GitHub Release with a `vMAJOR.MINOR.PATCH` ta
 Run available source checks from `android-app/`:
 
 ```sh
-./tools/check-v1-source.sh
+sh ./tools/check-v1-source.sh
 ```
 
 ## Permission UX (device/emulator required)

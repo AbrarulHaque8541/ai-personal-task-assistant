@@ -4,8 +4,10 @@ import com.cue.daymark.updater.UpdaterCore;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class UpdaterSmoke {
@@ -23,7 +25,9 @@ public final class UpdaterSmoke {
         missingAndUnstableReleasesAreIgnored();
         stableNewerReleaseIsFound();
         cancellationDoesNotDownload();
+        cancellationAfterTransferStillDeletesTemporary();
         sizeMismatchFailsClosed();
+        actual100MiBCeilingFailsClosed();
         hashMismatchFailsClosed();
         packageAndVersionMismatchesFailClosed();
         signingCertificateMismatchFailsClosed();
@@ -125,6 +129,25 @@ public final class UpdaterSmoke {
         check(downloads.get() == 0, "cancel occurs before APK download");
     }
 
+    private static void cancellationAfterTransferStillDeletesTemporary() throws Exception {
+        AtomicBoolean cancelled = new AtomicBoolean();
+        File[] downloaded = new File[1];
+        UpdaterCore.Downloader downloader = new UpdaterCore.Downloader() {
+            @Override public File download(UpdaterCore.Release release) throws UpdaterCore.UpdateException {
+                downloaded[0] = writeTemp(APK_BYTES);
+                cancelled.set(true);
+                return downloaded[0];
+            }
+            @Override public boolean isCancelled() { return cancelled.get(); }
+        };
+        expectFailure(UpdaterCore.Failure.CANCELLED, () -> UpdaterCore.downloadAndVerify(
+                validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
+                release -> true, downloader, apk -> identity()),
+                "cancellation at the transfer/verification boundary is honored");
+        check(downloaded[0] != null && !downloaded[0].exists(),
+                "boundary cancellation deletes the unverified temporary APK");
+    }
+
     private static void sizeMismatchFailsClosed() throws Exception {
         expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
@@ -132,12 +155,30 @@ public final class UpdaterSmoke {
                 "actual file size must match declared bytes");
     }
 
+    private static void actual100MiBCeilingFailsClosed() throws Exception {
+        File oversized = File.createTempFile("daymark-updater-oversized-", ".apk");
+        try (RandomAccessFile sparse = new RandomAccessFile(oversized, "rw")) {
+            sparse.setLength(UpdaterCore.MAX_APK_BYTES + 1L);
+        }
+        AtomicInteger verifierCalls = new AtomicInteger();
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
+                validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
+                release -> true, release -> oversized,
+                apk -> { verifierCalls.incrementAndGet(); return identity(); }),
+                "an actual cached APK larger than 100 MiB is rejected");
+        check(verifierCalls.get() == 0, "the APK parser is not run after actual-size rejection");
+        check(!oversized.exists(), "actual-size rejection deletes the temporary APK");
+    }
+
     private static void hashMismatchFailsClosed() throws Exception {
         UpdaterCore.Release wrongHash = release("v1.1.0", 2L, repeat('0', 64), SIGNER, false, false);
+        File[] downloaded = new File[1];
         expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 wrongHash, UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
-                release -> true, release -> writeTemp(APK_BYTES), apk -> identity()),
+                release -> true, release -> { downloaded[0] = writeTemp(APK_BYTES); return downloaded[0]; },
+                apk -> identity()),
                 "SHA-256 must match release metadata");
+        check(downloaded[0] != null && !downloaded[0].exists(), "hash verification failure deletes the temporary APK");
     }
 
     private static void packageAndVersionMismatchesFailClosed() throws Exception {
@@ -177,11 +218,13 @@ public final class UpdaterSmoke {
                 apk -> identity()),
                 "publisher configuration must match running app signer");
         check(downloads.get() == 0, "publisher mismatch blocks download");
+        File[] downloaded = new File[1];
         expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
-                release -> true, release -> writeTemp(APK_BYTES),
+                release -> true, release -> { downloaded[0] = writeTemp(APK_BYTES); return downloaded[0]; },
                 apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 26, repeat('b', 64))),
                 "APK signer must match installed and configured signer");
+        check(downloaded[0] != null && !downloaded[0].exists(), "signer verification failure deletes the temporary APK");
     }
 
     private static void emptyPublisherSignerBlocksConsentAndDownload() throws Exception {
@@ -207,7 +250,10 @@ public final class UpdaterSmoke {
         check(result.status == UpdaterCore.VerificationStatus.VERIFIED, "verified release returns a verification-only result");
         check(result.verifiedApk != null && result.verifiedApk.isFile(),
                 "verified APK remains available for user-directed saving");
-        check(downloadedFile[0] == result.verifiedApk, "verification returns the exact inspected temporary APK");
+        check(downloadedFile[0] != null && !downloadedFile[0].exists(),
+                "unverified staging file is renamed only after every verification passes");
+        check(result.verifiedApk.getName().endsWith(".verified.apk"),
+                "verified artifact has a distinct cache filename from partial downloads");
         check(result.verifiedApk.delete(), "caller can discard the verified temporary APK after saving or cancellation");
     }
 

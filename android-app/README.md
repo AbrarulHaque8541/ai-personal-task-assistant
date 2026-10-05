@@ -123,7 +123,8 @@ These checks intentionally do not produce an APK. They do not include an SDK pac
 
 ## Current weekly review verification (2026-10-05)
 
-- `sh ./tools/check-v1-source.sh` passes: 25 task-logic assertions, 51 updater-policy assertions, 63 parser/transport/download fixture assertions, manifest/permission policy checks, accessibility/localization source checks, and contrast checks with a lowest tested result of **5.00:1**. The transport suite includes unusual-port rejection, redirect validation, and the explicit Wi-Fi/mobile-data choice. These source-level checks do not replace rendered UI, translated-flow, TalkBack, or live-network testing.
+- `sh ./tools/check-v1-source.sh` passes: 25 task-logic assertions, updater-policy assertions, parser/transport/download fixture assertions, manifest/permission policy checks, accessibility/localization source checks, and contrast checks with a lowest tested result of **5.00:1**. The transport suite includes unusual-port rejection, redirect validation, the explicit Wi-Fi/mobile-data choice, mid-transfer cancellation, crash/restart partial cleanup, and streamed 100 MiB ceiling rejection. These source-level checks do not replace rendered UI, translated-flow, TalkBack, or live-network testing.
+- Downloads are staged only under the app cache's `daymark-update-tmp/daymark-update-*.partial` naming scheme. Once per app process, startup cleanup scans only that directory (not recursively) and deletes only regular files with that exact prefix/suffix; it does not delete `.verified.apk` files, task data, or a user-selected save destination outside the cache directory. A verified private cache copy left behind if the process dies after verification is intentionally outside this partial-only cleanup policy.
 - Offline API 35 Java compilation and resource processing completed successfully for the `githubSideloadRelease` and `playRelease` flavors using already-installed SDK components. No `assemble*` task was run and no APK output was produced. The flavor sources/manifests declare `INTERNET` plus `ACCESS_NETWORK_STATE` only for sideload; Play has no permission, and neither flavor includes `REQUEST_INSTALL_PACKAGES` or PackageInstaller status UI.
 - **No `assemble*` task was run during this updater work.** No updater APK was assembled, signed, installed, published, or retained. The publisher installation gate remains false, the signer pin is empty, and there is no production release key or stable release.
 - `adb devices -l` returned no devices. Real `PackageManager` signer parsing, verified-file document-picker save/cancel, manual opening from Files, Android source-approval Settings and confirmation UI, installation, and launch remain unverified on a device. Wi-Fi/mobile network behavior, airplane mode, Keystore behavior, TalkBack, device font scaling, and locale behavior also remain unverified.
@@ -132,7 +133,7 @@ These checks intentionally do not produce an APK. They do not include an SDK pac
 Run source-level checks without Android SDK packages:
 
 ```sh
-./tools/check-v1-source.sh
+sh ./tools/check-v1-source.sh
 ```
 
 ## Initial build attempt before SDK installation (historical)
@@ -141,7 +142,7 @@ Run source-level checks without Android SDK packages:
 - The checked-in Gradle Wrapper runs successfully and reports Gradle `8.10.2` on Java 21.
 - Official Android CLI `1.0.16500706` is installed from Google's Linux download at `~/.local/bin/android`; CLI metrics were disabled for the version check. Its first-run output displayed the SDK agreement URL but did not request or receive any license acceptance. No platform/build-tools package was requested by that command.
 - Android SDK Platform 35, Build Tools 35.0.0, Platform Tools/adb, and the legacy SDK Command-Line Tools archive are **not installed**. Google’s SDK license approval is pending; no SDK package download, installation, acceptance, or bypass has occurred.
-- `./tools/check-v1-source.sh` passes: **25 native core assertions** and the source policy checks.
+- `sh ./tools/check-v1-source.sh` passes: **25 native core assertions** and the source policy checks.
 - `./gradlew :app:assembleDebug --no-daemon --console=plain` was attempted without SDK environment variables and failed with:
 
   ```text
@@ -159,7 +160,7 @@ See [V1_ACCEPTANCE.md](V1_ACCEPTANCE.md) for the manual release checks and expli
 
 - Official Android CLI `1.0.16500706` at `~/.local/bin/android` matches its recorded Google-download SHA-256 `54b6e2d382444b91511fcc7ab34ddec6561f257d6d1cdce16bb91af6789b6de2`.
 - The CLI created `licenses/android-sdk-license` (41 bytes; SHA-256 `c43fa37686457c3f18caa3607945f4ec52a9d1beaaad8117e50dc4e863270c85`) and installed `platforms/android-35` 2.0.0, `build-tools/35.0.0` 35.0.0, and `platform-tools` 37.0.1. The user later clarified that the preceding “ok to karo” was not legal consent. Treat this acceptance and installation as **unapproved**; this is a factual record, not authorization. No other SDK package/license was accepted, and no further SDK terms or packages may be handled before an explicit **YES** to the exact legal-consent question. The emulator and legacy command-line-tools package are not installed.
-- `./tools/check-v1-source.sh` passes with 25 native-core assertions plus permission, background-component, runtime-dependency, and optional-asset checks.
+- `sh ./tools/check-v1-source.sh` passes with 25 native-core assertions plus permission, background-component, runtime-dependency, and optional-asset checks.
 - `./gradlew :app:assembleDebug --no-daemon --console=plain` completes with `BUILD SUCCESSFUL`. The build emitted a non-blocking SDK XML v4/v3 compatibility warning and a Java deprecated-API note. The first resource-link attempt exposed an unavailable framework `Theme.Material.DayNight.NoActionBar`; the default was changed to the supported light theme, with the existing `values-night` dark theme retained.
 - The pre-correction debug artifact (now superseded by the fresh build below) was 45,027 bytes, SHA-256 `0edb81e786f60b43cdc0521bc00ded35f695c113040e796b59766f2bf3309b27`. It was package `com.cue.daymark`, version `1.0.0`, min SDK 26/target SDK 35, debug-signed, and had no requested permissions. This historical artifact must not be confused with the current root copy or a release APK.
 - `adb devices -l` returned no attached device, and the Android emulator package was not installed. APK installation and app launch could not be verified on-device. At the time of this historical snapshot, no post-correction SDK build had yet occurred; the later, consented rebuild is recorded below.

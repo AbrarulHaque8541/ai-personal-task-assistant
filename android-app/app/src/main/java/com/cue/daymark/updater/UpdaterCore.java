@@ -25,6 +25,7 @@ public final class UpdaterCore {
         HTTP,
         INVALID_METADATA,
         DOWNLOAD,
+        CANCELLED,
         APK_MISMATCH,
         SIGNER_MISMATCH
     }
@@ -56,6 +57,9 @@ public final class UpdaterCore {
     public interface Downloader {
         /** Writes the APK into private temporary storage and returns that file. */
         File download(Release release) throws UpdateException;
+
+        /** Lets interactive downloaders honor cancellation through the verification boundary. */
+        default boolean isCancelled() { return false; }
     }
 
     public interface ApkVerifier {
@@ -201,6 +205,7 @@ public final class UpdaterCore {
         boolean keepVerifiedApk = false;
         try {
             temporaryApk = downloader.download(release);
+            ensureNotCancelled(downloader);
             if (temporaryApk == null || !temporaryApk.isFile()) {
                 throw new UpdateException(Failure.DOWNLOAD, "APK download did not produce a file.");
             }
@@ -209,10 +214,12 @@ public final class UpdaterCore {
                 throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK size did not match release metadata.");
             }
             String actualHash = sha256(temporaryApk);
+            ensureNotCancelled(downloader);
             if (!normalizeSha256(actualHash).equals(normalizeSha256(release.apkSha256))) {
                 throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK SHA-256 did not match release metadata.");
             }
             ApkIdentity apk = verifier.inspect(temporaryApk);
+            ensureNotCancelled(downloader);
             if (apk == null || !APPLICATION_ID.equals(apk.applicationId)
                     || !release.applicationId.equals(apk.applicationId)
                     || !release.versionName.equals(apk.versionName)
@@ -228,6 +235,8 @@ public final class UpdaterCore {
                 throw new UpdateException(Failure.SIGNER_MISMATCH,
                         "APK signing certificate does not match the installed app and publisher configuration.");
             }
+            ensureNotCancelled(downloader);
+            temporaryApk = promoteVerifiedFile(temporaryApk);
             keepVerifiedApk = true;
             return new VerificationResult(VerificationStatus.VERIFIED, temporaryApk);
         } catch (UpdateException exception) {
@@ -240,6 +249,25 @@ public final class UpdaterCore {
                 temporaryApk.delete();
             }
         }
+    }
+
+    private static void ensureNotCancelled(Downloader downloader) throws UpdateException {
+        if (downloader.isCancelled()) {
+            throw new UpdateException(Failure.CANCELLED, "APK download or verification was cancelled.");
+        }
+    }
+
+    private static File promoteVerifiedFile(File temporaryApk) throws UpdateException {
+        String name = temporaryApk.getName();
+        String verifiedName = name.endsWith(".partial")
+                ? name.substring(0, name.length() - ".partial".length()) + ".verified.apk"
+                : name + ".verified.apk";
+        File verifiedApk = new File(temporaryApk.getParentFile(), verifiedName);
+        if (verifiedApk.exists() || !temporaryApk.renameTo(verifiedApk)) {
+            throw new UpdateException(Failure.DOWNLOAD,
+                    "Verified APK could not be safely finalized in private storage.");
+        }
+        return verifiedApk;
     }
 
     public static void validateRelease(Release release) throws UpdateException {
