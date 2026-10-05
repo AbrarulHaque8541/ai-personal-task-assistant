@@ -6,8 +6,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 final class TaskLogic {
@@ -30,7 +32,7 @@ final class TaskLogic {
 
     static boolean isValid(Task task) {
         if (task == null || task.id == null || task.id.trim().isEmpty()
-                || task.title == null || task.title.trim().isEmpty()
+                || task.title == null || task.title.trim().isEmpty() || task.title.length() > 160
                 || task.priority == null || !isPriority(task.priority)
                 || (task.dueDate != null && !isDateOnly(task.dueDate))) {
             return false;
@@ -42,6 +44,15 @@ final class TaskLogic {
         } catch (DateTimeParseException | NullPointerException exception) {
             return false;
         }
+    }
+
+    static boolean isValidTaskList(List<Task> tasks) {
+        if (tasks == null) return false;
+        Set<String> ids = new HashSet<>();
+        for (Task task : tasks) {
+            if (!isValid(task) || !ids.add(task.id)) return false;
+        }
+        return true;
     }
 
     static boolean isPriority(String priority) {

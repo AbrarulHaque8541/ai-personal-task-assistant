@@ -21,16 +21,17 @@ This is a release checklist, not a claim that every device-level item has alread
 
 ## Automated checks available in this workspace
 
-- [x] Core task validation, IDs/timestamps, date-only rules, filters/search, and deterministic suggestions compile/run on the installed JDK.
+- [x] Core task validation, IDs/timestamps, date-only rules, filters/search, and deterministic suggestions compile/run on the installed JDK. The 30-assertion suite also checks the 160-character title bound and rejects duplicate IDs in a saved task snapshot.
 - [x] Manifest has no declared permissions or background component; no runtime dependency or optional model/media asset is included in the source tree.
 - [x] Source-derived palette contrast test checks standard and high-contrast light/dark pairs against the 4.5:1 normal-text threshold; the lowest tested ratio is 5.00:1. It is not a rendered-screen or TalkBack test.
 - [x] Static accessibility/localization checks confirm that every source `setTextSize` call applies the selected app text scale, expected spoken-label strings/live status regions are present, the UI remains explicitly English-only, and date formatting uses the device locale. These source assertions do not test visual reflow, translated flows, or TalkBack traversal.
-- [x] Android Gradle debug build completed with `BUILD SUCCESSFUL` after the user explicitly consented prospectively to using only already-installed SDK components. No SDK package was installed and no new license was accepted in this rebuild; the earlier acceptance/install remains unapproved and is not retroactively authorized. Install/launch remain unverified because `adb devices -l` returned no attached device and no emulator package is installed.
-- [x] Fresh root/output debug APK copies are byte-identical: `app-debug.apk`, 45,031 bytes, SHA-256 `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`; package `com.cue.daymark`, version `1.0.0`, min SDK 26 / target SDK 35. The built manifest declares no permissions; `apksigner verify` succeeded with APK Signature Scheme v2. It was not installed or published. Debug size does not measure or qualify the `<15 MB` release target.
+- [x] Current feature branch passes the source-policy suite and builds offline with `BUILD SUCCESSFUL` using only the already-installed SDK Platform 35 / Build Tools 35.0.0. No SDK package was installed and no new license was accepted. The earlier acceptance/install remains unapproved and is not retroactively authorized.
+- [x] Generated debug APK: `android-app/app/build/outputs/apk/debug/app-debug.apk`, 45,091 bytes, SHA-256 `e5e8f05d163fa7514085e7b4c06d20de09781c7b590d8f26a45bcebd279b980e`; package `com.cue.daymark`, version `1.0.0`, min SDK 26 / target SDK 35. The built manifest declares no permissions; `apksigner verify` succeeded with APK Signature Scheme v2. It remains an ignored debug artifact and was not installed, uploaded, or released. Debug size does not measure or qualify the `<15 MB` release target.
 
-Run available source checks from `android-app/`:
+Run available source checks from the repository root:
 
 ```sh
+cd android-app
 ./tools/check-v1-source.sh
 ```
 
@@ -78,8 +79,9 @@ The current manifest declares no permissions and the source has no runtime-permi
 - [ ] **Locales and online sources:** a downloaded locale JSON or model source requires a visible network/region/source/size disclosure and explicit user action. Verify offline operation without it, no silent fallback, removable cached data, and no background downloads.
 - [ ] **Background jobs:** if a user-requested local-data import later needs longer execution, test OS-compliant WorkManager or visible foreground work, constraints, cancellation, process death/reboot recovery, and denial/failure paths. Verify the app never schedules model downloads, updates, indexing, or inference; never relies on indefinite residency; and never bypasses Android background limits.
 - [ ] **CLI/plugins/providers:** test allowlisted typed inputs, caller/signature checks, permissions, cancellation/quotas/timeouts, denied/unavailable companion behavior, no shell-string execution, no secret/path leakage, provider selection without cloud fallback, remote data/cost disclosure, and Telegram backend/token isolation.
-- [ ] **Play target API:** this app currently targets API 35. Google's current Play requirement is API 36+ for ordinary new apps and updates submitted from 2026-08-31; upgrade the SDK/AGP toolchain and target, then run API 36+ compatibility tests before any Play release. The present debug APK is not Play-submission-ready; see `ANDROID_SOURCES.md`.
-- [ ] **Release pipeline:** pin and verify dependencies/toolchain, produce SBOM/license inventory, build twice for reproducibility, inspect manifest and APK/AAB contents for hidden developer bypasses, test endpoints, sensitive logging, or executable downloads, align/sign/verify release certificate identity, run connected Android tests and install/update/rollback on the supported matrix. Release qualification remains pending. The initial license acceptance/package installation remains unapproved; the user later prospectively consented only to using the existing packages for a debug rebuild. No additional license/package, device install, or publication was authorized.
+- [ ] **Play target API:** this app currently targets API 35. Google's current Play requirement is API 36+ for ordinary new apps and updates submitted from 2026-08-31; upgrade the SDK/AGP toolchain and target before any Play release. The present debug APK is not Play-submission-ready; see `ANDROID_SOURCES.md`.
+- [ ] **Android 16 edge-to-edge:** only SDK Platform 35 / Build Tools 35.0.0 are installed, so API 36 has not been built or runtime-tested. Android 16 disables the edge-to-edge opt-out for apps targeting API 36. Before target 36 release, test status/navigation bars, display cutouts, IME/keyboard, dialogs, rotation, gesture and three-button navigation, and large text on API 35 and 36 devices/emulators. Do not claim API 36 readiness until the build and visual/runtime checks pass.
+- [ ] **Release pipeline:** pin and verify dependencies/toolchain, produce SBOM/license inventory, build twice for reproducibility, inspect manifest and APK/AAB contents for hidden developer bypasses, test endpoints, sensitive logging, or executable downloads, align/sign/verify release certificate identity, run connected Android tests and install/update/rollback on the supported matrix. Release qualification remains pending. The initial license acceptance/package installation remains unapproved; later consent covered only use of already-installed packages for a debug rebuild. The feature branch/PR contains source and documentation only; no additional SDK license/package, device install, APK upload, or app release was performed.
 
 ## Explicitly deferred (not V1 functionality)
 
@@ -95,3 +97,12 @@ The current manifest declares no permissions and the source has no runtime-permi
 Any future local or remote provider must implement one `AssistantProvider` contract exposing capabilities, offline/remote status, configuration status, and an inference call. The user must explicitly select the provider, and routing must never silently fall back to cloud. Before a remote call, disclose what information leaves the phone and possible cost, send minimum context, never log prompts or keys, and encrypt user-supplied credentials with an Android Keystore-protected key. This contract, routing, and remote credential support are not in V1.
 
 Telegram is a separate hosted-bot service that needs a backend and bot token. It conflicts with V1's offline/no-backend/no-background design and remains deferred; do not add a mock connection or background phone polling.
+
+## Encrypted task-storage failure acceptance
+
+- [x] JDK storage-protocol tests distinguish a valid empty store from errors and cover truncated ciphertext, modified GCM ciphertext, missing and simulated permanently invalidated keys, an unusable AES key at initialization, a partial update write, an incomplete first-write artifact, and a failed edit that leaves the previous committed ciphertext/plaintext unchanged.
+- [x] Activity/source checks verify that load errors do not clear task state, unavailable data is not rendered as an ordinary empty list, failed edits remain explicitly labeled unsaved, and subsequent edits are paused.
+- [ ] Verify Android Keystore key loss/unavailability, Android `AtomicFile` rollback after process death during an update, storage-full/read-only failures, relaunch behavior, and TalkBack announcement/reflow on a supported device or emulator. The JDK adapter tests and Android build do not substitute for these runtime checks.
+- [ ] Choose an explicit future data-recovery policy before implementing retained backups, task export/recovery secrets, or key rotation. V1 holds at a non-destructive unavailable state; replacing a Keystore key is not recovery for ciphertext encrypted by the original key.
+
+See [STORAGE_RECOVERY.md](STORAGE_RECOVERY.md) for the exact contract and official Android references.
