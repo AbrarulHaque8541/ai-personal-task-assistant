@@ -3,6 +3,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
+sh ./tools/run-attachment-tests.sh
+python3 ./tools/check-attachment-source.py "$ROOT"
 python3 - "$ROOT" <<'PY'
 import pathlib
 import re
@@ -18,7 +20,12 @@ assert app.get("{http://schemas.android.com/apk/res/android}allowBackup") == "fa
 assert app.get("{http://schemas.android.com/apk/res/android}usesCleartextTraffic") == "false", "cleartext must stay disabled"
 assert not list(app.findall("service")), "V1 must not add services"
 assert not list(app.findall("receiver")), "V1 must not add receivers"
-assert not list(app.findall("provider")), "V1 must not add providers"
+providers = app.findall("provider")
+assert len(providers) == 1, "only the grant-only attachment content provider is allowed"
+provider = providers[0]
+android = "{http://schemas.android.com/apk/res/android}"
+assert provider.get(android + "name") == ".AttachmentContentProvider"
+assert provider.get(android + "exported") == "false" and provider.get(android + "grantUriPermissions") == "true"
 
 main = root / "app/src/main"
 for path in main.rglob("*"):
@@ -51,7 +58,7 @@ store = (main / "java/com/cue/daymark/EncryptedTaskStore.java").read_text(encodi
 assert "TaskLogic.isValidTaskList(tasks)" in store, "encrypted writer must reject invalid or duplicate task snapshots"
 assert "TaskLogic.isValidTaskList(result)" in store, "encrypted reader must use the same task-list validation contract"
 
-print("PASS V1 source policy: no permissions/network, background components, runtime dependencies, or optional media/model binaries")
+print("PASS V1 source policy: no permissions/network, background components or runtime dependencies; only the non-exported grant-only attachment provider; no optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
 print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")

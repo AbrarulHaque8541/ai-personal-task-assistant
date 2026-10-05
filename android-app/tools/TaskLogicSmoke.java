@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 public final class TaskLogicSmoke {
     private static final LocalDate TODAY = LocalDate.of(2026, 10, 5);
@@ -17,6 +18,7 @@ public final class TaskLogicSmoke {
         CRUDKeepsStableIdentityAndTimestamps();
         storedTaskSnapshotsMatchWriterRules();
         snapshotSchemaRejectsCoercibleWrongTypes();
+        attachmentMetadataAndQuotasAreStrict();
         filtersAndSearchCompose();
         suggestionsUseOnlyTransparentLocalRules();
         System.out.println("PASS Android core logic smoke tests: " + assertions + " assertions");
@@ -59,6 +61,9 @@ public final class TaskLogicSmoke {
 
     private static void snapshotSchemaRejectsCoercibleWrongTypes() {
         check(TaskSnapshotSchema.isVersionOne(1), "numeric schema version one is accepted");
+        check(TaskSnapshotSchema.isVersionTwo(2) && TaskSnapshotSchema.isSupportedVersion(1),
+                "v1 remains readable and v2 is supported for attachment metadata");
+        check(!TaskSnapshotSchema.isSupportedVersion(3), "unknown future schema versions are rejected");
         check(!TaskSnapshotSchema.isVersionOne("1"), "string schema version is not coerced to a number");
         check(!TaskSnapshotSchema.isVersionOne(1.5), "fractional schema version is not truncated to one");
         check("title".equals(TaskSnapshotSchema.requireString("title")), "actual JSON string values are accepted");
@@ -66,6 +71,73 @@ public final class TaskLogicSmoke {
                 "numeric task fields are not coerced to strings");
         expectIllegalArgument(() -> TaskSnapshotSchema.requireString(null),
                 "missing required task strings are rejected");
+    }
+
+    private static void attachmentMetadataAndQuotasAreStrict() {
+        check("_report_.pdf".equals(AttachmentLogic.sanitizeDisplayName("../report\n.pdf")),
+                "path separators and control characters are sanitized before display or persistence");
+        check("application/pdf".equals(AttachmentLogic.normalizeMimeType("Application/PDF")),
+                "valid MIME metadata is normalized");
+        check("application/octet-stream".equals(AttachmentLogic.normalizeMimeType("../evil")),
+                "invalid MIME metadata falls back to a generic type");
+
+        AttachmentRef first = attachment(12);
+        AttachmentRef second = attachment(20);
+        Task firstTask = task("attach-one", "Task one", null, "medium", false, 11)
+                .withAttachments(Arrays.asList(first));
+        Task secondTask = task("attach-two", "Task two", null, "low", false, 12)
+                .withAttachments(Arrays.asList(second));
+        check(TaskLogic.isValidTaskList(Arrays.asList(firstTask, secondTask)),
+                "distinct valid attachment references are accepted across tasks");
+        check(AttachmentLogic.remainingBytes(Arrays.asList(firstTask, secondTask))
+                        == AttachmentLogic.MAX_TOTAL_BYTES - 32,
+                "remaining aggregate quota is computed from persisted measured sizes");
+        check(AttachmentLogic.isSafeToOpenExternally(first), "PDF has a confirmed external-open route");
+        check(!AttachmentLogic.isSafeToOpenExternally(new AttachmentRef(UUID.randomUUID().toString(),
+                        "script.html", "text/html", 1)), "active HTML content cannot be externally opened");
+        check(!AttachmentLogic.isSafeToOpenExternally(new AttachmentRef(UUID.randomUUID().toString(),
+                        "package.apk", "application/vnd.android.package-archive", 1)),
+                "installer packages cannot be externally opened");
+        check(!AttachmentLogic.isSafeToOpenExternally(new AttachmentRef(UUID.randomUUID().toString(),
+                        "legacy.doc", "application/msword", 1)),
+                "legacy binary Word formats stay outside the external-open allowlist");
+        check(!AttachmentLogic.isSafeToOpenExternally(new AttachmentRef(UUID.randomUUID().toString(),
+                        "unknown.bin", "application/octet-stream", 1)),
+                "unknown formats remain attachable but have no external-open action");
+        check(!TaskLogic.isValidTaskList(Arrays.asList(firstTask,
+                        task("attach-three", "Task three", null, "low", false, 13)
+                                .withAttachments(Arrays.asList(first)))),
+                "the same app-owned payload cannot be referenced twice");
+
+        List<AttachmentRef> six = Arrays.asList(attachment(1), attachment(1), attachment(1),
+                attachment(1), attachment(1), attachment(1));
+        check(!TaskLogic.isValid(task("too-many", "Too many", null, "medium", false, 14)
+                        .withAttachments(six)), "more than five attachments on one task are rejected");
+        List<Task> overTotalCount = new ArrayList<>();
+        for (int index = 0; index <= AttachmentLogic.MAX_TOTAL_COUNT; index++) {
+            overTotalCount.add(task("global-count-" + index, "Global count " + index,
+                    null, "low", false, 20 + index).withAttachments(Arrays.asList(attachment(1))));
+        }
+        check(!TaskLogic.isValidTaskList(overTotalCount), "more than 100 attachments overall are rejected");
+        List<Task> overTotal = Arrays.asList(
+                task("quota-one", "Quota one", null, "medium", false, 15)
+                        .withAttachments(Arrays.asList(attachment(AttachmentLogic.MAX_FILE_BYTES),
+                                attachment(AttachmentLogic.MAX_FILE_BYTES), attachment(AttachmentLogic.MAX_FILE_BYTES))),
+                task("quota-two", "Quota two", null, "medium", false, 16)
+                        .withAttachments(Arrays.asList(attachment(AttachmentLogic.MAX_FILE_BYTES),
+                                attachment(AttachmentLogic.MAX_FILE_BYTES), attachment(AttachmentLogic.MAX_FILE_BYTES))));
+        check(!TaskLogic.isValidTaskList(overTotal), "aggregate attachment bytes cannot exceed 100 MiB");
+        check(!AttachmentLogic.canAddToTask(firstTask, Arrays.asList(firstTask.withAttachments(
+                        Arrays.asList(attachment(AttachmentLogic.MAX_TOTAL_BYTES))))),
+                "adding is disabled at the total attachment byte limit");
+        check(!AttachmentLogic.isValid(new AttachmentRef("not-a-uuid", "x.pdf", "application/pdf", 1)),
+                "provider-controlled paths cannot be accepted as attachment IDs");
+        check(!AttachmentLogic.isValid(attachment(AttachmentLogic.MAX_FILE_BYTES + 1)),
+                "metadata above the per-file cap is rejected");
+    }
+
+    private static AttachmentRef attachment(long bytes) {
+        return new AttachmentRef(UUID.randomUUID().toString(), "report.pdf", "application/pdf", bytes);
     }
 
     private static void filtersAndSearchCompose() {

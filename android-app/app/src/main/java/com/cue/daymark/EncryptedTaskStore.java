@@ -202,19 +202,31 @@ final class EncryptedTaskStore {
             object.put("completed", task.completed);
             object.put("createdAt", task.createdAt);
             object.put("updatedAt", task.updatedAt);
+            JSONArray attachments = new JSONArray();
+            for (AttachmentRef attachment : task.attachments) {
+                JSONObject reference = new JSONObject();
+                reference.put("id", attachment.id);
+                reference.put("displayName", attachment.displayName);
+                reference.put("mimeType", attachment.mimeType);
+                reference.put("sizeBytes", attachment.sizeBytes);
+                attachments.put(reference);
+            }
+            object.put("attachments", attachments);
             array.put(object);
         }
         JSONObject document = new JSONObject();
-        document.put("version", 1);
+        document.put("version", 2);
         document.put("tasks", array);
         return document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private List<Task> decodeTasks(byte[] plaintext) throws Exception {
         JSONObject document = new JSONObject(new String(plaintext, java.nio.charset.StandardCharsets.UTF_8));
-        if (!TaskSnapshotSchema.isVersionOne(document.opt("version"))) {
+        Object version = document.opt("version");
+        if (!TaskSnapshotSchema.isSupportedVersion(version)) {
             throw new IOException("Task data schema version is not supported.");
         }
+        boolean hasAttachments = TaskSnapshotSchema.isVersionTwo(version);
         JSONArray array = document.optJSONArray("tasks");
         if (array == null) throw new IOException("Task data is missing its task list.");
 
@@ -226,11 +238,30 @@ final class EncryptedTaskStore {
             if (!(completedValue instanceof Boolean)) throw new IOException("Task completion value is malformed.");
             Object dueValue = object.opt("dueDate");
             String dueDate = dueValue == JSONObject.NULL ? null : TaskSnapshotSchema.requireString(dueValue);
+            List<AttachmentRef> attachments = new ArrayList<>();
+            if (hasAttachments) {
+                JSONArray references = object.optJSONArray("attachments");
+                if (references == null) throw new IOException("Task attachment list is malformed.");
+                for (int attachmentIndex = 0; attachmentIndex < references.length(); attachmentIndex++) {
+                    JSONObject reference = references.optJSONObject(attachmentIndex);
+                    if (reference == null) throw new IOException("Task attachment metadata is malformed.");
+                    Object sizeValue = reference.opt("sizeBytes");
+                    if (!(sizeValue instanceof Number)) throw new IOException("Task attachment size is malformed.");
+                    Number number = (Number) sizeValue;
+                    long sizeBytes = number.longValue();
+                    if (number.doubleValue() != (double) sizeBytes || sizeBytes < 0) {
+                        throw new IOException("Task attachment size is malformed.");
+                    }
+                    attachments.add(new AttachmentRef(TaskSnapshotSchema.requireString(reference.opt("id")),
+                            TaskSnapshotSchema.requireString(reference.opt("displayName")),
+                            TaskSnapshotSchema.requireString(reference.opt("mimeType")), sizeBytes));
+                }
+            }
             Task task = new Task(TaskSnapshotSchema.requireString(object.opt("id")),
                     TaskSnapshotSchema.requireString(object.opt("title")), dueDate,
                     TaskSnapshotSchema.requireString(object.opt("priority")), (Boolean) completedValue,
                     TaskSnapshotSchema.requireString(object.opt("createdAt")),
-                    TaskSnapshotSchema.requireString(object.opt("updatedAt")));
+                    TaskSnapshotSchema.requireString(object.opt("updatedAt")), attachments);
             result.add(task);
         }
         if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");

@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -15,6 +16,7 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -51,6 +53,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
+    private static final int REQUEST_ATTACH_DOCUMENT = 7341;
+    private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
     private static final String PREFERENCES = "daymark.preferences.v1";
     private static final String THEME_KEY = "theme_mode";
     private static final int THEME_SYSTEM = 0;
@@ -71,6 +75,14 @@ public final class MainActivity extends Activity {
 
     private ExecutorService storageExecutor;
     private EncryptedTaskStore taskStore;
+    private AndroidAttachmentStore attachmentStore;
+    private boolean attachmentBusy;
+    private final Object attachmentCancelLock = new Object();
+    private volatile boolean attachmentCancelRequested;
+    private boolean attachmentCanCancel;
+    private String pendingAttachmentTaskId;
+    private Uri pendingPickedAttachmentUri;
+    private String pendingPickedAttachmentTaskId;
     private boolean storageReady;
     private boolean storageLoading = true;
     private boolean storageLoadFailed;
@@ -86,6 +98,9 @@ public final class MainActivity extends Activity {
     private String searchQuery = "";
     private Task pendingDeletedTask;
     private int pendingDeletedIndex;
+    private Task pendingAttachmentCleanupTask;
+    private boolean pendingAttachmentCleanupSaved;
+    private boolean pendingAttachmentCleanupExpired;
     private Runnable undoDismissal;
     private Palette palette;
 
@@ -100,6 +115,7 @@ public final class MainActivity extends Activity {
     private TextView dueTodayCount;
     private TextView taskCount;
     private TextView storageStatus;
+    private Button cancelAttachmentButton;
     private TextView emptyTitle;
     private TextView emptyCopy;
     private Button addTaskButton;
@@ -128,6 +144,10 @@ public final class MainActivity extends Activity {
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
+        attachmentStore = new AndroidAttachmentStore(getApplicationContext());
+        if (savedInstanceState != null) {
+            pendingAttachmentTaskId = savedInstanceState.getString(STATE_PENDING_ATTACHMENT_TASK);
+        }
         buildInterface();
         loadEncryptedTasks();
     }
@@ -137,6 +157,34 @@ public final class MainActivity extends Activity {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         if (storageExecutor != null) storageExecutor.shutdown();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        if (pendingAttachmentTaskId != null) {
+            state.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
+        }
+        super.onSaveInstanceState(state);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_ATTACH_DOCUMENT) return;
+        String taskId = pendingAttachmentTaskId;
+        pendingAttachmentTaskId = null;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        if (taskId == null) {
+            showToast("The task was no longer available. Choose it again to attach this file.");
+            return;
+        }
+        if (!storageReady && storageLoading) {
+            pendingPickedAttachmentUri = data.getData();
+            pendingPickedAttachmentTaskId = taskId;
+            showToast("Opening encrypted tasks; the selected file will be read after they are ready.");
+            return;
+        }
+        importAttachment(taskId, data.getData());
     }
 
     private int themeResource(int mode) {
@@ -268,6 +316,11 @@ public final class MainActivity extends Activity {
         storageStatus.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         storageStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         card.addView(storageStatus);
+        cancelAttachmentButton = compactButton("Cancel import", true);
+        cancelAttachmentButton.setContentDescription("Cancel the attachment import before it is saved");
+        cancelAttachmentButton.setVisibility(View.GONE);
+        cancelAttachmentButton.setOnClickListener(view -> requestAttachmentCancel());
+        copy.addView(cancelAttachmentButton, topMargin(dp(4)));
         content.addView(card, bottomMargin(dp(15)));
     }
 
@@ -441,7 +494,7 @@ public final class MainActivity extends Activity {
     private View emptyStateView;
 
     private void addLocalStorageNote(LinearLayout content) {
-        TextView note = text("Your tasks stay in this app on this device. They are not backed up or synced.",
+        TextView note = text("Tasks and attachments stay encrypted in this app on this device. No cloud sync or automatic backup.",
                 12, palette.muted, Typeface.NORMAL);
         note.setGravity(Gravity.CENTER);
         note.setPadding(dp(4), dp(10), dp(4), dp(6));
@@ -504,7 +557,11 @@ public final class MainActivity extends Activity {
             List<Task> loaded = null;
             Exception failure = null;
             try {
-                loaded = taskStore.load();
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    loaded = taskStore.load();
+                    try { attachmentStore.cleanupOrphans(attachmentIds(loaded)); }
+                    catch (Exception ignored) { /* Retry orphan cleanup on a later launch. */ }
+                }
             } catch (Exception exception) {
                 failure = exception;
             }
@@ -522,9 +579,11 @@ public final class MainActivity extends Activity {
                     storageLoadFailed = false;
                     storageSaveFailed = false;
                     storageFailureDetails = null;
-                    storageStatus.setText("Encrypted storage ready");
-                    storageStatus.setTextColor(palette.accent);
+                    storageStatus.setText(attachmentBusy ? "Importing attachment…" : "Encrypted storage ready");
+                    storageStatus.setTextColor(attachmentBusy ? palette.muted : palette.accent);
                 } else {
+                    pendingPickedAttachmentUri = null;
+                    pendingPickedAttachmentTaskId = null;
                     storageReady = false;
                     storageLoadFailed = true;
                     storageFailureDetails = storageFailureDetails(error);
@@ -534,6 +593,13 @@ public final class MainActivity extends Activity {
                     showToast("Saved tasks are unavailable. The encrypted data was not cleared; editing is paused.");
                 }
                 render();
+                if (error == null && pendingPickedAttachmentUri != null) {
+                    Uri picked = pendingPickedAttachmentUri;
+                    String pickedTaskId = pendingPickedAttachmentTaskId;
+                    pendingPickedAttachmentUri = null;
+                    pendingPickedAttachmentTaskId = null;
+                    importAttachment(pickedTaskId, picked);
+                }
             });
         });
     }
@@ -557,13 +623,22 @@ public final class MainActivity extends Activity {
                 if (error == null) {
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(snapshot);
+                    if (pendingAttachmentCleanupTask != null
+                            && findTaskIn(snapshot, pendingAttachmentCleanupTask.id) == null) {
+                        pendingAttachmentCleanupSaved = true;
+                        cleanupDeletedAttachmentsIfReady();
+                    }
                     if (revision == saveRevision) {
                         storageReady = true;
                         storageSaveFailed = false;
-                        storageStatus.setText("Encrypted storage ready");
-                        storageStatus.setTextColor(palette.accent);
+                        storageStatus.setText(attachmentBusy ? "Importing attachment…" : "Encrypted storage ready");
+                        storageStatus.setTextColor(attachmentBusy ? palette.muted : palette.accent);
                     }
                 } else if (revision == saveRevision) {
+                    if (pendingAttachmentCleanupTask != null && !pendingAttachmentCleanupSaved) {
+                        pendingAttachmentCleanupTask = null;
+                        pendingAttachmentCleanupExpired = false;
+                    }
                     storageReady = false;
                     storageSaveFailed = true;
                     storageStatus.setText("Not saved · unsaved changes are shown");
@@ -623,10 +698,10 @@ public final class MainActivity extends Activity {
         }
         openCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(open));
         dueTodayCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(dueToday));
-        addTaskButton.setEnabled(storageReady);
-        addTaskButton.setAlpha(storageReady ? 1f : 0.55f);
-        addDetailsButton.setEnabled(storageReady);
-        quickCaptureInput.setEnabled(storageReady);
+        addTaskButton.setEnabled(canEdit());
+        addTaskButton.setAlpha(canEdit() ? 1f : 0.55f);
+        addDetailsButton.setEnabled(canEdit());
+        quickCaptureInput.setEnabled(canEdit());
         if (searchInput != null) searchInput.setEnabled(!storageLoading && !storageLoadFailed);
         for (View powerOnly : powerOnlyViews) {
             powerOnly.setVisibility(powerMode ? View.VISIBLE : View.GONE);
@@ -747,7 +822,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addQuickTask() {
-        if (!storageReady) return;
+        if (!canEdit()) return;
         String title = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString().trim();
         if (title.isEmpty()) {
             quickCaptureInput.setError("Type a task first");
@@ -823,7 +898,7 @@ public final class MainActivity extends Activity {
         checkBox.setContentDescription(task.completed
                 ? "Mark “" + task.title + "” as not done"
                 : "Mark “" + task.title + "” as done");
-        checkBox.setEnabled(storageReady);
+        checkBox.setEnabled(canEdit());
         row.addView(checkBox, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         LinearLayout copy = new LinearLayout(this);
@@ -835,21 +910,27 @@ public final class MainActivity extends Activity {
         TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT),
                 12, dueColor(task), Typeface.NORMAL);
         copy.addView(details, topMargin(dp(4)));
+        Button attachments = compactButton("Files · " + task.attachments.size(), false);
+        attachments.setContentDescription("Manage " + task.attachments.size()
+                + " attachments for task: " + task.title);
+        attachments.setEnabled(canEdit());
+        attachments.setOnClickListener(view -> showAttachmentManager(task));
+        copy.addView(attachments, topMargin(dp(4)));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         Button edit = compactButton("Edit", false);
         edit.setContentDescription("Edit task: " + task.title);
-        edit.setEnabled(storageReady);
+        edit.setEnabled(canEdit());
         edit.setOnClickListener(view -> showTaskEditor(task));
         row.addView(edit);
         Button delete = compactButton("Delete", true);
         delete.setContentDescription("Delete task: " + task.title);
-        delete.setEnabled(storageReady);
+        delete.setEnabled(canEdit() && pendingDeletedTask == null);
         delete.setOnClickListener(view -> confirmDeleteTask(task));
         row.addView(delete);
 
         checkBox.setOnCheckedChangeListener((button, checked) -> {
-            if (!storageReady || checked == task.completed) return;
+            if (!canEdit() || checked == task.completed) return;
             replaceTask(TaskLogic.toggleCompleted(task));
             render();
             saveTasksAsync();
@@ -875,12 +956,356 @@ public final class MainActivity extends Activity {
         return palette.muted;
     }
 
+    private boolean canEdit() {
+        return storageReady && !attachmentBusy;
+    }
+
+    private void showAttachmentManager(Task task) {
+        if (!canEdit()) return;
+        Task current = findTask(task.id);
+        if (current == null) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+        TextView limits = text("Up to 5 files per task and 100 files overall · 20 MiB each · 100 MiB total. Files are encrypted here. A limited format allowlist can be sent to another app only after you choose Open; all files remain untrusted, and unknown or active formats cannot be opened by Daymark.",
+                12, palette.muted, Typeface.NORMAL);
+        limits.setLineSpacing(dp(2), 1f);
+        content.addView(limits, bottomMargin(dp(9)));
+        if (current.attachments.isEmpty()) {
+            content.addView(text("No files attached yet.", 13, palette.muted, Typeface.NORMAL), bottomMargin(dp(8)));
+        }
+        for (AttachmentRef attachment : current.attachments) {
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setPadding(dp(9), dp(7), dp(9), dp(7));
+            item.setBackground(shape(palette.surface, 9, palette.line));
+            boolean present = attachmentStore.exists(attachment.id);
+            String detail = attachment.displayName + "\n" + formatFileSize(attachment.sizeBytes)
+                    + " · " + attachment.mimeType + (present ? " · stored" : " · file unavailable");
+            TextView label = text(detail, 12, present ? palette.text : palette.danger, Typeface.NORMAL);
+            label.setContentDescription(detail);
+            item.addView(label, bottomMargin(dp(3)));
+            if (AttachmentLogic.isSafeToOpenExternally(attachment)) {
+                Button open = compactButton("Open with another app", false);
+                open.setContentDescription("Choose another app to open " + attachment.displayName);
+                open.setEnabled(present);
+                open.setOnClickListener(view -> confirmExternalOpen(attachment));
+                item.addView(open, bottomMargin(dp(3)));
+            }
+            Button remove = compactButton("Remove attachment", true);
+            remove.setContentDescription("Remove attachment " + attachment.displayName);
+            remove.setOnClickListener(view -> {
+                confirmRemoveAttachment(current.id, attachment);
+            });
+            item.addView(remove);
+            content.addView(item, bottomMargin(dp(7)));
+        }
+        Button add = compactButton("Attach a photo, audio, video, or document", false);
+        add.setContentDescription("Choose a photo, audio, video, or document using Android's document picker");
+        add.setOnClickListener(view -> {
+            Task latest = findTask(current.id);
+            if (latest != null && AttachmentLogic.canAddToTask(latest, tasks)) {
+                openAttachmentPicker(latest.id);
+            } else {
+                showToast("The attachment limit has been reached.");
+            }
+        });
+        content.addView(add, topMargin(dp(4)));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        new AlertDialog.Builder(this).setTitle("Attachments").setView(scroll)
+                .setPositiveButton("Done", null).show();
+    }
+
+    private void confirmExternalOpen(AttachmentRef attachment) {
+        if (!AttachmentLogic.isSafeToOpenExternally(attachment) || !attachmentStore.exists(attachment.id)) {
+            showToast("No safe external opener is available for this file.");
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Share with another app?")
+                .setMessage("Daymark will stream a read-only decrypted copy of “" + attachment.displayName
+                        + "” to the app you choose. That app may retain it. Files are untrusted; Daymark never opens them automatically or executes them.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Choose app", (dialog, which) -> openWithAnotherApp(attachment))
+                .show();
+    }
+
+    private void openWithAnotherApp(AttachmentRef attachment) {
+        if (!AttachmentLogic.isSafeToOpenExternally(attachment) || !attachmentStore.exists(attachment.id)) {
+            showToast("The attachment is no longer available.");
+            return;
+        }
+        Uri uri = new Uri.Builder().scheme("content")
+                .authority(getPackageName() + ".attachments")
+                .appendPath(attachment.id).build();
+        Intent view = new Intent(Intent.ACTION_VIEW);
+        view.setDataAndType(uri, attachment.mimeType);
+        view.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        view.setClipData(ClipData.newRawUri(attachment.displayName, uri));
+        try {
+            startActivity(Intent.createChooser(view, "Choose an app to open attachment"));
+        } catch (android.content.ActivityNotFoundException exception) {
+            showToast("No app can open this file type. It remains attached in Daymark.");
+        }
+    }
+
+    private void openAttachmentPicker(String taskId) {
+        if (!canEdit()) return;
+        Task task = findTask(taskId);
+        if (task == null || !AttachmentLogic.canAddToTask(task, tasks)) {
+            showToast("The attachment limit has been reached.");
+            return;
+        }
+        Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        picker.setType("*/*");
+        pendingAttachmentTaskId = taskId;
+        try {
+            startActivityForResult(picker, REQUEST_ATTACH_DOCUMENT);
+        } catch (android.content.ActivityNotFoundException exception) {
+            pendingAttachmentTaskId = null;
+            showToast("Android's document picker is not available on this device.");
+        }
+    }
+
+    private void importAttachment(String taskId, Uri selectedUri) {
+        if (!canEdit()) return;
+        Task target = findTask(taskId);
+        if (target == null || !AttachmentLogic.canAddToTask(target, tasks)) {
+            showToast("The task or available attachment space is no longer available.");
+            return;
+        }
+        attachmentBusy = true;
+        ++saveRevision;
+        synchronized (attachmentCancelLock) {
+            attachmentCancelRequested = false;
+            attachmentCanCancel = true;
+        }
+        cancelAttachmentButton.setText("Cancel import");
+        cancelAttachmentButton.setEnabled(true);
+        cancelAttachmentButton.setVisibility(View.VISIBLE);
+        List<Task> snapshot = new ArrayList<>(tasks);
+        storageStatus.setText("Importing encrypted attachment…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        storageExecutor.execute(() -> {
+            String newId = AttachmentBlobStore.newId();
+            List<Task> committed = null;
+            Exception failure = null;
+            boolean saveAttempted = false;
+            boolean rollbackFailed = false;
+            try {
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    AndroidAttachmentStore.Imported imported = attachmentStore.importSelected(selectedUri, newId,
+                            AttachmentLogic.remainingBytes(snapshot), () -> {
+                                synchronized (attachmentCancelLock) { return attachmentCancelRequested; }
+                            });
+                    Task current = findTaskIn(snapshot, taskId);
+                    if (current == null) throw new AttachmentQuotaException();
+                    List<AttachmentRef> references = new ArrayList<>(current.attachments);
+                    references.add(new AttachmentRef(imported.id, imported.displayName, imported.mimeType,
+                            imported.sizeBytes));
+                    List<Task> next = replaceTaskInSnapshot(snapshot, current.withAttachments(references));
+                    if (!TaskLogic.isValidTaskList(next)) throw new AttachmentQuotaException();
+                    synchronized (attachmentCancelLock) {
+                        if (attachmentCancelRequested) throw new AttachmentBlobStore.CancelledException();
+                        attachmentCanCancel = false;
+                    }
+                    mainHandler.post(() -> {
+                        if (isFinishing()) return;
+                        storageStatus.setText("Saving attachment metadata…");
+                        if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
+                    });
+                    saveAttempted = true;
+                    taskStore.save(next);
+                    committed = next;
+                }
+            } catch (Exception exception) {
+                failure = exception;
+                try {
+                    synchronized (AndroidAttachmentStore.transactionLock()) { attachmentStore.delete(newId); }
+                } catch (Exception ignored) { rollbackFailed = true; }
+            } finally {
+                synchronized (attachmentCancelLock) { attachmentCanCancel = false; }
+            }
+            List<Task> saved = committed;
+            Exception error = failure;
+            boolean persisted = saveAttempted && error != null;
+            boolean cleanupPending = rollbackFailed;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                attachmentBusy = false;
+                if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
+                if (error == null && saved != null) {
+                    tasks.clear();
+                    tasks.addAll(saved);
+                    lastSavedTasks.clear();
+                    lastSavedTasks.addAll(saved);
+                    storageReady = true;
+                    storageSaveFailed = false;
+                    storageStatus.setText("Encrypted storage ready");
+                    storageStatus.setTextColor(palette.accent);
+                    showToast("Attachment saved privately on this device.");
+                } else if (persisted) {
+                    storageReady = false;
+                    storageSaveFailed = true;
+                    storageStatus.setText("Attachment not saved · storage unavailable");
+                    storageStatus.setTextColor(palette.danger);
+                    captureFeedback.setText("The attachment was not saved. Existing task data were not cleared; editing is paused.");
+                    showToast("Attachment not saved. Existing task data remain; editing is paused.");
+                } else {
+                    storageStatus.setText(storageReady ? "Encrypted storage ready" : "Saved tasks unavailable");
+                    storageStatus.setTextColor(storageReady ? palette.accent : palette.danger);
+                    showToast(attachmentFailureMessage(error, cleanupPending));
+                }
+                render();
+            });
+        });
+    }
+
+    private void requestAttachmentCancel() {
+        boolean accepted;
+        synchronized (attachmentCancelLock) {
+            accepted = attachmentBusy && attachmentCanCancel;
+            if (accepted) attachmentCancelRequested = true;
+        }
+        if (accepted) {
+            cancelAttachmentButton.setText("Cancelling…");
+            cancelAttachmentButton.setEnabled(false);
+        } else {
+            showToast("The attachment is already being saved and can no longer be cancelled.");
+        }
+    }
+
+    private String attachmentFailureMessage(Exception failure, boolean cleanupPending) {
+        String message;
+        if (failure instanceof AttachmentBlobStore.CancelledException) {
+            message = "Attachment import cancelled. No attachment was saved.";
+        } else if (failure instanceof AttachmentBlobStore.StorageSpaceException) {
+            message = "There is not enough free space to copy this attachment safely.";
+        } else if (failure instanceof AttachmentBlobStore.FileLimitException) {
+            message = "That file exceeds the 20 MiB per-file limit.";
+        } else if (failure instanceof AttachmentBlobStore.StorageLimitException
+                || failure instanceof AttachmentQuotaException) {
+            message = "The attachment count or 100 MiB total storage limit has been reached.";
+        } else if (failure instanceof SecurityException || failure instanceof java.io.IOException) {
+            message = "Daymark could not read or safely copy that file. It may be unavailable from the selected provider.";
+        } else {
+            message = "The attachment could not be saved.";
+        }
+        return cleanupPending ? message + " An incomplete local copy will be retried for cleanup on next launch." : message;
+    }
+
+    private void confirmRemoveAttachment(String taskId, AttachmentRef attachment) {
+        new AlertDialog.Builder(this).setTitle("Remove attachment?")
+                .setMessage("Remove “" + attachment.displayName + "” from this task and delete its local encrypted copy?")
+                .setNegativeButton("Keep", null)
+                .setPositiveButton("Remove", (dialog, which) -> removeAttachment(taskId, attachment.id))
+                .show();
+    }
+
+    private void removeAttachment(String taskId, String attachmentId) {
+        if (!canEdit()) return;
+        Task current = findTask(taskId);
+        if (current == null) return;
+        List<AttachmentRef> remaining = new ArrayList<>();
+        for (AttachmentRef attachment : current.attachments) {
+            if (!attachment.id.equals(attachmentId)) remaining.add(attachment);
+        }
+        if (remaining.size() == current.attachments.size()) return;
+        List<Task> snapshot = replaceTaskInSnapshot(new ArrayList<>(tasks), current.withAttachments(remaining));
+        attachmentBusy = true;
+        long revision = ++saveRevision;
+        storageStatus.setText("Removing attachment…");
+        storageStatus.setTextColor(palette.muted);
+        render();
+        storageExecutor.execute(() -> {
+            Exception failure = null;
+            boolean deleted = false;
+            try {
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    taskStore.save(snapshot);
+                    try {
+                        attachmentStore.delete(attachmentId);
+                        deleted = true;
+                    } catch (Exception cleanupError) {
+                        // The unreferenced encrypted payload is retried by startup cleanup.
+                    }
+                }
+            } catch (Exception exception) {
+                failure = exception;
+            }
+            Exception error = failure;
+            boolean payloadDeleted = deleted;
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                attachmentBusy = false;
+                if (error == null) {
+                    tasks.clear();
+                    tasks.addAll(snapshot);
+                    lastSavedTasks.clear();
+                    lastSavedTasks.addAll(snapshot);
+                    storageReady = true;
+                    storageSaveFailed = false;
+                    storageStatus.setText("Encrypted storage ready");
+                    storageStatus.setTextColor(palette.accent);
+                    showToast(payloadDeleted ? "Attachment removed and local copy deleted."
+                            : "Attachment removed; local cleanup will retry on next launch.");
+                } else if (revision == saveRevision) {
+                    storageReady = false;
+                    storageSaveFailed = true;
+                    storageStatus.setText("Attachment removal not saved");
+                    storageStatus.setTextColor(palette.danger);
+                    captureFeedback.setText("Attachment removal was not saved. Editing is paused; the previous saved task remains.");
+                    showToast("Attachment removal was not saved. Editing is paused.");
+                }
+                render();
+            });
+        });
+    }
+
+    private Task findTask(String id) {
+        for (Task task : tasks) if (task.id.equals(id)) return task;
+        return null;
+    }
+
+    private Task findTaskIn(List<Task> snapshot, String id) {
+        for (Task task : snapshot) if (task.id.equals(id)) return task;
+        return null;
+    }
+
+    private List<Task> replaceTaskInSnapshot(List<Task> snapshot, Task replacement) {
+        for (int index = 0; index < snapshot.size(); index++) {
+            if (snapshot.get(index).id.equals(replacement.id)) {
+                snapshot.set(index, replacement);
+                return snapshot;
+            }
+        }
+        throw new IllegalArgumentException("The task is no longer available.");
+    }
+
+    private java.util.Set<String> attachmentIds(List<Task> source) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        if (source != null) {
+            for (Task task : source) for (AttachmentRef attachment : task.attachments) ids.add(attachment.id);
+        }
+        return ids;
+    }
+
+    private String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format(Locale.ROOT, "%.1f KiB", bytes / 1024.0);
+        return String.format(Locale.ROOT, "%.1f MiB", bytes / (1024.0 * 1024.0));
+    }
+
+    private static final class AttachmentQuotaException extends Exception { }
+
     private void showTaskEditor(Task editing) {
         showTaskEditor(editing, "");
     }
 
     private void showTaskEditor(Task editing, String draftTitle) {
-        if (!storageReady) {
+        if (!canEdit()) {
             showToast("Encrypted task storage is unavailable; edits are paused.");
             return;
         }
@@ -1031,7 +1456,7 @@ public final class MainActivity extends Activity {
     }
 
     private void deleteTask(Task task) {
-        if (!storageReady) return;
+        if (!canEdit() || pendingDeletedTask != null) return;
         int index = -1;
         for (int i = 0; i < tasks.size(); i++) {
             if (tasks.get(i).id.equals(task.id)) { index = i; break; }
@@ -1039,13 +1464,16 @@ public final class MainActivity extends Activity {
         if (index < 0) return;
         pendingDeletedIndex = index;
         pendingDeletedTask = tasks.remove(index);
+        pendingAttachmentCleanupTask = pendingDeletedTask;
+        pendingAttachmentCleanupSaved = false;
+        pendingAttachmentCleanupExpired = false;
         undoMessage.setText("Task deleted.");
         undoBar.setVisibility(View.VISIBLE);
         // Bring focus to Undo so screen-reader and keyboard users can act on the
         // seven-second recovery window without having to find the control.
         undoButton.requestFocus();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
-        undoDismissal = this::hideUndoBar;
+        undoDismissal = this::expireUndoWindow;
         mainHandler.postDelayed(undoDismissal, 7000);
         render();
         saveTasksAsync();
@@ -1061,19 +1489,49 @@ public final class MainActivity extends Activity {
     }
 
     private void undoDelete() {
-        if (pendingDeletedTask == null || !storageReady) return;
+        if (pendingDeletedTask == null || !canEdit()) return;
         for (Task task : tasks) {
             if (task.id.equals(pendingDeletedTask.id)) {
+                pendingAttachmentCleanupTask = null;
+                pendingAttachmentCleanupSaved = false;
+                pendingAttachmentCleanupExpired = false;
                 hideUndoBar();
                 return;
             }
         }
         tasks.add(Math.min(pendingDeletedIndex, tasks.size()), pendingDeletedTask);
+        pendingAttachmentCleanupTask = null;
+        pendingAttachmentCleanupSaved = false;
+        pendingAttachmentCleanupExpired = false;
         pendingDeletedTask = null;
         hideUndoBar();
         render();
         saveTasksAsync();
         showToast("Task restored.");
+    }
+
+    private void expireUndoWindow() {
+        pendingAttachmentCleanupExpired = true;
+        hideUndoBar();
+        cleanupDeletedAttachmentsIfReady();
+    }
+
+    private void cleanupDeletedAttachmentsIfReady() {
+        if (pendingAttachmentCleanupTask == null || !pendingAttachmentCleanupSaved
+                || !pendingAttachmentCleanupExpired) return;
+        pendingAttachmentCleanupTask = null;
+        pendingAttachmentCleanupSaved = false;
+        pendingAttachmentCleanupExpired = false;
+        storageExecutor.execute(() -> {
+            try {
+                synchronized (AndroidAttachmentStore.transactionLock()) {
+                    List<Task> latest = taskStore.load();
+                    attachmentStore.cleanupOrphans(attachmentIds(latest));
+                }
+            } catch (Exception ignored) {
+                // A later launch retries cleanup; task metadata is already durably removed.
+            }
+        });
     }
 
     private void hideUndoBar() {
@@ -1207,7 +1665,7 @@ public final class MainActivity extends Activity {
             String[] requested = readPermissionPackageInfo().requestedPermissions;
             if (requested == null || requested.length == 0) {
                 message = "Status: no Android permissions are declared by this version.\n\n"
-                        + "Task capture, editing, completion, deletion, and encrypted on-device storage need none. Daymark does not ask for permissions when it opens.\n\n"
+                        + "Task capture, editing, completion, deletion, and encrypted on-device storage need none. Attachments use Android's document picker after you choose a file; Daymark does not ask for broad storage permission. Daymark does not ask for permissions when it opens.\n\n"
                         + "A future feature may request a runtime permission only after you choose to use that feature, with a clear explanation. You can deny it; core tasks must remain available. Special app access would open Android Settings. An ordinary app cannot grant signature-only or privileged permissions. Daymark does not request root or superuser access.";
             } else {
                 StringBuilder details = new StringBuilder("Permissions declared by this app:\n");
@@ -1229,8 +1687,9 @@ public final class MainActivity extends Activity {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
         String details = "Daymark " + version + "\n\n"
-                + "Tasks: schema v1, encrypted in an app-private file.\n\n"
+                + "Tasks: encrypted in an app-private file; attachment references use schema v2. Existing v1 task data remains readable.\n\n"
                 + "Encryption: AES-GCM; the key is stored in Android Keystore. Hardware protection depends on the device.\n\n"
+                + "Attachments: encrypted app-private payloads; up to 20 MiB per file, 100 MiB total, and five per task. No attachment is opened or executed by Daymark.\n\n"
                 + "Suggestions: due-date and priority rules only; no AI service.\n\n"
                 + "Offline: no account, network permission, background service, or optional content download.\n\n"
                 + "Not included: voice input, GGUF models, command-line bridge, plugins, or app/OS updates.\n\n"

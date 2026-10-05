@@ -8,6 +8,14 @@ final class TaskSnapshotSchema {
         return value instanceof Number && ((Number) value).doubleValue() == 1.0d;
     }
 
+    static boolean isVersionTwo(Object value) {
+        return value instanceof Number && ((Number) value).doubleValue() == 2.0d;
+    }
+
+    static boolean isSupportedVersion(Object value) {
+        return isVersionOne(value) || isVersionTwo(value);
+    }
+
     static String requireString(Object value) {
         if (!(value instanceof String)) {
             throw new IllegalArgumentException("A task snapshot field has the wrong JSON type.");
