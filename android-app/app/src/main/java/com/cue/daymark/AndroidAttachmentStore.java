@@ -33,7 +33,7 @@ final class AndroidAttachmentStore {
         return TRANSACTION_LOCK;
     }
 
-    Imported importSelected(Uri uri, String appOwnedId, long remainingTotalBytes,
+    Imported importSelected(Uri uri, String taskId, String appOwnedId, long remainingTotalBytes,
                             AttachmentBlobStore.CancellationCheck cancellation) throws Exception {
         if (uri == null || !ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
             throw new IOException("The selected document provider returned an unsupported item.");
@@ -47,7 +47,7 @@ final class AndroidAttachmentStore {
         if (input == null) throw new IOException("The selected file could not be opened.");
         long copied;
         try (InputStream selected = input) {
-            copied = blobs.importStream(appOwnedId, selected, remainingTotalBytes, sizeHint, cancellation);
+            copied = blobs.importStream(taskId, appOwnedId, selected, remainingTotalBytes, sizeHint, cancellation);
         }
         return new Imported(appOwnedId, displayName, mimeType, copied);
     }
@@ -56,8 +56,8 @@ final class AndroidAttachmentStore {
         return blobs.exists(appOwnedId);
     }
 
-    InputStream openDecrypted(String appOwnedId) throws IOException {
-        return blobs.openInput(appOwnedId);
+    InputStream openDecrypted(String taskId, String appOwnedId) throws IOException {
+        return blobs.openInput(taskId, appOwnedId);
     }
 
     void delete(String appOwnedId) throws IOException {

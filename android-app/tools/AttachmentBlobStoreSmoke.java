@@ -15,6 +15,8 @@ import javax.crypto.SecretKey;
 
 public final class AttachmentBlobStoreSmoke {
     private static int assertions;
+    private static final String TASK_A = "00000000-0000-4000-8000-000000000001";
+    private static final String TASK_B = "00000000-0000-4000-8000-000000000002";
 
     private AttachmentBlobStoreSmoke() { }
 
@@ -22,6 +24,7 @@ public final class AttachmentBlobStoreSmoke {
         File root = Files.createTempDirectory("daymark-attachments-smoke").toFile();
         try {
             encryptedCopySurvivesReopenAndCanBeDeleted(root);
+            payloadSubstitutionAcrossAttachmentOrTaskFailsAuthentication(root);
             failedReadsAndInterruptedImportsLeaveNoPlaintextOrPartial(root);
             exactFileLimitPassesAndOversizeFails(root);
             quotasCancellationAndLowSpaceAreEnforcedDuringStreaming(root);
@@ -38,7 +41,7 @@ public final class AttachmentBlobStoreSmoke {
         AttachmentBlobStore first = new AttachmentBlobStore(directory, key);
         byte[] plaintext = "private local attachment bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         String id = AttachmentBlobStore.newId();
-        check(first.importStream(id, new ByteArrayInputStream(plaintext)) == plaintext.length,
+        check(first.importStream(TASK_A, id, new ByteArrayInputStream(plaintext)) == plaintext.length,
                 "import records measured byte count");
         File encrypted = new File(directory, id + ".enc");
         check(encrypted.isFile(), "committed payload uses the app-owned opaque ID");
@@ -46,11 +49,11 @@ public final class AttachmentBlobStoreSmoke {
                 "payload at rest is not plaintext");
 
         AttachmentBlobStore reopened = new AttachmentBlobStore(directory, key);
-        try (InputStream input = reopened.openInput(id)) {
+        try (InputStream input = reopened.openInput(TASK_A, id)) {
             check(Arrays.equals(plaintext, input.readAllBytes()), "app reopen decrypts the committed payload");
         }
         String orphanId = AttachmentBlobStore.newId();
-        reopened.importStream(orphanId, new ByteArrayInputStream(new byte[] { 9, 8, 7 }));
+        reopened.importStream(TASK_A, orphanId, new ByteArrayInputStream(new byte[] { 9, 8, 7 }));
         new File(directory, AttachmentBlobStore.newId() + ".pending").createNewFile();
         check(reopened.cleanupOrphans(Collections.singleton(id)) == 2,
                 "startup cleanup removes unreferenced payloads and interrupted staging files");
@@ -58,7 +61,7 @@ public final class AttachmentBlobStoreSmoke {
 
         reopened.delete(id);
         check(!reopened.exists(id), "attachment deletion removes the app-owned payload");
-        expectIOException(() -> reopened.openInput(id), "missing attachment is reported, not treated as empty data");
+        expectIOException(() -> reopened.openInput(TASK_A, id), "missing attachment is reported, not treated as empty data");
         check(!reopened.exists("../untrusted"), "provider-supplied path cannot become an ID");
     }
 
@@ -78,7 +81,7 @@ public final class AttachmentBlobStoreSmoke {
                     File stage = new File(directory, id + ".pending");
                     byte[] header = Files.readAllBytes(stage.toPath());
                     encryptedStageObserved.set(header.length > 4 && header[0] == 'D' && header[1] == 'M'
-                            && header[2] == 'A' && header[3] == '1');
+                            && header[2] == 'A' && header[3] == '2');
                     throw new IOException("simulated provider read failure");
                 }
                 int count = Math.min(length, 10_000 - emitted);
@@ -87,7 +90,7 @@ public final class AttachmentBlobStoreSmoke {
                 return count;
             }
         };
-        expectIOException(() -> store.importStream(id, broken), "provider read error is propagated");
+        expectIOException(() -> store.importStream(TASK_A, id, broken), "provider read error is propagated");
         check(encryptedStageObserved.get(), "an interrupted staging file contains ciphertext, never plaintext");
         check(!store.exists(id), "failed provider read never becomes a committed attachment");
         check(emptyDirectory(directory), "interrupted import staging file is deleted");
@@ -98,13 +101,13 @@ public final class AttachmentBlobStoreSmoke {
         AttachmentBlobStore store = new AttachmentBlobStore(directory, new KeyVault());
         String exactId = AttachmentBlobStore.newId();
         long max = AttachmentLogic.MAX_FILE_BYTES;
-        check(store.importStream(exactId, new RepeatingInputStream(max)) == max,
+        check(store.importStream(TASK_A, exactId, new RepeatingInputStream(max)) == max,
                 "a stream exactly at 20 MiB is accepted");
         File committed = new File(directory, exactId + ".enc");
         check(committed.length() == max + 32, "ciphertext size is bounded by plaintext cap plus GCM overhead");
 
         String overId = AttachmentBlobStore.newId();
-        expectFileLimit(() -> store.importStream(overId, new RepeatingInputStream(max + 1)),
+        expectFileLimit(() -> store.importStream(TASK_A, overId, new RepeatingInputStream(max + 1)),
                 "a stream one byte above 20 MiB is rejected even without a provider size hint");
         check(!store.exists(overId), "oversize input leaves no committed payload");
         File[] files = directory.listFiles((parent, name) -> name.endsWith(".pending"));
@@ -115,7 +118,7 @@ public final class AttachmentBlobStoreSmoke {
         File totalDirectory = new File(root, "total-stream-cap");
         AttachmentBlobStore totalStore = new AttachmentBlobStore(totalDirectory, new KeyVault());
         String totalId = AttachmentBlobStore.newId();
-        expectStorageLimit(() -> totalStore.importStream(totalId, new RepeatingInputStream(11), 10, 1,
+        expectStorageLimit(() -> totalStore.importStream(TASK_A, totalId, new RepeatingInputStream(11), 10, 1,
                         () -> false),
                 "actual streamed bytes cannot exceed remaining total quota despite a smaller provider size hint");
         check(emptyDirectory(totalDirectory), "total-limit rejection removes all staged bytes");
@@ -124,7 +127,7 @@ public final class AttachmentBlobStoreSmoke {
         AttachmentBlobStore cancelStore = new AttachmentBlobStore(cancelDirectory, new KeyVault());
         String cancelId = AttachmentBlobStore.newId();
         AtomicInteger checks = new AtomicInteger();
-        expectCancelled(() -> cancelStore.importStream(cancelId, new RepeatingInputStream(1024 * 1024),
+        expectCancelled(() -> cancelStore.importStream(TASK_A, cancelId, new RepeatingInputStream(1024 * 1024),
                         AttachmentLogic.MAX_TOTAL_BYTES, -1, () -> checks.incrementAndGet() > 2),
                 "user cancellation interrupts an active stream before commit");
         check(emptyDirectory(cancelDirectory), "cancelled import leaves neither payload nor staging file");
@@ -132,7 +135,7 @@ public final class AttachmentBlobStoreSmoke {
         File preflightDirectory = new File(root, "low-space-preflight");
         AttachmentBlobStore preflightStore = new AttachmentBlobStore(preflightDirectory, new KeyVault(),
                 directory -> 1);
-        expectStorageSpace(() -> preflightStore.importStream(AttachmentBlobStore.newId(),
+        expectStorageSpace(() -> preflightStore.importStream(TASK_A, AttachmentBlobStore.newId(),
                         new ByteArrayInputStream(new byte[] { 1 }), AttachmentLogic.MAX_TOTAL_BYTES, 1,
                         () -> false), "low free space is rejected before import starts");
         check(emptyDirectory(preflightDirectory), "low-space preflight creates no staging file");
@@ -141,7 +144,7 @@ public final class AttachmentBlobStoreSmoke {
         AtomicInteger spaceChecks = new AtomicInteger();
         AttachmentBlobStore midCopyStore = new AttachmentBlobStore(midCopyDirectory, new KeyVault(),
                 directory -> spaceChecks.incrementAndGet() == 1 ? Long.MAX_VALUE : 0);
-        expectStorageSpace(() -> midCopyStore.importStream(AttachmentBlobStore.newId(),
+        expectStorageSpace(() -> midCopyStore.importStream(TASK_A, AttachmentBlobStore.newId(),
                         new RepeatingInputStream(40_000), AttachmentLogic.MAX_TOTAL_BYTES, -1,
                         () -> false), "space exhausted during copy aborts before commit");
         check(emptyDirectory(midCopyDirectory), "mid-copy low-space failure cleans up encrypted staging");
@@ -153,7 +156,7 @@ public final class AttachmentBlobStoreSmoke {
         String id = AttachmentBlobStore.newId();
         byte[] plaintext = new byte[1024 * 1024];
         Arrays.fill(plaintext, (byte) 0x53);
-        store.importStream(id, new ByteArrayInputStream(plaintext));
+        store.importStream(TASK_A, id, new ByteArrayInputStream(plaintext));
         File file = new File(directory, id + ".enc");
         try (RandomAccessFile bytes = new RandomAccessFile(file, "rw")) {
             bytes.seek(bytes.length() - 1);
@@ -163,7 +166,7 @@ public final class AttachmentBlobStoreSmoke {
         }
         AtomicInteger plaintextReleased = new AtomicInteger();
         boolean rejected = false;
-        try (InputStream input = store.openInput(id)) {
+        try (InputStream input = store.openInput(TASK_A, id)) {
             byte[] buffer = new byte[8192];
             int count;
             while ((count = input.read(buffer)) != -1) {
@@ -175,6 +178,41 @@ public final class AttachmentBlobStoreSmoke {
         check(rejected, "modified attachment ciphertext fails AES-GCM authentication");
         check(plaintextReleased.get() == 0,
                 "a tampered multi-chunk GCM payload emits no plaintext before authentication fails");
+    }
+
+    private static void payloadSubstitutionAcrossAttachmentOrTaskFailsAuthentication(File root) throws Exception {
+        File directory = new File(root, "associated-data");
+        AttachmentBlobStore store = new AttachmentBlobStore(directory, new KeyVault());
+        String sourceId = AttachmentBlobStore.newId();
+        String substitutedId = AttachmentBlobStore.newId();
+        byte[] plaintext = new byte[1024 * 1024];
+        Arrays.fill(plaintext, (byte) 0x2A);
+        store.importStream(TASK_A, sourceId, new ByteArrayInputStream(plaintext));
+
+        File original = new File(directory, sourceId + ".enc");
+        File substituted = new File(directory, substitutedId + ".enc");
+        Files.copy(original.toPath(), substituted.toPath());
+        expectAuthenticationFailureWithoutPlaintext(() -> store.openInput(TASK_A, substitutedId),
+                "a valid encrypted payload copied under another attachment ID fails authentication");
+        expectAuthenticationFailureWithoutPlaintext(() -> store.openInput(TASK_B, sourceId),
+                "a valid encrypted payload opened under another task ID fails authentication");
+    }
+
+    private static void expectAuthenticationFailureWithoutPlaintext(InputOperation operation, String message)
+            throws Exception {
+        AtomicInteger plaintextReleased = new AtomicInteger();
+        boolean rejected = false;
+        try (InputStream input = operation.open()) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count > 0) plaintextReleased.addAndGet(count);
+            }
+        } catch (IOException expected) {
+            rejected = true;
+        }
+        check(rejected, message);
+        check(plaintextReleased.get() == 0, "failed associated-data authentication releases no plaintext");
     }
 
     private static boolean emptyDirectory(File directory) {
@@ -219,6 +257,8 @@ public final class AttachmentBlobStoreSmoke {
     }
 
     private interface IoOperation { void run() throws Exception; }
+
+    private interface InputOperation { InputStream open() throws IOException; }
 
     private static void expectIOException(IoOperation operation, String message) throws Exception {
         assertions++;

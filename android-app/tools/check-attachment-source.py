@@ -31,6 +31,10 @@ assert "long sizeHint = reportedSize >= 0" in store
 assert "reportedSize > AttachmentLogic.MAX_FILE_BYTES" not in store, "provider size hints must not override actual stream limits"
 assert "uri.toString()" not in store and "uri.getPath()" not in store
 assert "Cipher.getInstance(\"AES/GCM/NoPadding\")" in blob
+assert "cipher.updateAAD(associatedData(taskId, id));" in blob, "bind each payload to its canonical blob and task IDs"
+assert "private static byte[] associatedData(String taskId, String id)" in blob
+assert "blobs.importStream(taskId, appOwnedId" in store
+assert "blobs.openInput(taskId, appOwnedId)" in store
 assert "MAX_FILE_BYTES" in blob and "MAX_TOTAL_STORAGE_BYTES" in blob
 assert "remainingTotalBytes" in blob and "CancellationCheck" in blob
 assert "StorageSpaceException" in blob and "cleanupOrphans" in blob
@@ -38,9 +42,12 @@ assert "renameTo(destination)" in blob and ".pending" in blob
 assert '"Open with another app"' in main and "Intent.ACTION_VIEW" in main
 assert "Intent.createChooser(view" in main and "FLAG_GRANT_READ_URI_PERMISSION" in main
 assert "isSafeToOpenExternally" in logic and "UNSAFE_EXTENSIONS" in logic
-assert "openPipeHelper" in provider and "openDecrypted(id)" in provider
+assert "openPipeHelper" in provider and "openDecrypted(attachment.taskId" in provider
 assert 'if (!"r".equals(mode))' in provider
-assert "findReference(uri)" in provider, "provider must serve only IDs referenced by encrypted task metadata"
+assert "findBinding(uri)" in provider and "new AttachmentBinding(task.id, reference)" in provider, \
+    "provider must resolve the owning task for IDs referenced by encrypted task metadata"
+test = (root / "tools/AttachmentBlobStoreSmoke.java").read_text(encoding="utf-8")
+assert "payloadSubstitutionAcrossAttachmentOrTaskFailsAuthentication" in test
 assert "The app you choose may retain it" in main or "may retain it" in main
 attachment_import = main.split("private void importAttachment(", 1)[1].split(
     "private void requestAttachmentCancel()", 1)[0]

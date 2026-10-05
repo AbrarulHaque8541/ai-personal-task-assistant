@@ -1096,7 +1096,7 @@ public final class MainActivity extends Activity {
             boolean cleanupDeferred = false;
             try {
                 synchronized (AndroidAttachmentStore.transactionLock()) {
-                    AndroidAttachmentStore.Imported imported = attachmentStore.importSelected(selectedUri, newId,
+                    AndroidAttachmentStore.Imported imported = attachmentStore.importSelected(selectedUri, taskId, newId,
                             AttachmentLogic.remainingBytes(snapshot), () -> {
                                 synchronized (attachmentCancelLock) { return attachmentCancelRequested; }
                             });

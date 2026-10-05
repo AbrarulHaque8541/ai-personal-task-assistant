@@ -30,14 +30,16 @@ public final class AttachmentContentProvider extends ContentProvider {
 
     @Override
     public String getType(Uri uri) {
-        AttachmentRef reference = findReference(uri);
+        AttachmentBinding binding = findBinding(uri);
+        AttachmentRef reference = binding == null ? null : binding.reference;
         return reference == null || !AttachmentLogic.isSafeToOpenExternally(reference)
                 ? null : reference.mimeType;
     }
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
-        AttachmentRef reference = findReference(uri);
+        AttachmentBinding binding = findBinding(uri);
+        AttachmentRef reference = binding == null ? null : binding.reference;
         if (reference == null || !AttachmentLogic.isSafeToOpenExternally(reference)) return null;
         String[] columns = projection == null
                 ? new String[] { OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE } : projection;
@@ -54,14 +56,16 @@ public final class AttachmentContentProvider extends ContentProvider {
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
         if (!"r".equals(mode)) throw new FileNotFoundException("Attachments are read-only.");
-        AttachmentRef reference = findReference(uri);
+        AttachmentBinding binding = findBinding(uri);
+        AttachmentRef reference = binding == null ? null : binding.reference;
         if (reference == null || !AttachmentLogic.isSafeToOpenExternally(reference)
                 || attachmentStore == null || !attachmentStore.exists(reference.id)) {
             throw new FileNotFoundException("The attachment is no longer available.");
         }
-        return openPipeHelper(uri, reference.mimeType, null, reference.id,
-                (pipe, ignoredUri, ignoredType, ignoredOptions, id) -> {
-                    try (InputStream input = attachmentStore.openDecrypted(id);
+        return openPipeHelper(uri, reference.mimeType, null, binding,
+                (pipe, ignoredUri, ignoredType, ignoredOptions, attachment) -> {
+                    try (InputStream input = attachmentStore.openDecrypted(attachment.taskId,
+                            attachment.reference.id);
                          OutputStream output = new ParcelFileDescriptor.AutoCloseOutputStream(pipe)) {
                         byte[] buffer = new byte[32 * 1024];
                         int count;
@@ -83,7 +87,7 @@ public final class AttachmentContentProvider extends ContentProvider {
     @Override
     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) { return 0; }
 
-    private AttachmentRef findReference(Uri uri) {
+    private AttachmentBinding findBinding(Uri uri) {
         if (uri == null || getContext() == null || attachmentStore == null
                 || !"content".equals(uri.getScheme())
                 || !(getContext().getPackageName() + ".attachments").equals(uri.getAuthority())
@@ -94,12 +98,22 @@ public final class AttachmentContentProvider extends ContentProvider {
             List<Task> tasks = new EncryptedTaskStore(getContext()).load();
             for (Task task : tasks) {
                 for (AttachmentRef reference : task.attachments) {
-                    if (reference.id.equals(id)) return reference;
+                    if (reference.id.equals(id)) return new AttachmentBinding(task.id, reference);
                 }
             }
         } catch (Exception ignored) {
             // Fail closed if the encrypted task snapshot is unavailable.
         }
         return null;
+    }
+
+    private static final class AttachmentBinding {
+        final String taskId;
+        final AttachmentRef reference;
+
+        AttachmentBinding(String taskId, AttachmentRef reference) {
+            this.taskId = taskId;
+            this.reference = reference;
+        }
     }
 }

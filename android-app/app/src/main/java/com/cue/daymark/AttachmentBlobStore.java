@@ -7,6 +7,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Set;
@@ -19,7 +21,8 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /** Streaming encrypted payload store. Provider URIs and provider paths never enter this class. */
 final class AttachmentBlobStore {
-    private static final byte[] MAGIC = new byte[] { 'D', 'M', 'A', '1' };
+    private static final byte[] MAGIC = new byte[] { 'D', 'M', 'A', '2' };
+    private static final byte[] AAD_DOMAIN = "daymark.attachment.payload.v2".getBytes(StandardCharsets.US_ASCII);
     private static final int IV_BYTES = 12;
     private static final int TAG_BYTES = 16;
     private static final int HEADER_BYTES = MAGIC.length + IV_BYTES;
@@ -45,13 +48,14 @@ final class AttachmentBlobStore {
         return UUID.randomUUID().toString();
     }
 
-    long importStream(String id, InputStream source) throws IOException {
-        return importStream(id, source, AttachmentLogic.MAX_TOTAL_BYTES, -1,
+    long importStream(String taskId, String id, InputStream source) throws IOException {
+        return importStream(taskId, id, source, AttachmentLogic.MAX_TOTAL_BYTES, -1,
                 () -> false);
     }
 
-    long importStream(String id, InputStream source, long remainingTotalBytes,
+    long importStream(String taskId, String id, InputStream source, long remainingTotalBytes,
                       long expectedBytes, CancellationCheck cancellation) throws IOException {
+        requireTaskId(taskId);
         requireId(id);
         if (source == null) throw new IOException("The selected file could not be opened.");
         if (remainingTotalBytes < 0 || remainingTotalBytes > AttachmentLogic.MAX_TOTAL_BYTES) {
@@ -78,7 +82,7 @@ final class AttachmentBlobStore {
             SecretKey key = hasStoredPayload() ? keys.loadExistingKey() : keys.createKeyForNewStore();
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key);
-            cipher.updateAAD(MAGIC);
+            cipher.updateAAD(associatedData(taskId, id));
             byte[] iv = cipher.getIV();
             if (iv == null || iv.length != IV_BYTES) throw new IOException("The attachment cipher is unavailable.");
 
@@ -131,7 +135,8 @@ final class AttachmentBlobStore {
         }
     }
 
-    InputStream openInput(String id) throws IOException {
+    InputStream openInput(String taskId, String id) throws IOException {
+        requireTaskId(taskId);
         requireId(id);
         File file = payloadFile(id);
         if (!file.isFile()) throw new IOException("The attachment file is missing.");
@@ -149,7 +154,7 @@ final class AttachmentBlobStore {
             SecretKey key = keys.loadExistingKey();
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BYTES * 8, iv));
-            cipher.updateAAD(MAGIC);
+            cipher.updateAAD(associatedData(taskId, id));
             return new CipherInputStream(input, cipher);
         } catch (IOException exception) {
             input.close();
@@ -243,6 +248,24 @@ final class AttachmentBlobStore {
             if (read > 0) output.write(buffer, 0, read);
         }
         return output.toByteArray();
+    }
+
+    private static byte[] associatedData(String taskId, String id) {
+        byte[] taskBytes = taskId.getBytes(StandardCharsets.UTF_8);
+        byte[] idBytes = id.getBytes(StandardCharsets.US_ASCII);
+        ByteBuffer data = ByteBuffer.allocate(AAD_DOMAIN.length + Integer.BYTES + MAGIC.length
+                + Integer.BYTES + taskBytes.length + Integer.BYTES + idBytes.length);
+        data.put(AAD_DOMAIN);
+        data.putInt(MAGIC.length).put(MAGIC);
+        data.putInt(taskBytes.length).put(taskBytes);
+        data.putInt(idBytes.length).put(idBytes);
+        return data.array();
+    }
+
+    private static void requireTaskId(String taskId) {
+        if (taskId == null || taskId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Invalid owning task identifier.");
+        }
     }
 
     private static void requireId(String id) {
