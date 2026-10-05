@@ -72,6 +72,10 @@ public final class MainActivity extends Activity {
     private ExecutorService storageExecutor;
     private EncryptedTaskStore taskStore;
     private boolean storageReady;
+    private boolean storageLoading = true;
+    private boolean storageLoadFailed;
+    private boolean storageSaveFailed;
+    private String storageFailureDetails;
     private long saveRevision;
     private int themeMode;
     private int textSizeMode;
@@ -493,7 +497,9 @@ public final class MainActivity extends Activity {
     }
 
     private void loadEncryptedTasks() {
+        storageLoading = true;
         storageStatus.setText("Opening encrypted storage…");
+        render();
         storageExecutor.execute(() -> {
             List<Task> loaded = null;
             Exception failure = null;
@@ -506,21 +512,26 @@ public final class MainActivity extends Activity {
             Exception error = failure;
             mainHandler.post(() -> {
                 if (isFinishing()) return;
+                storageLoading = false;
                 if (error == null) {
                     tasks.clear();
                     tasks.addAll(result);
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(result);
                     storageReady = true;
+                    storageLoadFailed = false;
+                    storageSaveFailed = false;
+                    storageFailureDetails = null;
                     storageStatus.setText("Encrypted storage ready");
                     storageStatus.setTextColor(palette.accent);
                 } else {
-                    tasks.clear();
-                    lastSavedTasks.clear();
                     storageReady = false;
-                    storageStatus.setText("Storage unavailable · saved data preserved");
+                    storageLoadFailed = true;
+                    storageFailureDetails = storageFailureDetails(error);
+                    storageStatus.setText(storageFailureStatus(error));
                     storageStatus.setTextColor(palette.danger);
-                    showToast("Could not unlock encrypted task storage. Existing data was left untouched.");
+                    captureFeedback.setText("Saved tasks could not be opened. The app did not save or clear data; editing is paused.");
+                    showToast("Saved tasks are unavailable. The encrypted data was not cleared; editing is paused.");
                 }
                 render();
             });
@@ -548,21 +559,54 @@ public final class MainActivity extends Activity {
                     lastSavedTasks.addAll(snapshot);
                     if (revision == saveRevision) {
                         storageReady = true;
+                        storageSaveFailed = false;
                         storageStatus.setText("Encrypted storage ready");
                         storageStatus.setTextColor(palette.accent);
                     }
                 } else if (revision == saveRevision) {
-                    tasks.clear();
-                    tasks.addAll(lastSavedTasks);
                     storageReady = false;
-                    storageStatus.setText("Save failed · changes reverted");
+                    storageSaveFailed = true;
+                    storageStatus.setText("Not saved · unsaved changes are shown");
                     storageStatus.setTextColor(palette.danger);
+                    captureFeedback.setText("These changes are not saved and may be lost if you leave. Editing is paused.");
                     hideUndoBar();
                     render();
-                    showToast("Could not save. Your last saved tasks were restored; further edits are paused.");
+                    showToast("Not saved. Your unsaved changes are still shown; editing is paused.");
                 }
             });
         });
+    }
+
+    private String storageFailureStatus(Exception failure) {
+        if (failure instanceof EncryptedBlobStore.StorageException) {
+            EncryptedBlobStore.Kind kind = ((EncryptedBlobStore.StorageException) failure).kind();
+            if (kind == EncryptedBlobStore.Kind.KEY_UNAVAILABLE) {
+                return "Saved tasks unavailable · encryption key unavailable";
+            }
+            if (kind == EncryptedBlobStore.Kind.AUTHENTICATION_FAILED) {
+                return "Saved tasks unavailable · authentication failed";
+            }
+            if (kind == EncryptedBlobStore.Kind.CORRUPT_DATA) {
+                return "Saved tasks unavailable · file incomplete or unsupported";
+            }
+        }
+        return "Saved tasks unavailable · storage could not be read";
+    }
+
+    private String storageFailureDetails(Exception failure) {
+        if (failure instanceof EncryptedBlobStore.StorageException) {
+            EncryptedBlobStore.Kind kind = ((EncryptedBlobStore.StorageException) failure).kind();
+            if (kind == EncryptedBlobStore.Kind.KEY_UNAVAILABLE) {
+                return "The task file may still be on this device, but its Keystore key is missing or unusable. V1 has no key-recovery or export path. Editing is paused; do not clear app data or reinstall.";
+            }
+            if (kind == EncryptedBlobStore.Kind.AUTHENTICATION_FAILED) {
+                return "The saved encrypted task data could not be authenticated. V1 has no automatic recovery or export path. Editing is paused; do not clear app data or reinstall.";
+            }
+            if (kind == EncryptedBlobStore.Kind.CORRUPT_DATA) {
+                return "The saved encrypted task data is incomplete or unsupported. V1 has no automatic recovery or export path. Editing is paused; do not clear app data or reinstall.";
+            }
+        }
+        return "Encrypted task storage could not be read. The app did not save or clear task data during this load. Editing is paused; do not clear app data or reinstall.";
     }
 
     private void render() {
@@ -577,12 +621,13 @@ public final class MainActivity extends Activity {
                 if (today.toString().equals(task.dueDate)) dueToday++;
             }
         }
-        openCount.setText(String.valueOf(open));
-        dueTodayCount.setText(String.valueOf(dueToday));
+        openCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(open));
+        dueTodayCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(dueToday));
         addTaskButton.setEnabled(storageReady);
         addTaskButton.setAlpha(storageReady ? 1f : 0.55f);
         addDetailsButton.setEnabled(storageReady);
         quickCaptureInput.setEnabled(storageReady);
+        if (searchInput != null) searchInput.setEnabled(!storageLoading && !storageLoadFailed);
         for (View powerOnly : powerOnlyViews) {
             powerOnly.setVisibility(powerMode ? View.VISIBLE : View.GONE);
         }
@@ -609,12 +654,17 @@ public final class MainActivity extends Activity {
             else if (TaskLogic.FILTER_TODAY.equals(key)) label = "Today";
             else if (TaskLogic.FILTER_UPCOMING.equals(key)) label = "Upcoming";
             else label = "Completed";
-            button.setText(label + "  " + count);
+            button.setEnabled(!storageLoading && !storageLoadFailed);
+            button.setText(label + "  " + (storageLoading || storageLoadFailed ? "—" : count));
             boolean selected = key.equals(activeFilter);
             button.setTextColor(selected ? palette.accent : palette.muted);
             button.setBackground(shape(selected ? palette.accentSoft : palette.surface,
                     20, selected ? palette.accent : palette.line));
-            button.setContentDescription(label + ", " + count + " tasks" + (selected ? ", selected" : ""));
+            button.setContentDescription(storageLoading
+                    ? label + ", waiting for saved tasks to open"
+                    : storageLoadFailed
+                    ? label + ", unavailable because saved task data could not be opened"
+                    : label + ", " + count + " tasks" + (selected ? ", selected" : ""));
         }
     }
 
@@ -623,6 +673,20 @@ public final class MainActivity extends Activity {
     }
 
     private void renderTaskList(LocalDate today) {
+        if (storageLoading || storageLoadFailed) {
+            taskList.removeAllViews();
+            if (storageLoading) {
+                emptyTitle.setText("Opening saved tasks");
+                emptyCopy.setText("Checking encrypted storage on this device…");
+            } else {
+                emptyTitle.setText("Saved tasks unavailable");
+                emptyCopy.setText(storageFailureDetails == null
+                        ? "Saved task data could not be opened. Editing is paused; do not clear app data or reinstall."
+                        : storageFailureDetails);
+            }
+            emptyStateView.setVisibility(View.VISIBLE);
+            return;
+        }
         String selectedFilter = powerMode ? activeFilter : TaskLogic.FILTER_ALL;
         String selectedQuery = powerMode ? searchQuery : "";
         List<Task> visible = TaskLogic.filter(tasks, selectedFilter, selectedQuery, today);
@@ -633,7 +697,10 @@ public final class MainActivity extends Activity {
         boolean showEmpty = visible.isEmpty();
         emptyStateView.setVisibility(showEmpty ? View.VISIBLE : View.GONE);
         if (showEmpty) {
-            if (!selectedQuery.trim().isEmpty()) {
+            if (storageSaveFailed) {
+                emptyTitle.setText("Change not saved");
+                emptyCopy.setText("The visible change is unsaved. Your last saved data remains on this device; editing is paused.");
+            } else if (!selectedQuery.trim().isEmpty()) {
                 emptyTitle.setText("No matching tasks");
                 emptyCopy.setText("Try another search or clear the field above.");
             } else if (TaskLogic.FILTER_COMPLETED.equals(selectedFilter)) {
@@ -660,6 +727,16 @@ public final class MainActivity extends Activity {
     }
 
     private void renderTaskCount(LocalDate today) {
+        if (storageLoading) {
+            taskCount.setText("Loading");
+            searchClear.setVisibility(View.GONE);
+            return;
+        }
+        if (storageLoadFailed) {
+            taskCount.setText("Unavailable");
+            searchClear.setVisibility(View.GONE);
+            return;
+        }
         String selectedFilter = powerMode ? activeFilter : TaskLogic.FILTER_ALL;
         String selectedQuery = powerMode ? searchQuery : "";
         int visible = TaskLogic.filter(tasks, selectedFilter, selectedQuery, today).size();
@@ -693,6 +770,17 @@ public final class MainActivity extends Activity {
 
     private void renderSuggestions(LocalDate today) {
         suggestionList.removeAllViews();
+        if (storageLoading) {
+            TextView loading = text("Checking saved tasks…", 12, palette.muted, Typeface.NORMAL);
+            suggestionList.addView(loading);
+            return;
+        }
+        if (storageLoadFailed) {
+            TextView unavailable = text("Suggestions are unavailable until saved tasks can be opened.",
+                    12, palette.muted, Typeface.NORMAL);
+            suggestionList.addView(unavailable);
+            return;
+        }
         List<TaskLogic.Suggestion> suggestions = TaskLogic.suggestions(tasks, today);
         if (suggestions.isEmpty()) {
             TextView empty = text("Your open-task suggestions will appear here after you add a task.",
