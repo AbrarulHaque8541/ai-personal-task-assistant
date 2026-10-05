@@ -22,9 +22,7 @@ import java.security.Key;
 import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -122,9 +120,11 @@ final class EncryptedTaskStore {
     }
 
     private byte[] encodeTasks(List<Task> tasks) throws JSONException {
+        if (!TaskLogic.isValidTaskList(tasks)) {
+            throw new JSONException("Refusing to save invalid or duplicate task data.");
+        }
         JSONArray array = new JSONArray();
         for (Task task : tasks) {
-            if (!TaskLogic.isValid(task)) throw new JSONException("Refusing to save an invalid task.");
             JSONObject object = new JSONObject();
             object.put("id", task.id);
             object.put("title", task.title);
@@ -148,7 +148,6 @@ final class EncryptedTaskStore {
         if (array == null) throw new IOException("Task data is missing its task list.");
 
         List<Task> result = new ArrayList<>(array.length());
-        Set<String> ids = new HashSet<>();
         for (int index = 0; index < array.length(); index++) {
             JSONObject object = array.optJSONObject(index);
             if (object == null) throw new IOException("Task record is malformed.");
@@ -159,9 +158,9 @@ final class EncryptedTaskStore {
             Task task = new Task(object.optString("id", ""), object.optString("title", ""), dueDate,
                     object.optString("priority", ""), (Boolean) completedValue,
                     object.optString("createdAt", ""), object.optString("updatedAt", ""));
-            if (!TaskLogic.isValid(task) || !ids.add(task.id)) throw new IOException("Task data failed validation.");
             result.add(task);
         }
+        if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");
         return result;
     }
 

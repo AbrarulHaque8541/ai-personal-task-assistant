@@ -52,6 +52,8 @@ The app performs ordinary foreground UI, file, and Keystore work while open, so 
 
 Task records use schema-versioned JSON encrypted in `files/tasks.enc` with AES-GCM and an AES key kept by Android Keystore. The key is non-exportable; secure-hardware backing depends on the device. Disk and cryptographic operations run on one background executor. A malformed file, unavailable key, or authentication/schema failure leaves the existing file untouched and disables edits. Saves use a temporary file and replacement; failed saves restore the last saved in-memory snapshot and pause further edits.
 
+The encrypted writer and reader share the same task-list validation: every task must be valid, titles must stay within the 160-character limit, and IDs must be unique. This prevents the writer from persisting a duplicate-ID snapshot that the reader would later reject.
+
 The app's **Demo suggestion** ranking is deterministic local code: open tasks by overdue/nearest due date, then high → medium → low priority for equal dates. It is not an LLM, does not access the network, and does not infer intent. Suggestions are not a downloaded asset.
 
 Clearing app data or uninstalling removes the local task file/key. Automatic backup is disabled; there is no export, cloud sync, or cross-install migration. Theme and accessibility preferences are non-sensitive ordinary app preferences.
@@ -78,7 +80,7 @@ Any future provider adapter must implement one `AssistantProvider` contract expo
 
 Requirements: JDK 17+, Android SDK Platform 35, Android Build Tools 35.0.0, and Platform Tools for `adb`. The project pins Gradle Wrapper 8.10.2 and Android Gradle Plugin 8.8.2, uses Java 17 source/target, `compileSdk` / `targetSdk` 35, `minSdk` 26, and has no runtime third-party libraries.
 
-**Release blocker:** Google's [current Play target API requirement](https://developer.android.com/google/play/requirements/target-sdk) requires ordinary new apps and updates to target API 36+ starting 2026-08-31. This project remains on API 35 and pinned AGP 8.8.2, which supports at most API 35, so the debug APK is not Play-submission-ready. Upgrade the toolchain/SDK target and test Android 16/API 36+ behavior before any store release.
+**Release blocker:** Google's [current Play target API requirement](https://developer.android.com/google/play/requirements/target-sdk) requires ordinary new apps and updates to target API 36+ starting 2026-08-31. This project remains on API 35 and pinned AGP 8.8.2, which supports at most API 35; only SDK Platform 35 / Build Tools 35.0.0 are installed here. Google's [Android 16 behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16) disable the edge-to-edge opt-out for apps targeting API 36. Upgrade the toolchain/SDK target and test system bars, display cutouts, keyboard/IME, dialogs, and gesture/three-button navigation on API 35 and 36 before any store release. API 36 has not been built or runtime-tested here; the debug APK is not Play-submission-ready.
 
 The first SDK license acceptance/package installation occurred before the chronology correction and remains unapproved. After that correction, the user explicitly consented prospectively to using **only the already-installed** Platform 35, Build Tools 35.0.0, and Platform Tools 37.0.1 for this debug rebuild/verification; this does not retroactively approve the earlier action. No new license or package was accepted/installed. This consent does not cover device installation or publication.
 
@@ -87,7 +89,7 @@ The commands below use the existing SDK only and build a **debug preview**. A de
 ```sh
 export ANDROID_HOME="$HOME/Android/Sdk"  # use your actual SDK path
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
-cd /workspace/team_project/android-app
+cd android-app
 ./gradlew :app:assembleDebug --no-daemon --console=plain
 cp app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
 stat -c '%s bytes' ./app-debug.apk
@@ -96,17 +98,19 @@ sha256sum ./app-debug.apk
 
 The root copy is ignored by Git and remains unpublished. This workflow intentionally does not include an SDK package installation, `adb install`, or app launch.
 
-## Current weekly review verification (2026-10-05)
+## Current feature-branch verification (2026-10-05)
 
-- `./tools/check-v1-source.sh` passes: 25 JDK-only task-logic assertions, manifest/privacy policy checks, and source assertions for app text scaling, expected accessibility labels, English-only disclosure, device-locale dates, and text contrast. The lowest checked contrast is **5.00:1** across standard/high-contrast light/dark palette pairs. These are source-level checks only; they do not replace rendered UI, translated-flow, or TalkBack testing.
-- `ANDROID_HOME="$HOME/Android/Sdk" ANDROID_SDK_ROOT="$HOME/Android/Sdk" ./gradlew :app:assembleDebug --no-daemon --console=plain` completed with `BUILD SUCCESSFUL`. It emitted a non-blocking SDK XML v4/v3 compatibility warning and a Java deprecated-API note.
-- The fresh post-consent root APK and Gradle-output APK are byte-identical: `app-debug.apk`, **45,031 bytes**, SHA-256 `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`. `aapt` identified `com.cue.daymark` version `1.0.0`, min SDK 26 / target SDK 35; the packaged manifest declares no permissions. `apksigner verify` succeeded with APK Signature Scheme v2. The archive contains six entries and no model, runtime, plugin, language, voice, or demo payload. This debug artifact is ignored by Git and unpublished; it is not evidence for the `<15 MB` release target.
-- `adb devices -l` returned no devices. Installation and launch were not tested. Airplane-mode behavior, Keystore behavior on a device, TalkBack, device font scaling, and locale behavior remain unverified.
+- Current main had stored the Gradle wrapper and both Android shell test scripts without executable mode, so the documented `./...` commands initially failed with `Permission denied`. This branch records them as executable; the documented commands now run directly.
+- `./tools/check-v1-source.sh` passes: **30** JDK-only task-logic assertions, manifest/privacy policy checks, shared writer/reader task-list validation, accessibility/localization source assertions, and text contrast. The lowest checked contrast is **5.00:1** across standard/high-contrast light/dark palette pairs. These source checks do not replace rendered UI, translated-flow, or TalkBack testing.
+- `ANDROID_HOME="$HOME/Android/Sdk" ANDROID_SDK_ROOT="$HOME/Android/Sdk" ./gradlew :app:assembleDebug --offline --no-daemon --console=plain` completed with `BUILD SUCCESSFUL` using only already-installed SDK Platform 35 / Build Tools 35.0.0. No package or license was installed/accepted. Gradle emitted a non-blocking SDK XML v4/v3 compatibility warning and a Java deprecated-API note.
+- The generated debug APK is `app/build/outputs/apk/debug/app-debug.apk`, **45,091 bytes**, SHA-256 `e5e8f05d163fa7514085e7b4c06d20de09781c7b590d8f26a45bcebd279b980e`. `aapt` identified `com.cue.daymark` version `1.0.0`, min SDK 26 / target SDK 35; the packaged manifest declares no permissions. `apksigner verify` succeeded with APK Signature Scheme v2. It remains an ignored, unpublished debug artifact and does not qualify for the `<15 MB` release target.
+- Root `npm test` passes **8/8** tests. `adb devices -l` reports no device; APK installation/launch were not tested. Airplane-mode runtime, Keystore behavior on a device, TalkBack, rendered font scaling/locale behavior, and API 36 edge-to-edge behavior remain unverified.
 - No optional model, language, or plugin packs exist, so their size is **N/A**. No release APK was produced; the base-release size target is unmeasured.
 
-Run source-level checks without Android SDK packages:
+Run source-level checks without Android SDK packages from the repository root:
 
 ```sh
+cd android-app
 ./tools/check-v1-source.sh
 ```
 

@@ -15,6 +15,7 @@ public final class TaskLogicSmoke {
     public static void main(String[] args) {
         datesAreStrictAndDateOnly();
         CRUDKeepsStableIdentityAndTimestamps();
+        storedTaskSnapshotsMatchWriterRules();
         filtersAndSearchCompose();
         suggestionsUseOnlyTransparentLocalRules();
         System.out.println("PASS Android core logic smoke tests: " + assertions + " assertions");
@@ -39,6 +40,20 @@ public final class TaskLogicSmoke {
         check(completed.completed && completed.id.equals(edited.id), "completion toggles without changing identity");
         expectIllegalArgument(() -> TaskLogic.create("  ", null, "medium"), "blank title rejected");
         expectIllegalArgument(() -> TaskLogic.create("Bad date", "2026-02-30", "medium"), "invalid due date rejected");
+    }
+
+    private static void storedTaskSnapshotsMatchWriterRules() {
+        Task first = task("one", "Write report", null, "medium", false, 1);
+        Task second = task("two", "Call dentist", null, "low", false, 2);
+        check(TaskLogic.isValidTaskList(Arrays.asList(first, second)), "distinct valid tasks form a valid stored snapshot");
+        check(!TaskLogic.isValidTaskList(Arrays.asList(first, task("one", "Duplicate ID", null, "low", false, 2))),
+                "duplicate IDs are rejected before persistence");
+        check(TaskLogic.isValid(task("max-title", "x".repeat(160), null, "medium", false, 3)),
+                "160-character title remains valid");
+        check(!TaskLogic.isValid(task("long-title", "x".repeat(161), null, "medium", false, 4)),
+                "overlong persisted title is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("x".repeat(161), null, "medium"),
+                "overlong task creation is rejected");
     }
 
     private static void filtersAndSearchCompose() {

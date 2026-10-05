@@ -47,9 +47,13 @@ assert "setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE)" in ac
 assert "screen text is English only" in activity, "language limitations must remain explicit"
 task_logic = (main / "java/com/cue/daymark/TaskLogic.java").read_text(encoding="utf-8")
 assert "Locale.getDefault()" in task_logic, "date formatting should follow the device locale"
+store = (main / "java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
+assert "TaskLogic.isValidTaskList(tasks)" in store, "encrypted writer must reject invalid or duplicate task snapshots"
+assert "TaskLogic.isValidTaskList(result)" in store, "encrypted reader must use the same task-list validation contract"
 
 print("PASS V1 source policy: no permissions/network, background components, runtime dependencies, or optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
+print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"
