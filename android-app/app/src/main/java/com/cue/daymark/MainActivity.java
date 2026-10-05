@@ -67,6 +67,7 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_HISTORY_KEY = "history_urls";
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
+    private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -86,7 +87,10 @@ public final class MainActivity extends Activity {
     private boolean powerMode;
     private boolean highContrast;
     private boolean webMode;
-    private boolean browserOnlineEnabled;
+    private BrowserNetworkPolicy browserNetworkPolicy = new BrowserNetworkPolicy();
+    private BrowserSettingsPolicy browserSettingsPolicy = new BrowserSettingsPolicy();
+    private boolean suppressBrowserOnlineToggleListener;
+    private boolean suppressSafeBrowsingToggleListener;
     private String taskDraft = "";
     private float textScale = 1.0f;
     private SharedPreferences browserPreferences;
@@ -136,6 +140,7 @@ public final class MainActivity extends Activity {
     private Button browserReloadButton;
     private Button browserHomeButton;
     private Button browserHistoryButton;
+    private Button browserSettingsButton;
     private Spinner searchEngineSpinner;
     private CheckBox browserOnlineToggle;
     private TextView browserStatus;
@@ -158,44 +163,65 @@ public final class MainActivity extends Activity {
         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
         searchEngine = BrowserAddress.SearchEngine.fromName(
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
-        browserOnlineEnabled = readBrowserOnlinePreference();
+        browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
+        browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
+        sanitizeStoredBrowserHistory();
         buildInterface();
         loadEncryptedTasks();
     }
 
     private boolean readBrowserOnlinePreference() {
         try {
-            return browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY, false);
+            return browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY,
+                    BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED);
         } catch (ClassCastException invalidPreference) {
             browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
-            return false;
+            return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
+        }
+    }
+
+    private boolean readSafeBrowsingPreference() {
+        try {
+            return browserPreferences.getBoolean(SAFE_BROWSING_ENABLED_KEY,
+                    BrowserSettingsPolicy.DEFAULT_SAFE_BROWSING_ENABLED);
+        } catch (ClassCastException invalidPreference) {
+            browserPreferences.edit().remove(SAFE_BROWSING_ENABLED_KEY).apply();
+            return BrowserSettingsPolicy.DEFAULT_SAFE_BROWSING_ENABLED;
+        }
+    }
+
+    private void sanitizeStoredBrowserHistory() {
+        String existing;
+        try {
+            existing = browserPreferences.getString(BROWSER_HISTORY_KEY, "");
+        } catch (ClassCastException invalidHistoryPreference) {
+            existing = "";
+        }
+        String sanitized = BrowserHistory.sanitizeSerialized(existing);
+        if (!sanitized.equals(existing)) {
+            browserPreferences.edit().putString(BROWSER_HISTORY_KEY, sanitized).apply();
         }
     }
 
     @Override
     protected void onPause() {
-        if (browserWebView != null) browserWebView.onPause();
+        if (browserWebView != null) {
+            discardBrowserWebView();
+            if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+            if (browserStatus != null) {
+                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+                        ? "The page closed when Daymark went into the background. Online remains enabled; no page was restored."
+                        : "The page closed when Daymark went into the background. Offline; WebView network loads are blocked.");
+            }
+        }
         super.onPause();
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (browserWebView != null) browserWebView.onResume();
     }
 
     @Override
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         if (storageExecutor != null) storageExecutor.shutdown();
-        if (browserWebView != null) {
-            browserWebView.stopLoading();
-            if (browserWebView.getParent() instanceof ViewGroup) {
-                ((ViewGroup) browserWebView.getParent()).removeView(browserWebView);
-            }
-            browserWebView.destroy();
-            browserWebView = null;
-        }
+        if (browserWebView != null) discardBrowserWebView();
         super.onDestroy();
     }
 
@@ -396,11 +422,21 @@ public final class MainActivity extends Activity {
         browserOnlineToggle = new CheckBox(this);
         browserOnlineToggle.setText("Online browsing (off by default)");
         browserOnlineToggle.setMinHeight(dp(48));
-        browserOnlineToggle.setChecked(browserOnlineEnabled);
-        browserOnlineToggle.setContentDescription(browserOnlineEnabled
-                ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block browser network access."
-                : "Online browsing is off by default. Turn it on to allow browser network access; then tap Go or a site to send a request.");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> setBrowserOnlineEnabled(checked));
+        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
+        browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
+                ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block Daymark page and resource loads; Android System WebView Safe Browsing may make separate Google/Play Services checks."
+                : "Online browsing is off by default. Turn it on after reviewing the disclosure to allow Daymark page and resource loads, then tap Go or a site to send a request. The switch does not control platform-managed Android System WebView Safe Browsing, which may make Google/Play Services URL-hash or update checks.");
+        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
+            if (suppressBrowserOnlineToggleListener) return;
+            if (!checked) {
+                setBrowserOnlineEnabled(false);
+                return;
+            }
+            suppressBrowserOnlineToggleListener = true;
+            button.setChecked(false);
+            suppressBrowserOnlineToggleListener = false;
+            confirmBrowserOnlineAccess();
+        });
         webActions.addView(browserOnlineToggle, bottomMargin(dp(2)));
         LinearLayout providerRow = new LinearLayout(this);
         providerRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -436,7 +472,7 @@ public final class MainActivity extends Activity {
         webGoButton.setOnClickListener(view -> navigateFromInput());
         providerRow.addView(webGoButton, new LinearLayout.LayoutParams(dp(76), dp(48)));
         webActions.addView(providerRow);
-        TextView requestNote = text("Website access starts Offline. Turn Online on, then tap Go or a site for each request. The destination receives your query/URL and normal connection data; pages may contact third parties. Android System WebView Safe Browsing may contact Google/Play Services for threat-list updates or URL safety checks; real-time checks can send partial URL hashes. This platform traffic follows WebView/device settings, not Daymark's Online switch. Daymark sends no task text or app analytics. HTTPS only; HTTP is blocked; per-site exceptions require a separate request.",
+        TextView requestNote = text("Offline by default. Online requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination; pages may contact third parties. The Online switch controls Daymark page/resource loads only. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
                 11, palette.muted, Typeface.NORMAL);
         webActions.addView(requestNote, topMargin(dp(3)));
         card.addView(webActions);
@@ -495,8 +531,11 @@ public final class MainActivity extends Activity {
         browserHistoryButton = compactButton("History & data", false);
         browserHistoryButton.setContentDescription("View local browser history or clear history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
+        browserSettingsButton = compactButton("Settings", false);
+        browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
+        browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog());
         for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton)) {
+                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton)) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
             params.setMargins(0, 0, dp(5), 0);
@@ -506,11 +545,11 @@ public final class MainActivity extends Activity {
         panel.addView(toolbarScroll, bottomMargin(dp(4)));
 
         TextView disclosure = text(
-                "Website access starts Offline. Turn Online on, then tap Go or a site for each request. Your query/URL and normal connection data go to the chosen destination; pages may contact third parties. Android System WebView Safe Browsing may contact Google/Play Services for threat-list updates or URL safety checks; real-time checks can send partial URL hashes. This platform traffic follows WebView/device settings, not Daymark's Online switch. Daymark sends no task text or app analytics. HTTPS only; HTTP is blocked; a per-site exception requires a separate explicit request.",
+                "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked.",
                 11, palette.muted, Typeface.NORMAL);
         disclosure.setPadding(dp(11), dp(8), dp(11), dp(8));
         disclosure.setBackground(shape(palette.accentSoft, 10, palette.accentSoft));
-        disclosure.setContentDescription("Browser privacy: website access starts Offline, and each search or site requires Online enabled plus a separate tap. The selected destination receives your query or URL and normal connection data; pages may contact third parties. Android System WebView Safe Browsing may contact Google or Play Services for threat-list updates or URL safety checks; real-time checks can send partial URL hashes. This system traffic follows WebView and device settings, not Daymark's Online switch. Daymark sends no task text or app analytics. HTTPS only; HTTP is blocked, and a per-site exception requires a separate explicit request.");
+        disclosure.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         panel.addView(disclosure, bottomMargin(dp(5)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
@@ -561,11 +600,11 @@ public final class MainActivity extends Activity {
         TextView title = text("A browser, when you choose", 22, palette.text, Typeface.BOLD);
         home.addView(title, bottomMargin(dp(9)));
         TextView copy = text(
-                "Website access starts Offline. Turn Online on, choose a search engine, enter a search or HTTPS address, then tap Go or a site shortcut for each request. Your query or URL and normal connection details go to that destination; pages may contact third parties. Android System WebView Safe Browsing may contact Google/Play Services for threat-list updates or URL safety checks; real-time checks can send partial URL hashes, and this platform traffic is separate from Daymark's Online switch. Daymark sends no task text or app analytics. HTTP is blocked; any per-site exception requires a separate explicit request. AI shortcuts are ordinary websites, not connected model APIs. No website opens automatically.",
+                "Browser access starts Offline. Turn Online on, choose a search engine, enter a search or HTTPS address, then tap Go or a site shortcut for each request. Your query or URL and normal connection details go to that destination; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is platform-managed and may contact Google/Play Services for version/device-dependent hash or update checks; its provider is not selectable in Daymark. Daymark sends no task text or app analytics. HTTP is blocked; any per-site exception requires a separate explicit request. AI shortcuts are ordinary websites, not connected model APIs. No website opens automatically.",
                 14, palette.muted, Typeface.NORMAL);
         copy.setLineSpacing(dp(3), 1f);
         home.addView(copy, bottomMargin(dp(12)));
-        TextView local = text("Recent URLs, including search terms and URL tokens, are kept in app-private history without encryption. URL-embedded username/password is rejected at address validation; other URL tokens are not redacted. Use History & data to clear this history and Daymark's local cookies/cache/storage.",
+        TextView local = text("Local history keeps only HTTPS origins and paths; query parameters, fragments, and embedded username/password are removed before saving. Search terms are not saved in history. Path segments are kept and may themselves contain tokens. Legacy entries are sanitized when Daymark opens. History is local but not encrypted. Use History & data to clear it and Daymark's cookies/cache/storage.",
                 12, palette.muted, Typeface.NORMAL);
         local.setLineSpacing(dp(2), 1f);
         home.addView(local);
@@ -574,7 +613,7 @@ public final class MainActivity extends Activity {
 
     private void navigateFromInput() {
         if (!webMode) return;
-        if (!browserOnlineEnabled) {
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
             showBrowserOfflineStatus();
             return;
         }
@@ -591,7 +630,7 @@ public final class MainActivity extends Activity {
 
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
-        if (!browserOnlineEnabled) {
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
             showBrowserOfflineStatus();
             return;
         }
@@ -607,11 +646,14 @@ public final class MainActivity extends Activity {
 
     private void loadBrowserAddress(String address) {
         if (!webMode) return;
-        if (!browserOnlineEnabled) {
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
             showBrowserOfflineStatus();
             return;
         }
-        ensureBrowserWebView();
+        if (!ensureBrowserWebView()) {
+            showBrowserOfflineStatus();
+            return;
+        }
         try {
             browserWebView.getSettings().setBlockNetworkLoads(false);
         } catch (SecurityException denied) {
@@ -627,19 +669,22 @@ public final class MainActivity extends Activity {
         syncBrowserButtons();
     }
 
-    private void ensureBrowserWebView() {
-        if (browserWebView != null) return;
-        browserWebView = new DaymarkWebView(this, new DaymarkWebView.Listener() {
+    private boolean ensureBrowserWebView() {
+        if (!browserNetworkPolicy.allowsRemoteLoads()) return false;
+        if (browserWebView != null) return true;
+        browserWebView = new DaymarkWebView(this, browserNetworkPolicy,
+                browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
             @Override public void onPageStarted(String url) {
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 syncBrowserButtons();
             }
 
             @Override public void onPageFinished(String url) {
-                if (BrowserAddress.isAllowedWebUrl(url)) {
+                String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
+                if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
                     String current = browserPreferences.getString(BROWSER_HISTORY_KEY, "");
                     browserPreferences.edit().putString(BROWSER_HISTORY_KEY,
-                            BrowserHistory.add(current, url)).apply();
+                            BrowserHistory.add(current, safeHistoryUrl)).apply();
                 }
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
                 syncBrowserButtons();
@@ -648,6 +693,10 @@ public final class MainActivity extends Activity {
             @Override public void onNavigationBlocked(String url) {
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
+            }
+
+            @Override public void onOfflineNavigationBlocked() {
+                mainHandler.post(MainActivity.this::showBrowserOfflineStatus);
             }
 
             @Override public void onHttpNavigationBlocked(String url, boolean redirect) {
@@ -678,11 +727,12 @@ public final class MainActivity extends Activity {
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return true;
     }
 
     private void syncBrowserButtons() {
         if (browserBackButton == null) return;
-        boolean available = browserOnlineEnabled && browserWebView != null;
+        boolean available = browserNetworkPolicy.allowsRemoteLoads() && browserWebView != null;
         browserBackButton.setEnabled(available && browserWebView.canGoBack());
         browserForwardButton.setEnabled(available && browserWebView.canGoForward());
         browserReloadButton.setEnabled(available);
@@ -704,6 +754,11 @@ public final class MainActivity extends Activity {
         DaymarkWebView current = browserWebView;
         browserWebView = null;
         if (current != null) {
+            try {
+                current.getSettings().setBlockNetworkLoads(true);
+            } catch (RuntimeException ignored) {
+                // A crashed WebView renderer is already detached from remote loading.
+            }
             if (stopLoading) current.stopLoading();
             if (current.getParent() instanceof ViewGroup) {
                 ((ViewGroup) current.getParent()).removeView(current);
@@ -715,17 +770,17 @@ public final class MainActivity extends Activity {
 
     private void showBrowserOfflineStatus() {
         if (browserStatus != null) {
-            browserStatus.setText("Offline: nothing was sent. Turn Online on, then tap Go or a site to browse.");
+            browserStatus.setText("Offline: no search/site request was sent. Daymark page/resource loads are blocked; platform-managed Android System WebView Safe Browsing may still make Google/Play Services URL-hash or update checks.");
         }
     }
 
     private void showBrowserHistoryDialog() {
-        List<String> history = BrowserHistory.decode(
-                browserPreferences.getString(BROWSER_HISTORY_KEY, ""));
+        sanitizeStoredBrowserHistory();
+        List<String> history = BrowserHistory.decode(browserPreferences.getString(BROWSER_HISTORY_KEY, ""));
         String[] entries = history.isEmpty() ? new String[] { "No recent pages" }
                 : history.toArray(new String[0]);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Local browser history")
+                .setTitle("Local HTTPS history (queries removed)")
                 .setItems(entries, (whichDialog, selected) -> {
                     if (selected < 0 || selected >= history.size()) return;
                     quickCaptureInput.setText(history.get(selected));
@@ -739,7 +794,7 @@ public final class MainActivity extends Activity {
                     dialog.dismiss();
                     new AlertDialog.Builder(this)
                             .setTitle("Clear local browser data?")
-                            .setMessage("This clears Daymark's local URL history, the current WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
+                            .setMessage("Local history shows only HTTPS origin/path: query parameters and fragments are stripped and embedded credentials are removed before saving; path segments remain. Legacy entries are sanitized on launch. Clearing removes Daymark's local URL history, the current WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear data", (confirm, selected) -> clearBrowserData())
                             .show();
@@ -1083,15 +1138,13 @@ public final class MainActivity extends Activity {
         if (!webMode) {
             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
         } else if (browserWebView != null) {
-            browserWebView.getSettings().setBlockNetworkLoads(true);
-            browserWebView.stopLoading();
-            discardBrowserWebView(false);
+            discardBrowserWebView();
         }
         webMode = enabled;
         quickCaptureInput.setText(enabled ? "" : taskDraft);
         quickCaptureInput.setError(null);
         if (enabled && browserStatus != null) {
-            browserStatus.setText(browserOnlineEnabled
+            browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
                     ? "Online is enabled. No website opens until you tap Go or a site."
                     : "Website access is Offline. Turn Online on, then tap Go or a site.");
         }
@@ -1099,27 +1152,115 @@ public final class MainActivity extends Activity {
     }
 
     private void setBrowserOnlineEnabled(boolean enabled) {
-        if (browserOnlineEnabled == enabled) return;
+        if (browserNetworkPolicy.isOnlineEnabled() == enabled) return;
+        browserNetworkPolicy.setOnlineEnabled(enabled);
         if (enabled) {
-            browserOnlineEnabled = true;
             browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
             if (browserStatus != null) browserStatus.setText("Online access enabled. No website opens until you tap Go or a site.");
         } else {
-            if (browserWebView != null) {
-                browserWebView.getSettings().setBlockNetworkLoads(true);
-                browserWebView.stopLoading();
-            }
-            browserOnlineEnabled = false;
             browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, false).apply();
             showBrowserHome();
             showBrowserOfflineStatus();
         }
         syncBrowserButtons();
         if (browserOnlineToggle != null) {
-            browserOnlineToggle.setContentDescription(browserOnlineEnabled
-                    ? "Website access is Online. Every search or site still requires a separate tap. Android System WebView Safe Browsing traffic follows WebView and device settings, not this switch."
-                    : "Website access is Offline by default. Turn it on, then tap Go or a site. Android System WebView Safe Browsing may contact Google/Play Services separately.");
+            browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
+                    ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block Daymark page and resource loads; platform-managed Android System WebView Safe Browsing may make Google/Play Services checks separately."
+                    : "Online browsing is off by default. Turn it on after reviewing the disclosure to allow Daymark page and resource loads, then tap Go or a site to send a request. The switch does not control platform-managed Android System WebView Safe Browsing, which may contact Google/Play Services for URL-hash or update checks.");
         }
+    }
+
+    private void confirmBrowserOnlineAccess() {
+        new AlertDialog.Builder(this)
+                .setTitle("Enable online browsing?")
+                .setMessage("Online browsing sends a search query or requested URL, plus normal connection data such as your IP address and browser identification, to the selected provider/site; those services may log requests. Pages may contact their own or third-party endpoints, which may also be logged. The Online switch blocks Daymark page/resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks; its provider is not selectable in Daymark, though its protection setting is available in Browser Settings. WebView M126+ may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This is not a claim that every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text and adds no app analytics; WebView diagnostic metrics are opted out. HTTP remains blocked. Enabling Online alone makes no page request; each search or site still requires a tap. This choice is saved on this device. Turning Online off stops and closes the active page.")
+                .setNegativeButton("Stay offline", (dialog, which) -> showBrowserOfflineStatus())
+                .setPositiveButton("Enable Online", (dialog, which) -> {
+                    setBrowserOnlineEnabled(true);
+                    if (browserOnlineToggle != null) {
+                        suppressBrowserOnlineToggleListener = true;
+                        browserOnlineToggle.setChecked(true);
+                        suppressBrowserOnlineToggleListener = false;
+                    }
+                })
+                .setOnCancelListener(dialog -> showBrowserOfflineStatus())
+                .show();
+    }
+
+    private boolean setBrowserSafeBrowsingEnabled(boolean enabled) {
+        if (browserSettingsPolicy.isSafeBrowsingEnabled() == enabled) return true;
+        if (browserWebView != null) {
+            try {
+                browserWebView.getSettings().setSafeBrowsingEnabled(enabled);
+            } catch (RuntimeException updateFailed) {
+                showToast("Safe Browsing could not be changed. The previous setting remains active.");
+                return false;
+            }
+        }
+        browserSettingsPolicy.setSafeBrowsingEnabled(enabled);
+        browserPreferences.edit().putBoolean(SAFE_BROWSING_ENABLED_KEY, enabled).apply();
+        return true;
+    }
+
+    private void showBrowserSettingsDialog() {
+        TextView explanation = text(
+                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Online switch only blocks Daymark page/resource loads; this setting controls Safe Browsing separately.",
+                14, palette.text, Typeface.NORMAL);
+        explanation.setLineSpacing(dp(3), 1f);
+        explanation.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        CheckBox safeBrowsingToggle = new CheckBox(this);
+        safeBrowsingToggle.setText("Safe Browsing (recommended)");
+        safeBrowsingToggle.setMinHeight(dp(48));
+        safeBrowsingToggle.setChecked(browserSettingsPolicy.isSafeBrowsingEnabled());
+        safeBrowsingToggle.setContentDescription(browserSettingsPolicy.isSafeBrowsingEnabled()
+                ? "Safe Browsing is enabled. Turn it off only after reviewing the protection warning."
+                : "Safe Browsing is disabled. Turn it on to restore protection against known harmful pages.");
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.addView(explanation);
+        content.addView(safeBrowsingToggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+
+        AlertDialog settingsDialog = new AlertDialog.Builder(this)
+                .setTitle("Browser Settings")
+                .setView(content)
+                .setPositiveButton("Done", null)
+                .create();
+
+        safeBrowsingToggle.setOnCheckedChangeListener((button, enabled) -> {
+            if (suppressSafeBrowsingToggleListener) return;
+            if (enabled) {
+                if (!setBrowserSafeBrowsingEnabled(true)) {
+                    suppressSafeBrowsingToggleListener = true;
+                    button.setChecked(false);
+                    suppressSafeBrowsingToggleListener = false;
+                    button.setContentDescription("Safe Browsing remains disabled because the setting could not be applied.");
+                } else {
+                    button.setContentDescription("Safe Browsing is enabled. Turn it off only after reviewing the protection warning.");
+                }
+                return;
+            }
+
+            suppressSafeBrowsingToggleListener = true;
+            button.setChecked(true);
+            suppressSafeBrowsingToggleListener = false;
+            new AlertDialog.Builder(this)
+                    .setTitle("Disable Safe Browsing?")
+                    .setMessage("Turning this off reduces protection. Known harmful or deceptive sites may no longer be blocked or warned about in Daymark's WebView. The choice is saved on this device and applied to the current and future Daymark WebViews. This does not guarantee zero platform network activity; Android/Google/Play Services may have independent behavior. Daymark's Online setting continues to control page/resource loads separately.")
+                    .setNegativeButton("Keep Safe Browsing", null)
+                    .setPositiveButton("Disable Safe Browsing", (warning, choice) -> {
+                        if (setBrowserSafeBrowsingEnabled(false)) {
+                            suppressSafeBrowsingToggleListener = true;
+                            button.setChecked(false);
+                            suppressSafeBrowsingToggleListener = false;
+                            button.setContentDescription("Safe Browsing is disabled. Turn it on to restore protection against known harmful pages.");
+                        }
+                    })
+                    .show();
+        });
+        settingsDialog.show();
     }
 
     private void renderFilters(LocalDate today) {

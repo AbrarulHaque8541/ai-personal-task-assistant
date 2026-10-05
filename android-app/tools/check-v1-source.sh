@@ -18,6 +18,8 @@ permissions = [item.get(android + "name") for item in manifest.findall("uses-per
 assert permissions == ["android.permission.INTERNET"], "only INTERNET may be declared for the browser"
 assert app.get(android + "allowBackup") == "false", "backup must stay disabled"
 assert app.get(android + "usesCleartextTraffic") == "false", "cleartext must remain disabled in HTTPS-only V1"
+assert any(item.get(android + "name") == "android.webkit.WebView.MetricsOptOut"
+           and item.get(android + "value") == "true" for item in app.findall("meta-data")), "WebView diagnostic metrics must be opted out"
 assert not list(app.findall("service")), "browser must not add a service"
 assert not list(app.findall("receiver")), "browser must not add a receiver"
 assert not list(app.findall("provider")), "browser must not add a provider"
@@ -33,6 +35,9 @@ assert "implementation(" not in deps and "api(" not in deps and "runtimeOnly(" n
 activity = (main / "java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
 webview = (main / "java/com/cue/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
 address = (main / "java/com/cue/daymark/BrowserAddress.java").read_text(encoding="utf-8")
+history_source = (main / "java/com/cue/daymark/BrowserHistory.java").read_text(encoding="utf-8")
+settings_policy = (main / "java/com/cue/daymark/BrowserSettingsPolicy.java").read_text(encoding="utf-8")
+settings_smoke = (root / "tools/BrowserSettingsPolicySmoke.java").read_text(encoding="utf-8")
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
     assert expected in activity, f"missing task source feature marker: {expected}"
 for expected in ("Permission status:", "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "no Android permissions are declared"):
@@ -50,30 +55,65 @@ assert "quickCaptureInput.setText(enabled ? \"\" : taskDraft);" in activity, "ta
 assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity, "Web text must not overwrite the local task draft"
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
-assert "browserOnlineEnabled = readBrowserOnlinePreference();" in activity
-assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "missing/corrupt online preference must default Offline"
+assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
+assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "missing/corrupt online preference must default Offline"
+assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY," in activity, "browser Online preference must be read locally"
 assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
 assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
-assert "Website access starts Offline" in activity and "tap Go or a site for each request" in activity
-assert "Android System WebView Safe Browsing" in activity and "Google/Play Services" in activity
-assert "partial URL hashes" in activity and "not Daymark's Online switch" in activity, "Safe Browsing service data flow must be distinguished from the website-load toggle"
-assert "Daymark sends no task text or app analytics" in activity
-assert "Recent URLs, including search terms and URL tokens, are kept in app-private history without encryption" in activity
-assert "other URL tokens are not redacted" in activity and "uri.getRawUserInfo() != null" in address, "history privacy disclosure must match URL credential handling"
+assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
+assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
+assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
+assert "may log it" in activity and "may contact and be logged by third-party endpoints" in activity, "provider and page endpoint logging must not be ruled out"
+assert "Google/Play Services" in activity and "The Safe Browsing provider itself is not selectable in Daymark" in activity, "Safe Browsing provider and platform traffic must be disclosed separately from its local on/off setting"
+assert "URL-hash-based checks" in activity and "WebView M126+ may send a partial URL hash through a proxy" in activity
+assert "This does not mean every full URL is sent" in activity and "This is not a claim that every full URL is sent" in activity
+assert "Daymark sends no task text and adds no app analytics" in activity
+assert "WebView diagnostic metrics are opted out" in activity
+assert "The Online switch blocks Daymark page/resource loads only" in activity
+assert "does not control Android System WebView Safe Browsing" in activity
+assert "no search/site request was sent" in activity, "Offline status must not overpromise absence of platform Safe Browsing traffic"
+assert "browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());" in activity
+assert "BrowserSettingsPolicy.DEFAULT_SAFE_BROWSING_ENABLED" in activity and "getBoolean(SAFE_BROWSING_ENABLED_KEY," in activity
+assert "putBoolean(SAFE_BROWSING_ENABLED_KEY, enabled)" in activity, "Safe Browsing choice must be saved locally"
+assert "browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog())" in activity
+assert "setTitle(\"Browser Settings\")" in activity and "Safe Browsing (recommended)" in activity
+assert "Disable Safe Browsing?" in activity and "Turning this off reduces protection" in activity
+assert 'setPositiveButton("Disable Safe Browsing"' in activity and "setBrowserSafeBrowsingEnabled(false)" in activity
+assert "browserWebView.getSettings().setSafeBrowsingEnabled(enabled)" in activity
+assert "browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener()" in activity
+assert "settings.setSafeBrowsingEnabled(safeBrowsingEnabled)" in webview
+assert "DEFAULT_SAFE_BROWSING_ENABLED = true" in settings_policy
+assert "Safe Browsing must default on for new installs" in settings_smoke
+assert "explicit opt-out should be restorable" in settings_smoke and "user must be able to re-enable" in settings_smoke
+assert "Local history keeps only HTTPS origins and paths" in activity
+assert "query parameters, fragments, and embedded username/password are removed before saving" in activity
+assert "Search terms are not saved in history" in activity and "Path segments are kept and may themselves contain tokens" in activity
+assert "sanitizeStoredBrowserHistory();" in activity and "BrowserHistory.sanitizeSerialized(existing)" in activity, "legacy history must be sanitized on launch"
+assert "BrowserHistory.sanitizeUrl(url)" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity, "each history write must pass through the sanitizer"
+assert "Local HTTPS history (queries removed)" in activity and "path segments remain" in activity
+for expected in ("sanitized.getRawUserInfo()", "sanitized.getRawQuery()", "sanitized.getRawFragment()", "source.getRawPath()", "source.getHost()", "source.getPort()"):
+    assert expected in history_source, f"history sanitizer must handle {expected}"
+assert "uri.getRawUserInfo() != null" in address, "browser navigation must continue to reject userinfo"
 for method in ("navigateFromInput", "navigateBrowserTo", "loadBrowserAddress"):
     body = re.search(r"private void " + method + r"\([^)]*\)\s*\{(.*?)\n    \}", activity, re.S)
-    assert body and "if (!browserOnlineEnabled)" in body.group(1), f"{method} must fail closed while Offline"
+    assert body and "browserNetworkPolicy.allowsRemoteLoads()" in body.group(1), f"{method} must fail closed while Offline"
 online_setting = re.search(r"private void setBrowserOnlineEnabled\(boolean enabled\)\s*\{(.*?)\n    \}", activity, re.S)
-assert online_setting and "setBlockNetworkLoads(true)" in online_setting.group(1)
-assert online_setting and "stopLoading()" in online_setting.group(1)
+assert online_setting and "browserNetworkPolicy.setOnlineEnabled(enabled)" in online_setting.group(1)
+assert online_setting and "showBrowserHome()" in online_setting.group(1)
 assert online_setting and "loadUrl(" not in online_setting.group(1) and "loadBrowserAddress(" not in online_setting.group(1), "enabling Online must not itself load a page"
+discard = re.search(r"private void discardBrowserWebView\(boolean stopLoading\)\s*\{(.*?)\n    \}", activity, re.S)
+assert discard and "setBlockNetworkLoads(true)" in discard.group(1) and "stopLoading()" in discard.group(1), "offline/background teardown must block and stop the page"
+on_pause = re.search(r"protected void onPause\(\)\s*\{(.*?)\n    \}", activity, re.S)
+assert on_pause and "discardBrowserWebView()" in on_pause.group(1), "backgrounding must close the page"
+ensure_webview = re.search(r"private boolean ensureBrowserWebView\(\)\s*\{(.*?)\n    \}", activity, re.S)
+assert ensure_webview and "if (!browserNetworkPolicy.allowsRemoteLoads()) return false;" in ensure_webview.group(1), "WebView construction must fail closed while Offline"
 load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
 assert load_address and "setBlockNetworkLoads(false)" in load_address.group(1)
 assert load_address and load_address.group(1).index("setBlockNetworkLoads(false)") < load_address.group(1).index("browserWebView.loadUrl(address)"), "only a tapped navigation may release WebView network blocking"
 
 for expected in (
     "settings.setBlockNetworkLoads(true)",
-    "settings.setSafeBrowsingEnabled(true)",
+    "settings.setSafeBrowsingEnabled(safeBrowsingEnabled)",
     "WebSettings.MIXED_CONTENT_NEVER_ALLOW",
     "settings.setAllowFileAccess(false)",
     "settings.setAllowContentAccess(false)",
@@ -107,7 +147,7 @@ for expected in (
 assert "https://" + "example" not in address  # Search/address behavior is covered by executable smoke tests.
 assert "ChatGPT" in activity and "Claude" in activity and "Gemini" in activity and "Perplexity" in activity
 assert "https://chatgpt.com/" in activity and "https://claude.ai/" in activity
-assert "BROWSER_HISTORY_KEY" in activity and "BrowserHistory.add(current, url)" in activity
+assert "BROWSER_HISTORY_KEY" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity
 clear = re.search(r"private void clearBrowserData\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert clear, "explicit browser data clear action is required"
 for expected in ("clearHistory()", "clearCache(true)", "WebStorage.getInstance().deleteAllData()", "removeAllCookies("):
@@ -132,10 +172,11 @@ task_logic = (main / "java/com/cue/daymark/TaskLogic.java").read_text(encoding="
 assert "Locale.getDefault()" in task_logic, "date formatting should follow the device locale"
 
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
-print("PASS browser policy: Offline by default with persisted opt-in, network blocked while Offline, and a separate tap required for each request")
+print("PASS browser policy: Offline by default with persisted opt-in, Daymark page/resource loads blocked while Offline, and a separate tap required for each request")
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
+print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
-print("PASS local browser data: app-private capped history and explicit history/cookie/cache/WebStorage clear")
+print("PASS local browser data: query-free capped history, legacy-entry sanitization, and explicit history/cookie/cache/WebStorage clear")
 print("PASS manifest/dependencies: INTERNET only, no background components, no added runtime dependency or optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, live status, explicit English-only scope, device-locale dates")
 PY

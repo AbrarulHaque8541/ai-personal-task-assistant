@@ -21,13 +21,15 @@ final class DaymarkWebView extends WebView {
         void onPageStarted(String url);
         void onPageFinished(String url);
         void onNavigationBlocked(String url);
+        void onOfflineNavigationBlocked();
         void onHttpNavigationBlocked(String url, boolean redirect);
         void onLoadError();
         void onDownloadRequested();
         void onRendererGone();
     }
 
-    DaymarkWebView(Activity activity, Listener listener) {
+    DaymarkWebView(Activity activity, BrowserNetworkPolicy networkPolicy,
+                   boolean safeBrowsingEnabled, Listener listener) {
         super(activity);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -37,7 +39,7 @@ final class DaymarkWebView extends WebView {
         settings.setBlockNetworkLoads(true);
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setSafeBrowsingEnabled(true);
+        settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
@@ -51,6 +53,10 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return true;
+                }
                 if (request.isForMainFrame()
                         && "http".equalsIgnoreCase(request.getUrl().getScheme())) {
                     listener.onHttpNavigationBlocked(url, request.isRedirect());
@@ -63,6 +69,10 @@ final class DaymarkWebView extends WebView {
 
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return;
+                }
                 listener.onPageStarted(url);
             }
 
@@ -80,6 +90,10 @@ final class DaymarkWebView extends WebView {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (!request.isForMainFrame()) return;
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return;
+                }
                 if ("http".equalsIgnoreCase(request.getUrl().getScheme())) {
                     listener.onHttpNavigationBlocked(request.getUrl().toString(), request.isRedirect());
                 } else {
