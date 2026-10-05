@@ -18,6 +18,8 @@ Tap **Power path** in the top bar to show **All**, **Today**, **Upcoming**, and 
 
 Demo suggestions use a fixed local rule: open tasks by overdue/nearest due date, then High → Medium → Low priority for a matching date. They are **not AI advice** and use no online service.
 
+Tap **Open**, or focus a suggestion and press Enter, Space, or the center key, to go to its task. Daymark returns to **All**, clears task search, scrolls to the matching task, and gives it keyboard/accessibility focus with a brief visual highlight. This action only navigates; it does not change or save task details. TalkBack receives a labeled button action. If Android animations are disabled, scrolling is immediate instead of smooth.
+
 Tap **Simple path** to return to the uncluttered view. Your tasks remain the same.
 
 ## Browse the web (HTTPS only)
@@ -30,7 +32,7 @@ Tap **Site history** to view up to 50 local HTTPS origins (scheme, host, and non
 
 ## More settings and accessibility
 
-Tap **More** to change appearance (follow the device, light, or dark), app text size (Compact, Standard, Extra large), or high-contrast colors. **Permission status** reports the normal `INTERNET` permission used by the embedded browser; task operations need no permission, and Android does not show a runtime prompt for `INTERNET`. No camera, microphone, location, or storage permissions are requested. The Language item explains that app text is English-only; dates use the device language. Screen-reader labels are present on task controls, and Android's TalkBack can be enabled in system Accessibility settings; device-level TalkBack testing is still pending. Reduced motion has no separate app switch because this version has no looping or auto-playing animation; Android still controls system UI motion.
+Tap **More** to change appearance (follow the device, light, or dark), app text size (Compact, Standard, Extra large), or high-contrast colors. **Permission status** reports the normal `INTERNET` permission used by the embedded browser; task operations need no permission, and Android does not show a runtime prompt for `INTERNET`. No camera, microphone, location, or storage permissions are requested. The Language item explains that app text is English-only; dates use the device language. Screen-reader labels are present on task controls, and Android's TalkBack can be enabled in system Accessibility settings; device-level TalkBack testing is still pending. Suggestion navigation uses Android's system animation setting for smooth versus immediate scrolling; there is no separate in-app reduced-motion switch.
 
 ## Storage and limits
 

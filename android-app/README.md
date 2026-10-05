@@ -8,7 +8,7 @@ These labels describe the current source, not a delivery promise. **Later opt-in
 
 | Requirement area | Status | Current boundary |
 |---|---|---|
-| Offline task capture, edit, completion, delete/undo, filters, priorities, due dates, deterministic suggestions | **V1 implemented** | Source-level functionality; device/offline runtime checks remain pending. Suggestions are rules, not AI. |
+| Offline task capture, edit, completion, delete/undo, filters, priorities, due dates, actionable deterministic suggestions | **V1 implemented** | Source-level functionality; device/offline runtime checks remain pending. Suggestions are rules, not AI; opening one navigates by stable task ID, focuses and briefly highlights the task, and does not edit or save it. |
 | Encrypted local task data and task-only permission-free flows | **V1 implemented** | AES-GCM file in app-private storage with a Keystore key; task CRUD needs no system permission. This is not Room/SQLCipher, and secure-hardware backing varies by device. |
 | Embedded browser, selectable search providers, and AI-site shortcuts | **V1 implemented (source-level)** | Android System WebView; HTTPS requests only after Go/site taps; no API integration or task-data transfer. Runtime behavior still needs device/network tests. |
 | Room/SQLCipher repositories, schedules, profiles, schema migrations, encrypted export/recovery | **Later opt-in** | Not in this prototype; first resolve database, key lifecycle, backup, migration, and recovery decisions. |
@@ -27,7 +27,7 @@ These labels describe the current source, not a delivery promise. **Later opt-in
 ## V1 experience
 
 - **Simple path (default):** the first screen asks “What do you want to get done?”, gives an everyday example, and offers an editable text field with a one-tap Add action. A new quick-added task starts with no due date and medium priority; that default is stated on screen. **Add with a date or priority** opens the same editable task form with the draft filled in.
-- **Power path:** an explicit top-bar switch reveals title search, All / Today / Upcoming / Completed filters, and deterministic Demo suggestions. It uses the **same task records** as Simple; changing paths does not copy, transform, or hide stored data.
+- **Power path:** an explicit top-bar switch reveals title search, All / Today / Upcoming / Completed filters, and deterministic Demo suggestions. Tapping or keyboard-activating a suggestion clears search/filters as needed, focuses and briefly highlights its matching task, and leaves saved task data unchanged. It uses the **same task records** as Simple; changing paths does not copy, transform, or hide stored data.
 - Both paths support task edit, completion, and deletion. Deletion asks first and can be undone for seven seconds. The task editor has Cancel and system Back behavior.
 - Local status is visible. Text entry and date/priority remain editable before saving; a visible message explains the next step after a quick add.
 - **Web mode:** the shared composer switches explicitly between Task and Web. DuckDuckGo is the default search engine, with Google, Bing, and Brave Search available; ChatGPT, Claude, Gemini, and Perplexity are plain website shortcuts. Search terms or destinations load only after Go/a site tap. Entering Web mode clears the visible task draft; Daymark retains it locally and restores it only when returning to Task. Website sign-in and compatibility depend on each provider.
@@ -36,7 +36,7 @@ These labels describe the current source, not a delivery promise. **Later opt-in
 
 The app uses native Android controls, descriptive TalkBack labels, scrollable content, keyboard/IME submission, and touch targets of at least 48 dp for primary actions, filters, task controls, and search clearing. **More** provides device/light/dark appearance, Compact/Standard/Extra large app text, a high-contrast palette, permission status, and technical details. Browser controls are labeled; device-level TalkBack traversal remains untested.
 
-Language is **English-only UI** in this prototype; dates use the device locale. Other translations and right-to-left review are not complete. The screen-reader item points to native Android/TalkBack support; it does not replace Android's accessibility settings. V1 has no custom looping/auto-playing motion, so Android system reduced-motion behavior applies to platform UI; there is no separate in-app reduced-motion switch.
+Language is **English-only UI** in this prototype; dates use the device locale. Other translations and right-to-left review are not complete. The screen-reader item points to native Android/TalkBack support; it does not replace Android's accessibility settings. Suggestion navigation uses Android's system animation setting to choose smooth or immediate scrolling; there is no separate in-app reduced-motion switch.
 
 ## Local-only operation and content policy
 
@@ -58,7 +58,7 @@ The app performs ordinary foreground UI, file, Keystore, and—only after an exp
 
 Task records use schema-versioned JSON encrypted in `files/tasks.enc` with AES-GCM and an AES key kept by Android Keystore. The key is non-exportable; secure-hardware backing depends on the device. Disk and cryptographic operations run on one background executor. A malformed file, unavailable key, or authentication/schema failure leaves the existing file untouched and disables edits. Saves use a temporary file and replacement; failed saves restore the last saved in-memory snapshot and pause further edits.
 
-The app's **Demo suggestion** ranking is deterministic local code: open tasks by overdue/nearest due date, then high → medium → low priority for equal dates. It is not an LLM, does not access the network, and does not infer intent. Suggestions are not a downloaded asset.
+The app's **Demo suggestion** ranking is deterministic local code: open tasks by overdue/nearest due date, then high → medium → low priority for equal dates. It is not an LLM, does not access the network, and does not infer intent. Opening a suggestion resolves the task by its existing ID and changes only transient filter/search/scroll/focus state; it does not mutate or persist task data. Suggestions are not a downloaded asset.
 
 Clearing app data or uninstalling removes the local task file/key. Automatic backup is disabled; there is no export, cloud sync, or cross-install migration. Theme and accessibility preferences are non-sensitive ordinary app preferences.
 

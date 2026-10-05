@@ -1,5 +1,6 @@
 package com.cue.daymark;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
@@ -15,6 +16,7 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -29,7 +31,9 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.Button;
@@ -100,11 +104,14 @@ public final class MainActivity extends Activity {
     private Task pendingDeletedTask;
     private int pendingDeletedIndex;
     private Runnable undoDismissal;
+    private String highlightedTaskId;
+    private Runnable suggestionHighlightReset;
     private Palette palette;
 
     private LinearLayout root;
     private LinearLayout taskList;
     private LinearLayout suggestionList;
+    private ScrollView contentScroll;
     private LinearLayout undoBar;
     private TextView undoMessage;
     private Button undoButton;
@@ -220,6 +227,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
+        if (suggestionHighlightReset != null) mainHandler.removeCallbacks(suggestionHighlightReset);
         if (storageExecutor != null) storageExecutor.shutdown();
         if (browserWebView != null) discardBrowserWebView();
         super.onDestroy();
@@ -242,6 +250,7 @@ public final class MainActivity extends Activity {
         root.addView(buildSharedComposer(), bottomMargin(dp(8)));
 
         ScrollView scrollView = new ScrollView(this);
+        contentScroll = scrollView;
         scrollView.setFillViewport(false);
         scrollView.setClipToPadding(false);
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
@@ -1376,28 +1385,169 @@ public final class MainActivity extends Activity {
             LinearLayout item = new LinearLayout(this);
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.setPadding(dp(10), dp(9), dp(10), dp(9));
-            item.setBackground(shape(palette.surface, 10, palette.line));
+            item.setMinimumHeight(dp(48));
+            item.setBackground(suggestionItemBackground());
+            item.setClickable(true);
+            item.setFocusable(true);
+            item.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            item.setContentDescription("Demo suggestion " + (index + 1) + ": "
+                    + suggestion.task.title + ". " + suggestion.reason
+                    + ". Open this task in the list. Read-only; task details will not change.");
+            item.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override
+                public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host, info);
+                    info.setClassName(Button.class.getName());
+                }
+            });
+            item.setOnClickListener(view -> showSuggestedTask(suggestion.task.id));
+            item.setOnKeyListener((view, keyCode, event) -> {
+                if (!isSuggestionActivationKey(keyCode)) return false;
+                if (event.getAction() == KeyEvent.ACTION_UP && event.getRepeatCount() == 0) {
+                    view.performClick();
+                }
+                return true;
+            });
             TextView number = text(String.valueOf(index + 1), 11, palette.accent, Typeface.BOLD);
             number.setGravity(Gravity.CENTER);
             number.setBackground(shape(palette.accentSoft, 8, palette.accentSoft));
+            number.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             item.addView(number, new LinearLayout.LayoutParams(dp(27), dp(27)));
             LinearLayout copy = new LinearLayout(this);
             copy.setOrientation(LinearLayout.VERTICAL);
             copy.setPadding(dp(9), 0, 0, 0);
+            copy.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             TextView taskTitle = text(suggestion.task.title, 13, palette.text, Typeface.BOLD);
             TextView reason = text(suggestion.reason, 12, palette.muted, Typeface.NORMAL);
             copy.addView(taskTitle);
             copy.addView(reason, topMargin(dp(2)));
             item.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView openHint = text("Open", 11, palette.accent, Typeface.BOLD);
+            openHint.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hintParams.leftMargin = dp(8);
+            item.addView(openHint, hintParams);
             suggestionList.addView(item, bottomMargin(dp(6)));
         }
     }
 
+    private boolean isSuggestionActivationKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_ENTER
+                || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                || keyCode == KeyEvent.KEYCODE_SPACE
+                || keyCode == KeyEvent.KEYCODE_DPAD_CENTER;
+    }
+
+    private Task findTaskById(String taskId) {
+        if (taskId == null) return null;
+        for (Task task : tasks) {
+            if (taskId.equals(task.id)) return task;
+        }
+        return null;
+    }
+
+    private void showSuggestedTask(String taskId) {
+        if (!storageReady || taskId == null) return;
+        Task task = findTaskById(taskId);
+        if (task == null) {
+            captureFeedback.setText("That task is no longer available. Your saved tasks were not changed.");
+            renderSuggestions(LocalDate.now());
+            return;
+        }
+
+        if (suggestionHighlightReset != null) {
+            mainHandler.removeCallbacks(suggestionHighlightReset);
+            suggestionHighlightReset.run();
+            suggestionHighlightReset = null;
+        }
+        activeFilter = TaskLogic.FILTER_ALL;
+        highlightedTaskId = task.id;
+        if (searchInput != null) {
+            if (searchInput.length() > 0) searchInput.setText("");
+            searchInput.clearFocus();
+            InputMethodManager inputMethodManager =
+                    (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (inputMethodManager != null) {
+                inputMethodManager.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+            }
+        }
+        searchQuery = "";
+        LocalDate today = LocalDate.now();
+        renderFilters(today);
+        renderTaskList(today);
+        renderTaskCount(today);
+        captureFeedback.setText("Showing “" + task.title + "” from suggestions. "
+                + "The task is focused and highlighted; its details were not changed.");
+
+        View taskRow = findTaskRow(task.id);
+        if (taskRow == null) {
+            highlightedTaskId = null;
+            captureFeedback.setText("That task is no longer available. Your saved tasks were not changed.");
+            return;
+        }
+        suggestionHighlightReset = () -> {
+            if (task.id.equals(highlightedTaskId)) {
+                highlightedTaskId = null;
+                View currentRow = findTaskRow(task.id);
+                if (currentRow != null) {
+                    currentRow.setBackground(taskRowBackground(false));
+                    if (!currentRow.hasFocus()) {
+                        currentRow.setFocusable(false);
+                        currentRow.setContentDescription(null);
+                        currentRow.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+                    }
+                }
+            }
+            suggestionHighlightReset = null;
+        };
+        mainHandler.postDelayed(suggestionHighlightReset, 2500);
+        taskRow.post(() -> {
+            if (taskRow.getParent() != taskList || contentScroll == null) return;
+            int[] rowLocation = new int[2];
+            int[] scrollLocation = new int[2];
+            taskRow.getLocationOnScreen(rowLocation);
+            contentScroll.getLocationOnScreen(scrollLocation);
+            int targetY = contentScroll.getScrollY() + rowLocation[1] - scrollLocation[1] - dp(16);
+            if (ValueAnimator.areAnimatorsEnabled()) {
+                contentScroll.smoothScrollTo(0, Math.max(0, targetY));
+            } else {
+                contentScroll.scrollTo(0, Math.max(0, targetY));
+            }
+            taskRow.requestFocus();
+            taskRow.performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
+        });
+    }
+
+    private View findTaskRow(String taskId) {
+        if (taskList == null || taskId == null) return null;
+        for (int index = 0; index < taskList.getChildCount(); index++) {
+            View row = taskList.getChildAt(index);
+            if (taskId.equals(row.getTag())) return row;
+        }
+        return null;
+    }
+
     private View buildTaskRow(Task task) {
         LinearLayout row = new LinearLayout(this);
+        row.setTag(task.id);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(7), dp(8), dp(8), dp(8));
-        row.setBackground(shape(palette.surface, 13, palette.line));
+        boolean highlighted = task.id.equals(highlightedTaskId);
+        row.setFocusable(highlighted);
+        row.setImportantForAccessibility(highlighted
+                ? View.IMPORTANT_FOR_ACCESSIBILITY_YES : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        row.setContentDescription(highlighted
+                ? "Task: " + task.title + ". " + dueLabel(task) + ". Priority " + task.priority + "."
+                : null);
+        row.setOnFocusChangeListener((view, hasFocus) -> {
+            if (!hasFocus && !task.id.equals(highlightedTaskId)) {
+                view.setFocusable(false);
+                view.setContentDescription(null);
+                view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+            }
+        });
+        row.setBackground(taskRowBackground(highlighted));
         row.setElevation(dp(1));
 
         CheckBox checkBox = new CheckBox(this);
@@ -1932,6 +2082,27 @@ public final class MainActivity extends Activity {
         drawable.setCornerRadius(dp(radiusDp));
         drawable.setStroke(dp(1), stroke);
         return drawable;
+    }
+
+    private StateListDrawable suggestionItemBackground() {
+        StateListDrawable background = new StateListDrawable();
+        background.addState(new int[] { android.R.attr.state_pressed },
+                shape(palette.accentSoft, 10, palette.accent));
+        background.addState(new int[] { android.R.attr.state_focused },
+                shape(palette.accentSoft, 10, palette.accent));
+        background.addState(new int[0], shape(palette.surface, 10, palette.line));
+        return background;
+    }
+
+    private StateListDrawable taskRowBackground(boolean highlighted) {
+        StateListDrawable background = new StateListDrawable();
+        background.addState(new int[] { android.R.attr.state_focused },
+                shape(palette.accentSoft, 13, palette.accent));
+        background.addState(new int[] { android.R.attr.state_pressed },
+                shape(palette.accentSoft, 13, palette.accent));
+        background.addState(new int[0], shape(highlighted ? palette.accentSoft : palette.surface,
+                13, highlighted ? palette.accent : palette.line));
+        return background;
     }
 
     private LinearLayout.LayoutParams bottomMargin(int value) {

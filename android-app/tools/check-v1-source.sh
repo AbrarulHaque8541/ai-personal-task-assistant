@@ -193,4 +193,5 @@ print("PASS local browser data: capped origin-only site history, legacy-origin m
 print("PASS manifest/dependencies: INTERNET only, no background components, no added runtime dependency or optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, live status, explicit English-only scope, device-locale dates")
 PY
+python3 "$ROOT/tools/check-suggestion-navigation.py"
 python3 "$ROOT/tools/check-accessibility-contrast.py"
