@@ -24,7 +24,7 @@ saved_state = main.split("protected void onSaveInstanceState", 1)[1].split(
     "protected void onActivityResult", 1)[0]
 assert "pendingPickedAttachmentUri" not in saved_state, "attachment provider URIs must remain transient"
 assert "READ_EXTERNAL_STORAGE" not in main and "READ_MEDIA_" not in main
-assert not list(manifest.findall("uses-permission")), "attachment selection must not add broad storage permissions"
+assert [i.get(android + "name") for i in manifest.findall("uses-permission")] == ["android.permission.INTERNET"], "attachment selection must not add broad storage permissions"
 providers = manifest.findall(".//provider")
 assert len(providers) == 1, "the only provider is the attachment read bridge"
 assert providers[0].get(android + "exported") == "false"

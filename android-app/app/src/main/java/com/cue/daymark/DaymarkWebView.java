@@ -1,0 +1,131 @@
+package com.cue.daymark;
+
+import android.app.Activity;
+import android.net.http.SslError;
+import android.view.View;
+import android.webkit.GeolocationPermissions;
+import android.webkit.PermissionRequest;
+import android.webkit.SslErrorHandler;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebResourceError;
+import android.webkit.DownloadListener;
+import android.graphics.Bitmap;
+
+/** A narrow wrapper around Android System WebView; no native bridge or request interception is used. */
+final class DaymarkWebView extends WebView {
+    interface Listener {
+        void onPageStarted(String url);
+        void onPageFinished(String url);
+        void onNavigationBlocked(String url);
+        void onOfflineNavigationBlocked();
+        void onHttpNavigationBlocked(String url, boolean redirect);
+        void onLoadError();
+        void onDownloadRequested();
+        void onRendererGone();
+    }
+
+    DaymarkWebView(Activity activity, BrowserNetworkPolicy networkPolicy,
+                   boolean safeBrowsingEnabled, Listener listener) {
+        super(activity);
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+
+        WebSettings settings = getSettings();
+        settings.setBlockNetworkLoads(true);
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(true);
+        settings.setMediaPlaybackRequiresUserGesture(true);
+
+        setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return true;
+                }
+                if (request.isForMainFrame()
+                        && "http".equalsIgnoreCase(request.getUrl().getScheme())) {
+                    listener.onHttpNavigationBlocked(url, request.isRedirect());
+                    return true;
+                }
+                if (BrowserAddress.isAllowedWebUrl(url)) return false;
+                listener.onNavigationBlocked(url);
+                return true;
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return;
+                }
+                listener.onPageStarted(url);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                listener.onPageFinished(url);
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.cancel();
+                listener.onLoadError();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (!request.isForMainFrame()) return;
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return;
+                }
+                if ("http".equalsIgnoreCase(request.getUrl().getScheme())) {
+                    listener.onHttpNavigationBlocked(request.getUrl().toString(), request.isRedirect());
+                } else {
+                    listener.onLoadError();
+                }
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                listener.onRendererGone();
+                return true;
+            }
+        });
+
+        setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                request.deny();
+            }
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, false, false);
+            }
+
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                                         android.os.Message resultMsg) {
+                return false;
+            }
+        });
+        setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
+                listener.onDownloadRequested());
+    }
+}

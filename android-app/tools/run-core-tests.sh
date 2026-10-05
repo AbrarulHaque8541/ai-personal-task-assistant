@@ -11,6 +11,10 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotSchema.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserAddress.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserSettingsPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterCore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterRecoveryStore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/PendingSaveTransaction.java" \
@@ -20,7 +24,13 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubApkDownloader.java" \
   "$ROOT/tools/TaskLogicSmoke.java" \
   "$ROOT/tools/UpdaterSmoke.java" \
-  "$ROOT/tools/GitHubTransportSmoke.java"
+  "$ROOT/tools/GitHubTransportSmoke.java" \
+  "$ROOT/tools/BrowserAddressSmoke.java" \
+  "$ROOT/tools/BrowserNetworkPolicySmoke.java" \
+  "$ROOT/tools/BrowserSettingsPolicySmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.UpdaterSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.GitHubTransportSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserAddressSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserNetworkPolicySmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSettingsPolicySmoke
