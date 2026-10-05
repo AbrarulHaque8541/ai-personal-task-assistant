@@ -1670,6 +1670,10 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Cancel export", null)
                 .setPositiveButton("Continue to create file", null)
                 .create();
+        Window dialogWindow = dialog.getWindow();
+        if (dialogWindow != null) {
+            dialogWindow.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
         final boolean[] continueExport = { false };
         dialog.setOnShowListener(ignored -> {
             Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
@@ -1684,6 +1688,8 @@ public final class MainActivity extends Activity {
         });
         dialog.setOnDismissListener(ignored -> {
             keyView.setText("");
+            Window window = dialog.getWindow();
+            if (window != null) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
             if (!continueExport[0]) {
                 PortableBackupCodec.clear(key);
                 if (pendingRecoveryKey == key) pendingRecoveryKey = null;
