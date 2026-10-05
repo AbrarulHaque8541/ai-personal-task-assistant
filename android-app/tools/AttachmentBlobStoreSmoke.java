@@ -112,6 +112,11 @@ public final class AttachmentBlobStoreSmoke {
         check(!store.exists(overId), "oversize input leaves no committed payload");
         File[] files = directory.listFiles((parent, name) -> name.endsWith(".pending"));
         check(files != null && files.length == 0, "oversize staging file is cleaned up");
+
+        String overstatedHintId = AttachmentBlobStore.newId();
+        check(store.importStream(TASK_A, overstatedHintId, new ByteArrayInputStream(new byte[] { 1, 2, 3 }),
+                        AttachmentLogic.MAX_TOTAL_BYTES - max, 100, () -> false) == 3,
+                "a false high provider size hint does not replace the actual committed byte count");
     }
 
     private static void quotasCancellationAndLowSpaceAreEnforcedDuringStreaming(File root) throws Exception {
@@ -122,6 +127,13 @@ public final class AttachmentBlobStoreSmoke {
                         () -> false),
                 "actual streamed bytes cannot exceed remaining total quota despite a smaller provider size hint");
         check(emptyDirectory(totalDirectory), "total-limit rejection removes all staged bytes");
+
+        File unknownHintDirectory = new File(root, "unknown-total-stream-cap");
+        AttachmentBlobStore unknownHintStore = new AttachmentBlobStore(unknownHintDirectory, new KeyVault());
+        expectStorageLimit(() -> unknownHintStore.importStream(TASK_A, AttachmentBlobStore.newId(),
+                        new RepeatingInputStream(11), 10, -1, () -> false),
+                "actual streamed bytes cannot exceed remaining total quota when provider size is unknown");
+        check(emptyDirectory(unknownHintDirectory), "unknown-size rejection removes all staged bytes");
 
         File cancelDirectory = new File(root, "cancelled");
         AttachmentBlobStore cancelStore = new AttachmentBlobStore(cancelDirectory, new KeyVault());

@@ -184,6 +184,7 @@ final class PortableBackupCodec {
             encryptBytes(out, recoveryKey, backupId, header, manifestRecordHeader, manifest,
                     cancellation);
             Arrays.fill(manifest, (byte) 0);
+            long streamedAttachmentBytes = 0;
             int ordinal = 1;
             for (AttachmentRecord attachmentRecord : attachmentRecords) {
                 checkCancelled(cancellation);
@@ -194,13 +195,20 @@ final class PortableBackupCodec {
                 out.write(recordHeader);
                 try (InputStream source = payloads.open(attachmentRecord.task, attachmentRecord.reference)) {
                     if (source == null) throw new IOException("An attachment could not be opened for export.");
-                    encryptStream(out, recoveryKey, backupId, header, recordHeader,
+                    long streamed = encryptStream(out, recoveryKey, backupId, header, recordHeader,
                             source, attachmentRecord.reference.sizeBytes, cancellation);
+                    if (streamed > AttachmentLogic.MAX_FILE_BYTES
+                            || streamedAttachmentBytes > AttachmentLogic.MAX_TOTAL_BYTES - streamed) {
+                        throw new IOException("The backup exceeds an attachment size limit.");
+                    }
+                    streamedAttachmentBytes += streamed;
                 }
                 ordinal++;
             }
             out.flush();
-            if (bounded.count() != predictedBytes) throw new IOException("The backup length did not match its authenticated records.");
+            if (streamedAttachmentBytes != aggregatePayloadBytes || bounded.count() != predictedBytes) {
+                throw new IOException("The backup length did not match its authenticated records.");
+            }
             return hex(backupId);
         } catch (GeneralSecurityException exception) {
             throw new IOException("Portable backup encryption is unavailable.", exception);
@@ -323,8 +331,8 @@ final class PortableBackupCodec {
         return bytes.toByteArray();
     }
 
-    private static Manifest decodeManifest(byte[] plaintext, byte[] manifestRecordToken,
-                                           int recordCount, String backupId) throws IOException {
+    static Manifest decodeManifest(byte[] plaintext, byte[] manifestRecordToken,
+                                   int recordCount, String backupId) throws IOException {
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
         if (in.readInt() != MANIFEST_MAGIC) throw new IOException("The task manifest format is not recognized.");
         int taskCount = in.readInt();
@@ -425,7 +433,6 @@ final class PortableBackupCodec {
                                              Set<String> tokens, Set<String> nonces) throws IOException {
         if (record.type != expectedType || record.ordinal != expectedOrdinal
                 || record.plaintextLength < 0 || record.plaintextLength > maxLength
-                || (expectedToken != null && !Arrays.equals(record.recordToken, expectedToken))
                 || !Arrays.equals(record.taskToken, expectedTaskToken)
                 || (expectedLength >= 0 && record.plaintextLength != expectedLength)) {
             throw new IOException("A backup record header does not match the authenticated manifest.");
@@ -435,6 +442,9 @@ final class PortableBackupCodec {
             throw new IOException("A backup record identifier is invalid or duplicated.");
         }
         if (expectedOrdinal > 0 && !tokens.add(recordToken)) throw new IOException("A duplicate backup record was found.");
+        if (expectedToken != null && !Arrays.equals(record.recordToken, expectedToken)) {
+            throw new IOException("A backup record header does not match the authenticated manifest.");
+        }
         if (!nonces.add(hex(record.nonce))) throw new IOException("A repeated encryption nonce was found.");
     }
 
@@ -535,7 +545,7 @@ final class PortableBackupCodec {
         }
     }
 
-    private static void encryptStream(OutputStream out, byte[] recoveryKey, byte[] backupId,
+    private static long encryptStream(OutputStream out, byte[] recoveryKey, byte[] backupId,
                                       byte[] header, byte[] recordHeader, InputStream source,
                                       long plaintextLength, CancellationCheck cancellation)
             throws IOException, GeneralSecurityException {
@@ -552,6 +562,7 @@ final class PortableBackupCodec {
             cipher.updateAAD(metadata);
             byte[] buffer = new byte[32 * 1024];
             long remaining = plaintextLength;
+            long streamedPlaintext = 0;
             long written = 0;
             while (remaining > 0) {
                 checkCancelled(cancellation);
@@ -571,6 +582,7 @@ final class PortableBackupCodec {
                     Arrays.fill(encrypted, (byte) 0);
                 }
                 remaining -= read;
+                streamedPlaintext += read;
             }
             checkCancelled(cancellation);
             if (source.read() != -1) throw new IOException("An attachment is longer than its authenticated size.");
@@ -581,6 +593,7 @@ final class PortableBackupCodec {
                 Arrays.fill(tail, (byte) 0);
             }
             if (written != plaintextLength + TAG_BYTES) throw new IOException("The encrypted attachment record has an unexpected size.");
+            return streamedPlaintext;
         } finally {
             Arrays.fill(derived, (byte) 0);
             Arrays.fill(metadata, (byte) 0);
@@ -909,7 +922,7 @@ final class PortableBackupCodec {
         }
     }
 
-    private static final class Manifest {
+    static final class Manifest {
         final String backupId;
         final List<PortableTask> tasks;
         final List<PortableAttachment> attachments;
@@ -938,11 +951,12 @@ final class PortableBackupCodec {
         }
     }
 
-    private static final class CountingInputStream extends InputStream {
+    static final class CountingInputStream extends InputStream {
         private final InputStream source;
         private final long max;
         private long count;
         CountingInputStream(InputStream source, long max) { this.source = source; this.max = max; }
+        long count() { return count; }
         @Override public int read() throws IOException {
             if (count == max) {
                 int extra = source.read();
@@ -965,7 +979,7 @@ final class PortableBackupCodec {
         @Override public void close() throws IOException { source.close(); }
     }
 
-    private static final class CountingOutputStream extends OutputStream {
+    static final class CountingOutputStream extends OutputStream {
         private final OutputStream destination;
         private final long max;
         private long count;

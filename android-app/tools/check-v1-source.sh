@@ -43,6 +43,12 @@ assert "new Intent(Intent.ACTION_CREATE_DOCUMENT)" in export_flow, "portable exp
 assert "Intent.ACTION_OPEN_DOCUMENT" not in export_flow, "portable export must not select an existing document for overwrite"
 codec = (main / "java/com/cue/daymark/PortableBackupCodec.java").read_text(encoding="utf-8")
 assert 'Cipher.getInstance("AES/GCM/NoPadding")' in codec and "MAX_ARCHIVE_BYTES" in codec and "MAX_MANIFEST_BYTES" in codec
+saved_state = activity.split("protected void onSaveInstanceState", 1)[1].split("protected void onActivityResult", 1)[0]
+assert "STATE_PENDING_PORTABLE_IMPORT_URI" in saved_state, "pending portable URI must survive activity recreation"
+assert "pendingRecoveryKey" not in saved_state, "transient recovery key must never enter saved state"
+assert "keyInput.setSaveEnabled(false)" in activity, "recovery-key entry must not be saved by view hierarchy state"
+assert "takePersistableUriPermission" in activity and "releasePersistableUriPermission" in activity
+assert "restorePendingPortableImportUri" in activity and "hasPersistedPortableReadGrant" in activity
 manager = (main / "java/com/cue/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
 assert "writePending(" in manager and "appendAtomically(additions)" in manager and "reconcile(" in manager
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):

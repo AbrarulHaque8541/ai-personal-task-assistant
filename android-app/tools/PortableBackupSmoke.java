@@ -10,8 +10,10 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -25,6 +27,8 @@ public final class PortableBackupSmoke {
         archiveRoundTripsWithoutExposingTaskData();
         rejectsWrongKeyTamperAndMalformedFraming();
         rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation();
+        rejectsManifestTaskAndAttachmentBounds();
+        enforcesActualStreamedArchiveAndAttachmentLimits();
         exportFailsClosedOnProviderReadAndWriteFailure();
         System.out.println("PASS portable backup protocol smoke tests: " + assertions + " assertions");
     }
@@ -96,7 +100,7 @@ public final class PortableBackupSmoke {
         wrongKey[0] ^= 0x20;
         byte[] payload = new byte[8192];
         for (int i = 0; i < payload.length; i++) payload[i] = (byte) (i * 37);
-        byte[] archive = makeArchive(key, payload);
+        byte[] archive = makeArchive(key, payload, payload.clone());
         File root = Files.createTempDirectory("portable-backup-reject").toFile();
 
         File wrongStage = new File(root, "wrong");
@@ -123,16 +127,30 @@ public final class PortableBackupSmoke {
         byte[] duplicateRecord = archive.clone();
         int manifestLength = ByteBuffer.wrap(duplicateRecord, 65, 8).getLong() > Integer.MAX_VALUE
                 ? 0 : (int) ByteBuffer.wrap(duplicateRecord, 65, 8).getLong();
-        int secondRecord = 28 + 57 + manifestLength + 16;
-        byte[] missingRecord = Arrays.copyOf(archive, secondRecord);
+        int firstAttachment = 28 + 57 + manifestLength + 16;
+        int recordLength = 57 + payload.length + 16;
+        int secondAttachment = firstAttachment + recordLength;
+        byte[] missingRecord = Arrays.copyOf(archive, firstAttachment);
         expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(missingRecord), key,
                 new File(root, "missing-record"), id -> { }, () -> false), "missing attachment record is rejected");
 
-        System.arraycopy(duplicateRecord, 33, duplicateRecord, secondRecord + 5, 16);
-        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(duplicateRecord), key,
-                new File(root, "duplicate"), id -> { }, () -> false), "duplicate record identity is rejected");
-        byte[] extraRecord = Arrays.copyOf(archive, archive.length + archive.length - secondRecord);
-        System.arraycopy(archive, secondRecord, extraRecord, archive.length, archive.length - secondRecord);
+        System.arraycopy(duplicateRecord, firstAttachment + 5, duplicateRecord, secondAttachment + 5, 16);
+        expectIOExceptionContaining(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(duplicateRecord), key,
+                new File(root, "duplicate"), id -> { }, () -> false), "duplicate backup record",
+                "duplicate record identity check is reached before manifest-token mismatch");
+        byte[] reordered = archive.clone();
+        byte[] firstRecord = Arrays.copyOfRange(archive, firstAttachment, secondAttachment);
+        byte[] secondRecord = Arrays.copyOfRange(archive, secondAttachment, secondAttachment + recordLength);
+        System.arraycopy(secondRecord, 0, reordered, firstAttachment, recordLength);
+        System.arraycopy(firstRecord, 0, reordered, secondAttachment, recordLength);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(reordered), key,
+                new File(root, "reordered"), id -> { }, () -> false), "reordered attachment records are rejected");
+        byte[] nonsequential = archive.clone();
+        ByteBuffer.wrap(nonsequential).putInt(firstAttachment + 1, 2);
+        expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(nonsequential), key,
+                new File(root, "nonsequential"), id -> { }, () -> false), "nonsequential attachment ordinal is rejected");
+        byte[] extraRecord = Arrays.copyOf(archive, archive.length + recordLength);
+        System.arraycopy(archive, firstAttachment, extraRecord, archive.length, recordLength);
         expectIOException(() -> PortableBackupCodec.readArchive(new ByteArrayInputStream(extraRecord), key,
                 new File(root, "extra-record"), id -> { }, () -> false), "extra attachment record after the declared record set is rejected");
 
@@ -179,6 +197,95 @@ public final class PortableBackupSmoke {
         PortableBackupCodec.clear(key);
     }
 
+    private static void rejectsManifestTaskAndAttachmentBounds() throws Exception {
+        byte[] manifestToken = token(1000000);
+        long[][] exactTaskSizes = new long[PortableBackupCodec.MAX_TASKS][];
+        Arrays.fill(exactTaskSizes, new long[0]);
+        byte[] exactTaskCount = manifestWithAttachmentSizes(exactTaskSizes);
+        check(PortableBackupCodec.decodeManifest(exactTaskCount, manifestToken, 1,
+                "00000000000000000000000000000000").tasks.size() == PortableBackupCodec.MAX_TASKS,
+                "task-count boundary exactly at 10,000 is accepted");
+        ByteArrayOutputStream taskCountBytes = new ByteArrayOutputStream();
+        java.io.DataOutputStream taskCountOut = new java.io.DataOutputStream(taskCountBytes);
+        taskCountOut.writeInt(0x444d4d31);
+        taskCountOut.writeInt(PortableBackupCodec.MAX_TASKS + 1);
+        taskCountOut.flush();
+        expectIOException(() -> PortableBackupCodec.decodeManifest(taskCountBytes.toByteArray(),
+                manifestToken, 1, "00000000000000000000000000000000"),
+                "task-count bound is checked before allocating task records");
+
+        byte[] exactFile = manifestWithAttachmentSizes(new long[][] {
+                { AttachmentLogic.MAX_FILE_BYTES }
+        });
+        check(PortableBackupCodec.decodeManifest(exactFile, manifestToken, 2,
+                "00000000000000000000000000000000").attachments.size() == 1,
+                "per-file attachment boundary exactly at 20 MiB is accepted");
+        byte[] oversizedFile = manifestWithAttachmentSizes(new long[][] {
+                { AttachmentLogic.MAX_FILE_BYTES + 1 }
+        });
+        expectIOException(() -> PortableBackupCodec.decodeManifest(oversizedFile,
+                manifestToken, 2, "00000000000000000000000000000000"),
+                "per-file attachment bound rejects manifest sizes above 20 MiB");
+
+        long[][] exactAggregateSizes = { {
+                AttachmentLogic.MAX_FILE_BYTES, AttachmentLogic.MAX_FILE_BYTES,
+                AttachmentLogic.MAX_FILE_BYTES, AttachmentLogic.MAX_FILE_BYTES,
+                AttachmentLogic.MAX_FILE_BYTES
+        } };
+        byte[] exactAggregate = manifestWithAttachmentSizes(exactAggregateSizes);
+        check(PortableBackupCodec.decodeManifest(exactAggregate, manifestToken, 6,
+                "00000000000000000000000000000000").attachments.size() == 5,
+                "aggregate attachment boundary exactly at 100 MiB is accepted");
+        byte[] oversizedAggregate = manifestWithAttachmentSizes(new long[][] {
+                { AttachmentLogic.MAX_FILE_BYTES, AttachmentLogic.MAX_FILE_BYTES,
+                        AttachmentLogic.MAX_FILE_BYTES, AttachmentLogic.MAX_FILE_BYTES,
+                        AttachmentLogic.MAX_FILE_BYTES },
+                { 1 }
+        });
+        expectIOException(() -> PortableBackupCodec.decodeManifest(oversizedAggregate,
+                manifestToken, 7, "00000000000000000000000000000000"),
+                "aggregate attachment bound rejects authenticated sizes above 100 MiB");
+    }
+
+    private static void enforcesActualStreamedArchiveAndAttachmentLimits() throws Exception {
+        long archiveLimit = PortableBackupCodec.MAX_ARCHIVE_BYTES;
+        PortableBackupCodec.CountingInputStream exactInput = new PortableBackupCodec.CountingInputStream(
+                new RepeatingInputStream(archiveLimit), archiveLimit);
+        drain(exactInput);
+        check(exactInput.count() == archiveLimit, "actual archive input exactly at 110 MiB is accepted");
+
+        PortableBackupCodec.CountingInputStream oversizedInput = new PortableBackupCodec.CountingInputStream(
+                new RepeatingInputStream(archiveLimit + 1), archiveLimit);
+        expectIOException(() -> drain(oversizedInput),
+                "actual archive input one byte above 110 MiB is rejected even with unknown provider size");
+        check(oversizedInput.count() == archiveLimit, "archive input counter never exceeds its actual-byte cap");
+
+        PortableBackupCodec.CountingOutputStream exactOutput = new PortableBackupCodec.CountingOutputStream(
+                OutputStream.nullOutputStream(), archiveLimit);
+        writeRepeated(exactOutput, archiveLimit);
+        check(exactOutput.count() == archiveLimit, "actual archive output exactly at 110 MiB is accepted");
+        PortableBackupCodec.CountingOutputStream oversizedOutput = new PortableBackupCodec.CountingOutputStream(
+                OutputStream.nullOutputStream(), archiveLimit);
+        writeRepeated(oversizedOutput, archiveLimit);
+        expectIOException(() -> oversizedOutput.write(0),
+                "actual archive output one byte above 110 MiB is rejected");
+        check(oversizedOutput.count() == archiveLimit, "archive output counter never exceeds its actual-byte cap");
+
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        long fileLimit = AttachmentLogic.MAX_FILE_BYTES;
+        Task exactFile = taskWithAttachmentSize(fileLimit);
+        String id = PortableBackupCodec.writeArchive(OutputStream.nullOutputStream(), key,
+                Collections.singletonList(exactFile), (task, attachment) -> new RepeatingInputStream(fileLimit),
+                new SecureRandom(), () -> false);
+        check(id.length() == 32, "actual attachment stream exactly at 20 MiB is accepted into an archive");
+        Task oversizedFile = taskWithAttachmentSize(fileLimit);
+        expectIOException(() -> PortableBackupCodec.writeArchive(OutputStream.nullOutputStream(), key,
+                Collections.singletonList(oversizedFile), (task, attachment) -> new RepeatingInputStream(fileLimit + 1),
+                new SecureRandom(), () -> false),
+                "actual attachment stream one byte above its 20 MiB authenticated size is rejected");
+        PortableBackupCodec.clear(key);
+    }
+
     private static void exportFailsClosedOnProviderReadAndWriteFailure() throws Exception {
         byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
         byte[] payload = "provider-secret".getBytes(StandardCharsets.UTF_8);
@@ -199,14 +306,80 @@ public final class PortableBackupSmoke {
         PortableBackupCodec.clear(key);
     }
 
-    private static byte[] makeArchive(byte[] key, byte[] payload) throws Exception {
-        Task task = new Task(UUID.randomUUID().toString(), "bounded task", null, "medium", false,
+    private static Task taskWithAttachmentSize(long size) {
+        return new Task(UUID.randomUUID().toString(), "stream-bound task", null, "medium", false,
                 "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z",
                 Collections.singletonList(new AttachmentRef(UUID.randomUUID().toString(), "payload.bin",
-                        "application/octet-stream", payload.length)));
+                        "application/octet-stream", size)));
+    }
+
+    private static byte[] manifestWithAttachmentSizes(long[][] taskSizes) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        java.io.DataOutputStream out = new java.io.DataOutputStream(bytes);
+        out.writeInt(0x444d4d31);
+        out.writeInt(taskSizes.length);
+        int tokenValue = 1;
+        for (long[] sizes : taskSizes) {
+            out.write(token(tokenValue++));
+            writeTestString(out, "task");
+            out.writeByte(0);
+            out.writeByte(1);
+            out.writeByte(0);
+            writeTestString(out, "2026-10-05T10:15:30Z");
+            writeTestString(out, "2026-10-05T10:15:30Z");
+            out.writeByte(sizes.length);
+            for (long size : sizes) {
+                out.write(token(1000 + tokenValue++));
+                out.writeLong(size);
+                writeTestString(out, "payload.bin");
+                writeTestString(out, "application/octet-stream");
+            }
+        }
+        out.flush();
+        return bytes.toByteArray();
+    }
+
+    private static void writeTestString(java.io.DataOutputStream out, String value) throws IOException {
+        byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+        out.writeInt(encoded.length);
+        out.write(encoded);
+    }
+
+    private static byte[] token(int value) {
+        byte[] token = new byte[16];
+        ByteBuffer.wrap(token).putInt(12, value);
+        return token;
+    }
+
+    private static void drain(InputStream input) throws IOException {
+        byte[] buffer = new byte[32 * 1024];
+        while (input.read(buffer) != -1) { }
+    }
+
+    private static void writeRepeated(OutputStream output, long length) throws IOException {
+        byte[] buffer = new byte[32 * 1024];
+        Arrays.fill(buffer, (byte) 0x31);
+        long remaining = length;
+        while (remaining > 0) {
+            int amount = (int) Math.min(buffer.length, remaining);
+            output.write(buffer, 0, amount);
+            remaining -= amount;
+        }
+    }
+
+    private static byte[] makeArchive(byte[] key, byte[]... payloads) throws Exception {
+        List<AttachmentRef> references = new ArrayList<>();
+        for (byte[] payload : payloads) {
+            references.add(new AttachmentRef(UUID.randomUUID().toString(), "payload.bin",
+                    "application/octet-stream", payload.length));
+        }
+        Task task = new Task(UUID.randomUUID().toString(), "bounded task", null, "medium", false,
+                "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z", references);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
+        AtomicInteger nextPayload = new AtomicInteger();
         PortableBackupCodec.writeArchive(output, key, Collections.singletonList(task),
-                (sourceTask, reference) -> new ByteArrayInputStream(payload), new SecureRandom(), () -> false);
+                (sourceTask, reference) -> new ByteArrayInputStream(payloads[nextPayload.getAndIncrement()]),
+                new SecureRandom(), () -> false);
         return output.toByteArray();
     }
 
@@ -245,6 +418,19 @@ public final class PortableBackupSmoke {
         if (!condition) throw new AssertionError(message);
     }
 
+    private static void expectIOExceptionContaining(IoOperation operation, String expected,
+                                                    String message) throws Exception {
+        assertions++;
+        try {
+            operation.run();
+            throw new AssertionError(message + ": expected IOException");
+        } catch (IOException failure) {
+            if (failure.getMessage() == null || !failure.getMessage().toLowerCase().contains(expected)) {
+                throw new AssertionError(message + ": unexpected failure path: " + failure.getMessage(), failure);
+            }
+        }
+    }
+
     private static void deleteTree(File file) throws IOException {
         if (!file.exists()) return;
         File[] children = file.listFiles();
@@ -255,6 +441,7 @@ public final class PortableBackupSmoke {
     private static final class ZeroProgressInputStream extends ByteArrayInputStream {
         private boolean returnZero = true;
         ZeroProgressInputStream(byte[] bytes) { super(bytes); }
+        @Override public synchronized int available() { return 0; }
         @Override public synchronized int read(byte[] target, int offset, int length) {
             if (length > 0 && returnZero) {
                 returnZero = false;
@@ -263,6 +450,25 @@ public final class PortableBackupSmoke {
             returnZero = true;
             return super.read(target, offset, length);
         }
+    }
+
+    private static final class RepeatingInputStream extends InputStream {
+        private long remaining;
+        RepeatingInputStream(long length) { remaining = length; }
+        @Override public int read() {
+            if (remaining == 0) return -1;
+            remaining--;
+            return 0x31;
+        }
+        @Override public int read(byte[] target, int offset, int length) {
+            if (length == 0) return 0;
+            if (remaining == 0) return -1;
+            int amount = (int) Math.min(length, remaining);
+            Arrays.fill(target, offset, offset + amount, (byte) 0x31);
+            remaining -= amount;
+            return amount;
+        }
+        @Override public int available() { return 0; }
     }
 
     private static final class CappedOutputStream extends OutputStream {
