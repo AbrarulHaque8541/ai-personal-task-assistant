@@ -8,11 +8,22 @@ The Android manifest in the built APK declares no permissions. No model, languag
 
 ## Legacy web prototype (reference only)
 
-To preview the static prototype locally:
+To preview the static prototype locally, run from the repository root:
 
 ```sh
-cd /workspace/team_project
 python3 -m http.server 4173 --bind 127.0.0.1
 ```
 
 Open `http://127.0.0.1:4173` in a browser and stop the preview with Ctrl+C. This serves local files; it does not publish or deploy the prototype.
+
+### Running the web prototype tests
+
+The task-logic unit tests use the Node.js built-in test runner (Node 18+):
+
+```sh
+npm test
+# or directly:
+node --test tests/
+```
+
+No install step is needed; the tests have no third-party dependencies.
