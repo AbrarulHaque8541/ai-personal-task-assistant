@@ -2,7 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
-./tools/run-core-tests.sh
+sh ./tools/run-core-tests.sh
 python3 - "$ROOT" <<'PY'
 import pathlib
 import re
