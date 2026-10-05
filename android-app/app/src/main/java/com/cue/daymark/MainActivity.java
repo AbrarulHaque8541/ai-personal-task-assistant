@@ -92,6 +92,7 @@ public final class MainActivity extends Activity {
     private volatile boolean portableBusy;
     private volatile boolean portableCanCancel;
     private volatile boolean portableCancelRequested;
+    private volatile boolean portableRestoreWorkerActive;
     private volatile byte[] pendingRecoveryKey;
     private File pendingExportArchive;
     private Uri pendingPortableImportUri;
@@ -182,8 +183,10 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         portableCancelRequested = true;
-        PortableBackupCodec.clear(pendingRecoveryKey);
-        pendingRecoveryKey = null;
+        if (!portableRestoreWorkerActive) {
+            PortableBackupCodec.clear(pendingRecoveryKey);
+            pendingRecoveryKey = null;
+        }
         if (pendingExportArchive != null && pendingExportArchive.exists()) pendingExportArchive.delete();
         if (!isChangingConfigurations()) discardPendingPortableImport();
         if (storageExecutor != null) storageExecutor.shutdown();
@@ -195,8 +198,10 @@ public final class MainActivity extends Activity {
         if (pendingAttachmentTaskId != null) {
             state.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
         }
-        if (pendingPortableImportUri != null && hasPersistedPortableReadGrant(pendingPortableImportUri)) {
-            state.putString(STATE_PENDING_PORTABLE_IMPORT_URI, pendingPortableImportUri.toString());
+        String pendingUriForState = pendingPortableImportUri == null ? null
+                : PortableImportGrantRecovery.uriForActivityState(pendingPortableImportUri.toString());
+        if (pendingUriForState != null && hasPersistedPortableReadGrant(pendingPortableImportUri)) {
+            state.putString(STATE_PENDING_PORTABLE_IMPORT_URI, pendingUriForState);
         }
         super.onSaveInstanceState(state);
     }
@@ -610,9 +615,10 @@ public final class MainActivity extends Activity {
             List<Task> loaded = null;
             Exception failure = null;
             try {
+                PortableImportGrantRecovery.awaitNoActivityRestoreWorker();
                 synchronized (AndroidAttachmentStore.transactionLock()) {
                     loaded = taskStore.load();
-                    portableBackupManager.reconcile(loaded, attachmentStore);
+                    portableBackupManager.reconcileAndReleaseAbandonedImportUri(loaded, attachmentStore);
                     try { attachmentStore.cleanupOrphans(attachmentIds(loaded)); }
                     catch (Exception ignored) { /* Retry orphan cleanup on a later launch. */ }
                     portableBackupManager.cleanupTransientFiles();
@@ -1901,14 +1907,9 @@ public final class MainActivity extends Activity {
     }
 
     private Uri restorePendingPortableImportUri(String savedUri) {
-        try {
-            Uri uri = Uri.parse(savedUri);
-            if (android.content.ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())
-                    && hasPersistedPortableReadGrant(uri)) return uri;
-        } catch (RuntimeException ignored) {
-            // A missing or malformed saved URI is handled as a re-pick request.
-        }
-        return null;
+        String restored = PortableImportGrantRecovery.restorePendingActivityUri(savedUri,
+                value -> hasPersistedPortableReadGrant(Uri.parse(value)));
+        return restored == null ? null : Uri.parse(restored);
     }
 
     private boolean hasPersistedPortableReadGrant(Uri uri) {
@@ -1990,7 +1991,6 @@ public final class MainActivity extends Activity {
             }
             keyInput.setText("");
             pendingPortableImportUri = null;
-            activePortableImportUri = selected;
             dialog.dismiss();
             beginPortableRestore(selected, key);
         }));
@@ -2002,10 +2002,18 @@ public final class MainActivity extends Activity {
         if (!canEdit()) {
             PortableBackupCodec.clear(recoveryKey);
             releasePersistablePortableReadGrant(selected);
-            if (activePortableImportUri == selected) activePortableImportUri = null;
             showToast("Encrypted storage is not ready for restore.");
             return;
         }
+        try {
+            portableBackupManager.recordActivePortableImportUri(selected);
+        } catch (IOException journalFailure) {
+            PortableBackupCodec.clear(recoveryKey);
+            releasePersistablePortableReadGrant(selected);
+            showToast("The restore could not be started safely. Reopen Daymark before trying again.");
+            return;
+        }
+        activePortableImportUri = selected;
         pendingRecoveryKey = recoveryKey;
         portableBusy = true;
         portableCanCancel = true;
@@ -2017,28 +2025,50 @@ public final class MainActivity extends Activity {
         storageStatus.setText("Authenticating and validating the full backup privately…");
         storageStatus.setTextColor(palette.muted);
         render();
-        storageExecutor.execute(() -> {
-            List<Task> restored = null;
-            Exception failure = null;
-            try (InputStream source = getContentResolver().openInputStream(selected)) {
-                if (source == null) throw new IOException("The selected backup could not be opened.");
-                restored = portableBackupManager.restore(source, recoveryKey, taskStore, attachmentStore,
-                        () -> portableCancelRequested, () -> {
-                            portableCanCancel = false;
-                            mainHandler.post(() -> {
-                                if (isFinishing() || isDestroyed()) return;
-                                cancelAttachmentButton.setText("Finishing restore…");
-                                cancelAttachmentButton.setEnabled(false);
-                                storageStatus.setText("Committing encrypted task snapshot…");
-                                storageStatus.setTextColor(palette.muted);
-                            });
-                        });
-            } catch (Exception exception) {
-                failure = exception;
-                PortableBackupCodec.clear(recoveryKey);
-            } finally {
-                releasePersistablePortableReadGrant(selected);
-            }
+        portableRestoreWorkerActive = true;
+        PortableImportGrantRecovery.activityRestoreWorkerStarted();
+        try {
+            storageExecutor.execute(() -> {
+                List<Task> restored = null;
+                Exception failure = null;
+                try {
+                    synchronized (AndroidAttachmentStore.transactionLock()) {
+                        try (InputStream source = getContentResolver().openInputStream(selected)) {
+                            if (source == null) throw new IOException("The selected backup could not be opened.");
+                            restored = portableBackupManager.restore(source, recoveryKey, taskStore, attachmentStore,
+                                    () -> portableCancelRequested, () -> {
+                                        portableCanCancel = false;
+                                        mainHandler.post(() -> {
+                                            if (isFinishing() || isDestroyed()) return;
+                                            cancelAttachmentButton.setText("Finishing restore…");
+                                            cancelAttachmentButton.setEnabled(false);
+                                            storageStatus.setText("Committing encrypted task snapshot…");
+                                            storageStatus.setTextColor(palette.muted);
+                                        });
+                                    });
+                        } catch (Exception exception) {
+                            failure = exception;
+                            PortableBackupCodec.clear(recoveryKey);
+                        } finally {
+                            try {
+                                List<Task> current = taskStore.load();
+                                portableBackupManager.finishActivePortableImportUri(selected, current, attachmentStore);
+                            } catch (Exception cleanupFailure) {
+                                if (failure == null) {
+                                    failure = new PortableBackupManager.RestoreOutcomeUncertainException(
+                                            "The restore URI grant could not be safely reconciled. Reopen Daymark before retrying.",
+                                            cleanupFailure);
+                                } else {
+                                    failure.addSuppressed(cleanupFailure);
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    PortableBackupCodec.clear(recoveryKey);
+                    portableRestoreWorkerActive = false;
+                    PortableImportGrantRecovery.activityRestoreWorkerFinished();
+                }
             List<Task> result = restored;
             Exception error = failure;
             mainHandler.post(() -> {
@@ -2079,7 +2109,14 @@ public final class MainActivity extends Activity {
                 }
                 render();
             });
-        });
+            });
+        } catch (RuntimeException schedulingFailure) {
+            portableRestoreWorkerActive = false;
+            PortableImportGrantRecovery.activityRestoreWorkerFinished();
+            PortableBackupCodec.clear(recoveryKey);
+            pendingRecoveryKey = null;
+            showToast("The restore did not start. Reopen Daymark to recover its temporary document access.");
+        }
     }
 
     private String portableRestoreFailure(Exception failure) {

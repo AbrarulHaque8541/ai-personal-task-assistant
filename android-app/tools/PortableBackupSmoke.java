@@ -3,6 +3,7 @@ package com.cue.daymark;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -13,8 +14,13 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Host-side protocol tests; runtime Android SAF/Keystore behavior is covered by instrumentation. */
@@ -28,7 +34,10 @@ public final class PortableBackupSmoke {
         rejectsWrongKeyTamperAndMalformedFraming();
         rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation();
         rejectsManifestTaskAndAttachmentBounds();
+        acceptsOneHundredAttachmentsAndRejectsOneHundredOne();
         enforcesActualStreamedArchiveAndAttachmentLimits();
+        writesAndReadsLargestValidArchiveWithoutHeapBuffering();
+        coversImportUriActivityAndProcessDeathLifecycle();
         exportFailsClosedOnProviderReadAndWriteFailure();
         System.out.println("PASS portable backup protocol smoke tests: " + assertions + " assertions");
     }
@@ -247,6 +256,31 @@ public final class PortableBackupSmoke {
                 "aggregate attachment bound rejects authenticated sizes above 100 MiB");
     }
 
+    private static void acceptsOneHundredAttachmentsAndRejectsOneHundredOne() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        List<Task> exactTasks = tasksWithAttachmentCount(AttachmentLogic.MAX_TOTAL_COUNT);
+        ByteArrayOutputStream archiveBytes = new ByteArrayOutputStream();
+        PortableBackupCodec.writeArchive(archiveBytes, key, exactTasks,
+                (task, attachment) -> InputStream.nullInputStream(), new SecureRandom(), () -> false);
+        byte[] archive = archiveBytes.toByteArray();
+        check(ByteBuffer.wrap(archive).getInt(24) == AttachmentLogic.MAX_TOTAL_COUNT + 1,
+                "100 attachments produce 101 authenticated archive records including the manifest");
+        File root = Files.createTempDirectory("portable-backup-100-attachments").toFile();
+        PortableBackupCodec.VerifiedArchive verified = PortableBackupCodec.readArchive(
+                new ByteArrayInputStream(archive), key, root, id -> { }, () -> false);
+        check(verified.tasks.size() == 20 && verified.attachments.size() == AttachmentLogic.MAX_TOTAL_COUNT,
+                "a valid 100-attachment archive is accepted across 20 tasks at five per task");
+        verified.clearStagedPlaintext();
+        deleteTree(root);
+
+        List<Task> oversizedTasks = tasksWithAttachmentCount(AttachmentLogic.MAX_TOTAL_COUNT + 1);
+        expectIOException(() -> PortableBackupCodec.writeArchive(OutputStream.nullOutputStream(), key,
+                oversizedTasks, (task, attachment) -> InputStream.nullInputStream(),
+                new SecureRandom(), () -> false),
+                "101 attachments are rejected despite valid task grouping and five-per-task limits");
+        PortableBackupCodec.clear(key);
+    }
+
     private static void enforcesActualStreamedArchiveAndAttachmentLimits() throws Exception {
         long archiveLimit = PortableBackupCodec.MAX_ARCHIVE_BYTES;
         PortableBackupCodec.CountingInputStream exactInput = new PortableBackupCodec.CountingInputStream(
@@ -284,6 +318,187 @@ public final class PortableBackupSmoke {
                 new SecureRandom(), () -> false),
                 "actual attachment stream one byte above its 20 MiB authenticated size is rejected");
         PortableBackupCodec.clear(key);
+    }
+
+    private static void writesAndReadsLargestValidArchiveWithoutHeapBuffering() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        File root = Files.createTempDirectory("portable-backup-near-archive-cap").toFile();
+        File archive = new File(root, "largest-valid.dmbackup");
+        File stage = new File(root, "restored-plaintext");
+        try {
+            List<Task> tasks = tasksWithMaximumArchiveMetadata();
+            check(tasks.size() == PortableBackupCodec.MAX_TASKS && TaskLogic.isValidTaskList(tasks),
+                    "maximum-metadata archive fixture respects all task and attachment schema limits");
+            long expectedManifestBytes = 8L
+                    + (long) PortableBackupCodec.MAX_TASKS * (16 + 4 + 480 + 1 + 4 + 10 + 1 + 1 + 4 + 41 + 4 + 41 + 1)
+                    + (long) AttachmentLogic.MAX_TOTAL_COUNT * (16 + 8 + 4 + 360 + 4 + 129);
+            try (OutputStream output = new java.io.FileOutputStream(archive)) {
+                PortableBackupCodec.writeArchive(output, key, tasks,
+                        (sourceTask, reference) -> new RepeatingInputStream(reference.sizeBytes),
+                        new SecureRandom(), () -> false);
+            }
+            long archiveBytes = archive.length();
+            long manifestBytes;
+            try (java.io.RandomAccessFile header = new java.io.RandomAccessFile(archive, "r")) {
+                header.seek(65);
+                manifestBytes = header.readLong();
+            }
+            long expectedArchiveBytes = AttachmentLogic.MAX_TOTAL_BYTES + expectedManifestBytes
+                    + 28L + (AttachmentLogic.MAX_TOTAL_COUNT + 1L) * (57L + 16L);
+            check(manifestBytes == expectedManifestBytes && manifestBytes < PortableBackupCodec.MAX_MANIFEST_BYTES,
+                    "all valid maximum task/title/timestamp/attachment metadata occupies the exact bounded manifest size");
+            check(archiveBytes == expectedArchiveBytes && archiveBytes < PortableBackupCodec.MAX_ARCHIVE_BYTES,
+                    "the fully formed maximum valid archive is accepted below the 110 MiB archive cap");
+            System.out.println("  largest valid encrypted archive: " + archiveBytes + " bytes; manifest: "
+                    + manifestBytes + " bytes; cap: " + PortableBackupCodec.MAX_ARCHIVE_BYTES + " bytes");
+            System.out.println("  maximum-profile archive gap: "
+                    + (PortableBackupCodec.MAX_ARCHIVE_BYTES - archiveBytes) + " bytes");
+
+            PortableBackupCodec.VerifiedArchive verified;
+            try (InputStream input = new FileInputStream(archive)) {
+                verified = PortableBackupCodec.readArchive(input, key, stage, id -> { }, () -> false);
+            }
+            check(verified.tasks.size() == PortableBackupCodec.MAX_TASKS
+                            && verified.attachments.size() == AttachmentLogic.MAX_TOTAL_COUNT,
+                    "the complete 100 MiB payload and 10,000-task metadata authenticate from a real archive file");
+            for (PortableBackupCodec.PortableAttachment attachment : verified.attachments) {
+                check(attachment.stagedPlaintext.length() == AttachmentLogic.MAX_TOTAL_BYTES / AttachmentLogic.MAX_TOTAL_COUNT,
+                        "near-cap restore stages one streamed 1 MiB attachment without a heap-sized archive buffer");
+                try (java.io.RandomAccessFile sample = new java.io.RandomAccessFile(attachment.stagedPlaintext, "r")) {
+                    sample.seek(0);
+                    boolean first = sample.readUnsignedByte() == 0x31;
+                    sample.seek(attachment.stagedPlaintext.length() - 1);
+                    check(first && sample.readUnsignedByte() == 0x31,
+                            "deterministic streamed attachment bytes survive encryption and decryption");
+                }
+            }
+            verified.clearStagedPlaintext();
+
+            File overCap = new File(root, "physical-over-cap.dmbackup");
+            try (OutputStream output = new java.io.FileOutputStream(overCap)) {
+                PortableBackupCodec.writeArchive(output, key, Collections.emptyList(),
+                        (sourceTask, reference) -> InputStream.nullInputStream(), new SecureRandom(), () -> false);
+            }
+            try (java.io.RandomAccessFile padded = new java.io.RandomAccessFile(overCap, "rw")) {
+                padded.setLength(PortableBackupCodec.MAX_ARCHIVE_BYTES + 1);
+            }
+            check(overCap.length() == PortableBackupCodec.MAX_ARCHIVE_BYTES + 1,
+                    "an actual on-disk archive input is one byte above the 110 MiB bound");
+            File overCapStage = new File(root, "over-cap-stage");
+            expectIOExceptionContaining(() -> {
+                try (InputStream input = new FileInputStream(overCap)) {
+                    PortableBackupCodec.readArchive(input, key, overCapStage, id -> { }, () -> false);
+                }
+            }, "trailing data", "the parser rejects a real over-cap archive file");
+        } finally {
+            PortableBackupCodec.clear(key);
+            deleteTree(root);
+        }
+    }
+
+    private static void coversImportUriActivityAndProcessDeathLifecycle() throws Exception {
+        String selected = "content://documents.example/tree/primary%3Abackup.dmbackup";
+        String unrelated = "content://other.example/document/retained";
+        check(selected.equals(PortableImportGrantRecovery.uriForActivityState(selected)),
+                "Activity recreation saves only a valid pending document URI");
+        check(PortableImportGrantRecovery.restorePendingActivityUri(selected,
+                        uri -> selected.equals(uri)) != null,
+                "Activity recreation restores the pending picker URI when its read grant remains");
+        check(PortableImportGrantRecovery.restorePendingActivityUri(selected,
+                        uri -> false) == null,
+                "Activity recreation requests a re-pick when the exact saved URI grant is missing");
+        check(PortableImportGrantRecovery.uriForActivityState("file:///private/path") == null,
+                "non-SAF URIs are never saved as pending portable-import state");
+
+        InMemoryUriJournal journal = new InMemoryUriJournal();
+        Set<String> readGrants = new HashSet<>(Arrays.asList(selected, unrelated));
+        Set<String> writeGrants = new HashSet<>(Collections.singletonList(selected));
+        PortableImportGrantRecovery.recordBeforeWork(journal, selected);
+        check(selected.equals(journal.value), "the active URI is durably journaled before restore work");
+        AtomicBoolean reconciled = new AtomicBoolean();
+        PortableImportGrantRecovery.recoverAfterProcessDeath(journal, () -> {
+            check(readGrants.contains(selected), "transaction recovery runs before any URI grant is released");
+            reconciled.set(true);
+        }, exactUri -> {
+            check(reconciled.get(), "exact read-grant release follows transaction reconciliation");
+            check(selected.equals(exactUri), "process-death recovery releases only the journaled URI");
+            readGrants.remove(exactUri);
+        });
+        check(journal.value == null && !readGrants.contains(selected),
+                "process-death recovery clears the journal after releasing the abandoned read grant");
+        check(readGrants.contains(unrelated) && writeGrants.contains(selected),
+                "unrelated grants and the same URI's unrelated write permission are not revoked");
+
+        String retryUri = "content://documents.example/document/retry.dmbackup";
+        InMemoryUriJournal retryJournal = new InMemoryUriJournal();
+        Set<String> retryGrants = new HashSet<>(Collections.singletonList(retryUri));
+        PortableImportGrantRecovery.recordBeforeWork(retryJournal, retryUri);
+        expectIOException(() -> PortableImportGrantRecovery.recoverAfterProcessDeath(retryJournal,
+                        () -> { throw new IOException("simulated unresolved import journal"); },
+                        retryGrants::remove),
+                "failed transaction reconciliation leaves the URI journal and grant for a later startup");
+        check(retryUri.equals(retryJournal.value) && retryGrants.contains(retryUri),
+                "unresolved import state cannot prematurely discard its active-URI journal");
+
+        PortableImportGrantRecovery.activityRestoreWorkerStarted();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch recovered = new CountDownLatch(1);
+        AtomicBoolean waitFailed = new AtomicBoolean();
+        Thread recreatedActivity = new Thread(() -> {
+            entered.countDown();
+            try { PortableImportGrantRecovery.awaitNoActivityRestoreWorker(); }
+            catch (IOException failure) { waitFailed.set(true); }
+            recovered.countDown();
+        }, "portable-import-activity-recreation-test");
+        recreatedActivity.start();
+        check(entered.await(2, TimeUnit.SECONDS), "recreated Activity recovery worker starts");
+        boolean waited = !recovered.await(80, TimeUnit.MILLISECONDS);
+        PortableImportGrantRecovery.activityRestoreWorkerFinished();
+        check(waited && recovered.await(2, TimeUnit.SECONDS) && !waitFailed.get(),
+                "Activity recreation waits for its previous in-process restore worker before startup grant recovery");
+        recreatedActivity.join(2000);
+    }
+
+    private static List<Task> tasksWithAttachmentCount(int count) {
+        List<Task> tasks = new ArrayList<>();
+        int remaining = count;
+        int taskNumber = 0;
+        while (remaining > 0) {
+            int attachmentCount = Math.min(AttachmentLogic.MAX_PER_TASK, remaining);
+            List<AttachmentRef> references = new ArrayList<>();
+            for (int index = 0; index < attachmentCount; index++) {
+                references.add(new AttachmentRef(UUID.randomUUID().toString(), "empty-" + index + ".bin",
+                        "application/octet-stream", 0));
+            }
+            String timestamp = "2026-10-05T10:15:30Z";
+            tasks.add(new Task(UUID.randomUUID().toString(), "attachment boundary " + taskNumber,
+                    null, "medium", false, timestamp, timestamp, references));
+            remaining -= attachmentCount;
+            taskNumber++;
+        }
+        return tasks;
+    }
+
+    private static List<Task> tasksWithMaximumArchiveMetadata() {
+        List<Task> tasks = new ArrayList<>(PortableBackupCodec.MAX_TASKS);
+        String title = "\u0800".repeat(160);
+        String displayName = "\u0800".repeat(AttachmentLogic.MAX_NAME_CHARS);
+        String mimeType = "a".repeat(64) + "/" + "b".repeat(64);
+        String timestamp = "+999999999-12-31T23:59:59.999999999+18:00";
+        String dueDate = "9999-12-31";
+        long attachmentSize = AttachmentLogic.MAX_TOTAL_BYTES / AttachmentLogic.MAX_TOTAL_COUNT;
+        for (int taskIndex = 0; taskIndex < PortableBackupCodec.MAX_TASKS; taskIndex++) {
+            List<AttachmentRef> references = new ArrayList<>();
+            if (taskIndex < AttachmentLogic.MAX_TOTAL_COUNT / AttachmentLogic.MAX_PER_TASK) {
+                for (int attachmentIndex = 0; attachmentIndex < AttachmentLogic.MAX_PER_TASK; attachmentIndex++) {
+                    references.add(new AttachmentRef(UUID.randomUUID().toString(), displayName,
+                            mimeType, attachmentSize));
+                }
+            }
+            tasks.add(new Task(UUID.randomUUID().toString(), title, dueDate, "medium",
+                    false, timestamp, timestamp, references));
+        }
+        return tasks;
     }
 
     private static void exportFailsClosedOnProviderReadAndWriteFailure() throws Exception {
@@ -483,6 +698,13 @@ public final class PortableBackupSmoke {
             if (length > limit - bytes.size()) throw new IOException("simulated provider storage full");
             bytes.write(data, offset, length);
         }
+    }
+
+    private static final class InMemoryUriJournal implements PortableImportGrantRecovery.JournalStore {
+        private String value;
+        @Override public String read() { return value; }
+        @Override public void write(String uri) { value = uri; }
+        @Override public void clear() { value = null; }
     }
 
     private interface IoOperation { void run() throws Exception; }

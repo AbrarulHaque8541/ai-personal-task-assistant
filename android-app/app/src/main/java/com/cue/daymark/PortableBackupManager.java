@@ -1,6 +1,9 @@
 package com.cue.daymark;
 
 import android.content.Context;
+import android.content.Intent;
+import android.content.UriPermission;
+import android.net.Uri;
 import android.util.AtomicFile;
 
 import java.io.ByteArrayInputStream;
@@ -14,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,6 +38,8 @@ final class PortableBackupManager {
     private final File stagingRoot;
     private final File stateFile;
     private final AtomicFile atomicState;
+    private final ActiveImportUriJournal activeImportUriJournal;
+    private final Context context;
     private final RestoreCheckpoint checkpoint;
 
     PortableBackupManager(Context context) {
@@ -41,10 +47,13 @@ final class PortableBackupManager {
     }
 
     PortableBackupManager(Context context, RestoreCheckpoint checkpoint) {
+        this.context = context.getApplicationContext();
         File noBackup = context.getNoBackupFilesDir();
         stagingRoot = new File(noBackup, "portable-backup-staging");
         stateFile = new File(noBackup, "portable-backup-imports.bin");
         atomicState = new AtomicFile(stateFile);
+        activeImportUriJournal = new ActiveImportUriJournal(new AtomicFile(
+                new File(noBackup, "portable-import-uri.bin")));
         this.checkpoint = checkpoint == null ? RestoreCheckpoint.NONE : checkpoint;
     }
 
@@ -111,6 +120,27 @@ final class PortableBackupManager {
         }
         for (String attachmentId : pending.attachmentIds) attachments.discardPortableImport(attachmentId);
         clearPending(state);
+    }
+
+    /** Record only the URI actively being restored, durably before opening its provider stream. */
+    void recordActivePortableImportUri(Uri uri) throws IOException {
+        if (uri == null) throw new IOException("The selected backup could not be opened.");
+        PortableImportGrantRecovery.recordBeforeWork(activeImportUriJournal, uri.toString());
+    }
+
+    /** Startup recovery reconciles the import transaction before releasing its exact abandoned read grant. */
+    void reconcileAndReleaseAbandonedImportUri(List<Task> loadedTasks,
+                                               AndroidAttachmentStore attachments) throws IOException {
+        PortableImportGrantRecovery.recoverAfterProcessDeath(activeImportUriJournal,
+                () -> reconcile(loadedTasks, attachments), this::releaseExactPortableReadGrant);
+    }
+
+    /** Normal completion also reconciles before releasing the exact active URI read grant. */
+    void finishActivePortableImportUri(Uri expectedUri, List<Task> loadedTasks,
+                                       AndroidAttachmentStore attachments) throws IOException {
+        if (expectedUri == null) throw new IOException("The active portable-import URI is missing.");
+        PortableImportGrantRecovery.finishAfterWork(activeImportUriJournal, expectedUri.toString(),
+                () -> reconcile(loadedTasks, attachments), this::releaseExactPortableReadGrant);
     }
 
     List<Task> restore(InputStream source, byte[] recoveryKey, EncryptedTaskStore tasks,
@@ -294,6 +324,98 @@ final class PortableBackupManager {
         if (state.pending == null) return;
         state.pending = null;
         writeState(state);
+    }
+
+    private void releaseExactPortableReadGrant(String exactUri) throws IOException {
+        Uri uri = Uri.parse(exactUri);
+        if (!hasExactPortableReadGrant(uri)) return;
+        try {
+            context.getContentResolver().releasePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException | IllegalArgumentException failure) {
+            if (!hasExactPortableReadGrant(uri)) return;
+            throw new IOException("The abandoned portable-import read grant could not be released.", failure);
+        }
+        if (hasExactPortableReadGrant(uri)) {
+            throw new IOException("The abandoned portable-import read grant remains active.");
+        }
+    }
+
+    private boolean hasExactPortableReadGrant(Uri exactUri) throws IOException {
+        try {
+            for (UriPermission permission : context.getContentResolver().getPersistedUriPermissions()) {
+                if (exactUri.equals(permission.getUri()) && permission.isReadPermission()) return true;
+            }
+            return false;
+        } catch (RuntimeException failure) {
+            throw new IOException("Persisted portable-import permissions could not be checked.", failure);
+        }
+    }
+
+    private static final class ActiveImportUriJournal implements PortableImportGrantRecovery.JournalStore {
+        private static final int MAX_ENCODED_URI_BYTES = PortableImportGrantRecovery.MAX_URI_CHARS * 4;
+        private final AtomicFile atomic;
+
+        ActiveImportUriJournal(AtomicFile atomic) { this.atomic = atomic; }
+
+        @Override public String read() throws IOException {
+            File base = atomic.getBaseFile();
+            File backup = new File(base.getPath() + ".bak");
+            File staged = new File(base.getPath() + ".new");
+            if (!base.exists() && !backup.exists()) {
+                if (staged.exists()) throw new IOException("The portable-import URI journal has an incomplete write.");
+                return null;
+            }
+            byte[] encoded;
+            try (InputStream input = atomic.openRead()) {
+                encoded = readBounded(input, MAX_ENCODED_URI_BYTES);
+            }
+            try {
+                String uri = new String(encoded, StandardCharsets.UTF_8);
+                if (!Arrays.equals(encoded, uri.getBytes(StandardCharsets.UTF_8))
+                        || !PortableImportGrantRecovery.isContentUri(uri)) {
+                    throw new IOException("The portable-import URI journal is malformed.");
+                }
+                return uri;
+            } finally {
+                Arrays.fill(encoded, (byte) 0);
+            }
+        }
+
+        @Override public void write(String uri) throws IOException {
+            if (!PortableImportGrantRecovery.isContentUri(uri)) {
+                throw new IOException("The portable-import URI journal is malformed.");
+            }
+            byte[] encoded = uri.getBytes(StandardCharsets.UTF_8);
+            if (encoded.length > MAX_ENCODED_URI_BYTES) throw new IOException("The portable-import URI journal is oversized.");
+            FileOutputStream output = null;
+            try {
+                output = atomic.startWrite();
+                output.write(encoded);
+                output.flush();
+                output.getFD().sync();
+                atomic.finishWrite(output);
+                output = null;
+            } catch (Exception failure) {
+                if (output != null) {
+                    try { atomic.failWrite(output); }
+                    catch (RuntimeException rollbackFailure) { failure.addSuppressed(rollbackFailure); }
+                }
+                if (failure instanceof IOException) throw (IOException) failure;
+                throw new IOException("The portable-import URI journal could not be committed.", failure);
+            } finally {
+                Arrays.fill(encoded, (byte) 0);
+            }
+        }
+
+        @Override public void clear() throws IOException {
+            atomic.delete();
+            File base = atomic.getBaseFile();
+            if (base.exists() || new File(base.getPath() + ".bak").exists()
+                    || new File(base.getPath() + ".new").exists()) {
+                throw new IOException("The portable-import URI journal could not be removed.");
+            }
+        }
     }
 
     private State readState() throws IOException {

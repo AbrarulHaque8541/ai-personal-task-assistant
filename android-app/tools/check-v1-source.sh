@@ -47,10 +47,23 @@ saved_state = activity.split("protected void onSaveInstanceState", 1)[1].split("
 assert "STATE_PENDING_PORTABLE_IMPORT_URI" in saved_state, "pending portable URI must survive activity recreation"
 assert "pendingRecoveryKey" not in saved_state, "transient recovery key must never enter saved state"
 assert "keyInput.setSaveEnabled(false)" in activity, "recovery-key entry must not be saved by view hierarchy state"
-assert "takePersistableUriPermission" in activity and "releasePersistableUriPermission" in activity
+assert "takePersistableUriPermission" in activity
 assert "restorePendingPortableImportUri" in activity and "hasPersistedPortableReadGrant" in activity
+assert "PortableImportGrantRecovery.uriForActivityState" in activity
+assert "PortableImportGrantRecovery.awaitNoActivityRestoreWorker" in activity
+destroy = activity.split("protected void onDestroy", 1)[1].split("protected void onSaveInstanceState", 1)[0]
+assert "if (!portableRestoreWorkerActive)" in destroy
+active_restore = activity.split("private void beginPortableRestore", 1)[1].split("private String portableRestoreFailure", 1)[0]
+assert active_restore.index("recordActivePortableImportUri(selected)") < active_restore.index("storageExecutor.execute")
+assert "finishActivePortableImportUri(selected" in active_restore
+assert "PortableBackupCodec.clear(recoveryKey);" in active_restore and "portableRestoreWorkerActive = false;" in active_restore
 manager = (main / "java/com/cue/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
 assert "writePending(" in manager and "appendAtomically(additions)" in manager and "reconcile(" in manager
+assert "recoverAfterProcessDeath" in manager and "reconcileAndReleaseAbandonedImportUri" in manager
+assert "releasePersistableUriPermission(uri," in manager and "Intent.FLAG_GRANT_READ_URI_PERMISSION" in manager
+assert "exactUri.equals(permission.getUri()) && permission.isReadPermission()" in manager
+grant_recovery = (main / "java/com/cue/daymark/PortableImportGrantRecovery.java").read_text(encoding="utf-8")
+assert "transaction.reconcile();" in grant_recovery and "releaseAndClear(journal, grants, abandonedUri);" in grant_recovery
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
     assert expected in activity, f"missing V1 source feature marker: {expected}"
 for expected in ("Permission status:", "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "no Android permissions are declared"):
