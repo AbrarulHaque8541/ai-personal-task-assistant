@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f4">
+  <meta name="description" content="A calm, local-first personal task manager prototype.">
+  <title>Daymark — personal tasks</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="task-logic.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail" aria-label="Application identity">
+      <a class="brand" href="#main" aria-label="Daymark home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-name">daymark</span>
+      </a>
+      <div class="rail-bottom">
+        <span class="rail-avatar" aria-label="Personal workspace">A</span>
+        <span class="rail-label">PERSONAL SPACE</span>
+      </div>
+    </aside>
+
+    <main id="main" class="main-content">
+      <header class="topbar">
+        <div class="workspace-label"><span class="status-dot" aria-hidden="true"></span> Personal workspace</div>
+        <div class="topbar-right">
+          <span class="local-badge" id="storage-status" role="status" aria-live="polite"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 4.5 4.7v4.7c0 3.4 2.3 6.5 5.5 8.1 3.2-1.6 5.5-4.7 5.5-8.1V4.7L10 2.5Z"/><path d="m7.6 9.9 1.6 1.6 3.3-3.4"/></svg><span>Checking browser storage…</span></span>
+        </div>
+      </header>
+
+      <section class="page-heading" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow" id="today-label">YOUR DAY, AT A GLANCE</p>
+          <h1 id="page-title">A little more <em>in focus.</em></h1>
+          <p class="page-subtitle">Make space for what matters. One step at a time.</p>
+        </div>
+        <div class="heading-stat" aria-live="polite">
+          <span class="stat-number" id="open-count">0</span>
+          <span class="stat-label">open tasks</span>
+        </div>
+      </section>
+
+      <section class="composer card" aria-labelledby="add-heading">
+        <div class="composer-intro">
+          <span class="plus-mark" aria-hidden="true">+</span>
+          <div><h2 id="add-heading">Add a task</h2><p>Get it out of your head and onto your list.</p></div>
+        </div>
+        <form id="add-form" class="add-form" novalidate>
+          <label class="sr-only" for="new-title">Task title</label>
+          <input id="new-title" name="title" type="text" maxlength="160" placeholder="What needs your attention?" autocomplete="off" aria-describedby="add-error" required>
+          <label class="sr-only" for="new-due-date">Due date (optional)</label>
+          <input id="new-due-date" name="dueDate" type="date" aria-label="Due date (optional)">
+          <label class="sr-only" for="new-priority">Priority</label>
+          <select id="new-priority" name="priority" aria-label="Priority">
+            <option value="medium">Medium priority</option>
+            <option value="high">High priority</option>
+            <option value="low">Low priority</option>
+          </select>
+          <button class="button button-primary add-button" type="submit"><span aria-hidden="true">+</span> Add task</button>
+        </form>
+        <p class="form-error" id="add-error" role="alert" hidden>Please enter a task title.</p>
+      </section>
+
+      <div class="content-grid">
+        <section class="tasks-panel" aria-labelledby="tasks-heading">
+          <div class="section-heading">
+            <div><p class="eyebrow">YOUR LIST</p><h2 id="tasks-heading">Tasks</h2></div>
+            <span class="task-total" id="visible-count">0 tasks</span>
+          </div>
+          <nav class="filters" aria-label="Filter tasks">
+            <button type="button" class="filter-button is-active" data-filter="all" aria-pressed="true">All <span id="count-all">0</span></button>
+            <button type="button" class="filter-button" data-filter="today" aria-pressed="false">Today <span id="count-today">0</span></button>
+            <button type="button" class="filter-button" data-filter="upcoming" aria-pressed="false">Upcoming <span id="count-upcoming">0</span></button>
+            <button type="button" class="filter-button" data-filter="completed" aria-pressed="false">Completed <span id="count-completed">0</span></button>
+          </nav>
+          <div class="task-tools">
+            <label class="sr-only" for="task-search">Search tasks by title</label>
+            <input id="task-search" type="search" placeholder="Search your tasks…" autocomplete="off" aria-describedby="visible-count">
+            <button class="clear-search" id="clear-search" type="button" aria-label="Clear task search">Clear</button>
+          </div>
+          <div class="task-list" id="task-list" aria-live="polite" aria-relevant="additions removals text"></div>
+          <div class="empty-state" id="empty-state" hidden>
+            <div class="empty-illustration" aria-hidden="true"><span class="empty-sun"></span><span class="empty-line line-one"></span><span class="empty-line line-two"></span><span class="empty-check">✓</span></div>
+            <h3 id="empty-title">A clear start</h3>
+            <p id="empty-copy">Add your first task above. Small steps count.</p>
+            <button class="button button-quiet empty-clear-search" id="empty-clear-search" type="button" hidden>Clear search</button>
+          </div>
+          <p class="storage-note"><span class="storage-dot" aria-hidden="true"></span> This prototype stores tasks only in this browser — no account or cross-device sync.</p>
+        </section>
+
+        <aside class="suggestion-card" aria-labelledby="suggestion-title">
+          <div class="suggestion-topline"><span class="sparkle" aria-hidden="true">✳</span><span class="demo-label">DEMO SUGGESTION</span></div>
+          <h2 id="suggestion-title">A good place to begin</h2>
+          <p class="suggestion-description">A simple local rule brings your next priorities into view.</p>
+          <div class="suggestion-list" id="suggestion-list" aria-live="polite"></div>
+          <div class="suggestion-footnote"><span aria-hidden="true">i</span><p>Demo suggestions use due date and priority rules only. No AI service is connected.</p></div>
+        </aside>
+      </div>
+      <footer class="page-footer"><span>DAYMARK <span aria-hidden="true">·</span> PERSONAL TASKS</span><span>Made for a calmer kind of productive.</span></footer>
+    </main>
+  </div>
+
+  <dialog id="edit-dialog" class="edit-dialog" aria-labelledby="edit-heading">
+    <form id="edit-form" method="dialog" novalidate>
+      <div class="dialog-header"><div><p class="eyebrow">UPDATE YOUR LIST</p><h2 id="edit-heading">Edit task</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close edit dialog">×</button></div>
+      <input type="hidden" name="id" id="edit-id">
+      <label class="field-label" for="edit-title">Task title</label>
+      <input id="edit-title" name="title" type="text" maxlength="160" aria-describedby="edit-error" required>
+      <div class="dialog-fields">
+        <div><label class="field-label" for="edit-due-date">Due date <span>(optional)</span></label><input id="edit-due-date" name="dueDate" type="date"></div>
+        <div><label class="field-label" for="edit-priority">Priority</label><select id="edit-priority" name="priority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
+      </div>
+      <p class="form-error" id="edit-error" role="alert" hidden>Please enter a task title.</p>
+      <div class="dialog-actions"><button class="button button-quiet cancel-edit" type="button">Cancel</button><button class="button button-primary" type="submit">Save changes</button></div>
+    </form>
+  </dialog>
+  <div class="toast-stack" id="toast-stack">
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <button class="toast-action" id="toast-action" type="button" hidden>Undo</button>
+  </div>
+</body>
+</html>
