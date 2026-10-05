@@ -98,7 +98,7 @@ Everything below is a future design reference, not a V1 feature. There are curre
 
 Any future provider adapter must implement one `AssistantProvider` contract exposing capabilities, an offline/remote flag, configuration status, and an inference call. Routing must go only to the provider the user explicitly selected; never silently fall back to cloud. Before a remote call, disclose which task data will leave the phone, the destination/region, network requirement, privacy implications, and possible cost; send only the minimum necessary context. Never log prompts or keys. Encrypt user-supplied keys under Android Keystore when held on-device, or use protected server-side secret storage for hosted services; never place credentials in app source, an APK, or a public repository. Provide clear revocation and disconnect controls. Telegram remains a separate hosted service requiring a backend and protected bot token, with no background phone polling.
 
-## Build and inspect (debug only)
+## Build and inspect (flavor-specific compile/resource checks)
 
 Requirements: JDK 17+, Android SDK Platform 35, Android Build Tools 35.0.0, and Platform Tools for `adb`. The project pins Gradle Wrapper 8.10.2 and Android Gradle Plugin 8.8.2, uses Java 17 source/target, `compileSdk` / `targetSdk` 35, `minSdk` 26, and has no runtime third-party libraries.
 
@@ -106,26 +106,27 @@ Requirements: JDK 17+, Android SDK Platform 35, Android Build Tools 35.0.0, and 
 
 The first SDK license acceptance/package installation occurred before the chronology correction and remains unapproved. After that correction, the user explicitly consented prospectively to using **only the already-installed** Platform 35, Build Tools 35.0.0, and Platform Tools 37.0.1 for this debug rebuild/verification; this does not retroactively approve the earlier action. No new license or package was accepted/installed. This consent does not cover device installation or publication.
 
-The commands below use the existing SDK only and build a **debug preview**. A debug APK does not qualify for the `<15 MB` target; measure that target only from a genuine release APK.
+The commands below use the existing SDK only and compile both **debug flavors** while processing their resources. They do not assemble, sign, or install an APK. Flavor-specific Gradle tasks are required now that the project defines `githubSideload` and `play`.
 
 ```sh
 export ANDROID_HOME="$HOME/Android/Sdk"  # use your actual SDK path
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 cd /workspace/team_project/android-app
-./gradlew :app:assembleDebug --no-daemon --console=plain
-cp app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
-stat -c '%s bytes' ./app-debug.apk
-sha256sum ./app-debug.apk
+./gradlew --offline \
+  :app:compileGithubSideloadDebugJavaWithJavac \
+  :app:processGithubSideloadDebugResources \
+  :app:compilePlayDebugJavaWithJavac \
+  :app:processPlayDebugResources
 ```
 
-The root copy is ignored by Git and remains unpublished. This workflow intentionally does not include an SDK package installation, `adb install`, or app launch.
+These checks intentionally do not produce an APK. They do not include an SDK package installation, `adb install`, app launch, or any `assemble*` task.
 
 ## Current weekly review verification (2026-10-05)
 
-- `sh ./tools/check-v1-source.sh` passes: 25 JDK-only task-logic assertions, 34 fake updater assertions, manifest/privacy policy checks, and source assertions for app text scaling, expected accessibility labels, English-only disclosure, device-locale dates, update-source restrictions, and text contrast. The lowest checked contrast is **5.00:1** across standard/high-contrast light/dark palette pairs. These are source-level checks only; they do not replace rendered UI, translated-flow, TalkBack, or live-network testing.
-- Offline API 35 Java/resource compile tasks (`:app:compileDebugJavaWithJavac` and `:app:processDebugResources`) completed with `BUILD SUCCESSFUL` using only installed SDK components. A `:app:assembleDebug` task also completed during development; Gradle automatically produced its ordinary debug-signed APK. After noticing this conflicted with the no-APK-signing constraint, that generated APK was removed; it was never installed or published. Final validation does not package or retain an APK.
-- The existing **45,031-byte** debug artifact details recorded above apply to the earlier main-branch build, not to an updater APK. No updater APK, release-signed APK, or release artifact is retained. Debug signing is not evidence of publisher signing or the `<15 MB` release target.
-- `adb devices -l` returned no devices. Installation and launch were not tested. Airplane-mode behavior, Keystore behavior on a device, TalkBack, device font scaling, and locale behavior remain unverified.
+- `sh ./tools/check-v1-source.sh` passes: 25 task-logic assertions, 50 updater-policy assertions, 58 parser/transport/download fixture assertions, manifest/permission policy checks, accessibility/localization source checks, and contrast checks with a lowest tested result of **5.00:1**. These source-level checks do not replace rendered UI, translated-flow, TalkBack, or live-network testing.
+- Offline API 35 Java compilation and resource processing completed successfully for `githubSideload` and `play`, in both debug and release variants. The merged manifests were inspected: only GitHub sideload has updater permissions and the private PackageInstaller status activity; Play has neither.
+- **No `assemble*` task was run during this updater work.** No updater APK was assembled, signed, installed, published, or retained. The publisher installation gate remains false, the signer pin is empty, and there is no production release key or stable release.
+- `adb devices -l` returned no devices. Signer continuity, install-source Settings approval, PackageInstaller confirmation/cancel behavior, installation, and launch remain unverified on a device. Airplane-mode behavior, Keystore behavior, TalkBack, device font scaling, and locale behavior also remain unverified.
 - No optional model, language, or plugin packs exist, so their size is **N/A**. No release APK was produced; the base-release size target is unmeasured.
 
 Run source-level checks without Android SDK packages:
