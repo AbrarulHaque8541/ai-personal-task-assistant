@@ -13,12 +13,27 @@ root = pathlib.Path(sys.argv[1])
 manifest = ET.parse(root / "app/src/main/AndroidManifest.xml").getroot()
 app = manifest.find("application")
 assert app is not None, "missing application element"
-assert not list(manifest.findall("uses-permission")), "V1 must not declare permissions or network access"
+play_manifest = ET.parse(root / "app/src/play/AndroidManifest.xml").getroot()
+sideload_manifest = ET.parse(root / "app/src/githubSideload/AndroidManifest.xml").getroot()
+android_name = "{http://schemas.android.com/apk/res/android}name"
+permission_names = lambda manifest_root: {item.get(android_name) for item in manifest_root.findall("uses-permission")}
+assert permission_names(manifest) == set(), "shared manifest must remain permission-free"
+assert permission_names(play_manifest) == set(), "Play flavor must not declare permissions"
+assert permission_names(sideload_manifest) == {
+    "android.permission.INTERNET", "android.permission.REQUEST_INSTALL_PACKAGES"
+}, "only GitHub sideload may declare network and app-install permissions"
 assert app.get("{http://schemas.android.com/apk/res/android}allowBackup") == "false", "backup must stay disabled"
 assert app.get("{http://schemas.android.com/apk/res/android}usesCleartextTraffic") == "false", "cleartext must stay disabled"
 assert not list(app.findall("service")), "V1 must not add services"
 assert not list(app.findall("receiver")), "V1 must not add receivers"
 assert not list(app.findall("provider")), "V1 must not add providers"
+play_app = play_manifest.find("application")
+sideload_app = sideload_manifest.find("application")
+assert play_app is not None and not list(play_app), "Play flavor must not add updater activities or components"
+assert sideload_app is not None, "GitHub sideload flavor is missing its application overlay"
+status_activity = next((item for item in sideload_app.findall("activity")
+                        if item.get(android_name) == ".updater.PackageInstallerStatusActivity"), None)
+assert status_activity is not None and status_activity.get("{http://schemas.android.com/apk/res/android}exported") == "false", "installer status activity must be private to sideload"
 
 main = root / "app/src/main"
 for path in main.rglob("*"):
@@ -54,23 +69,35 @@ release_client = (updater_dir / "GitHubReleaseClient.java").read_text(encoding="
 updater_core = (updater_dir / "UpdaterCore.java").read_text(encoding="utf-8")
 publisher_config = (updater_dir / "UpdaterPublisherConfig.java").read_text(encoding="utf-8")
 downloader = (updater_dir / "GitHubApkDownloader.java").read_text(encoding="utf-8")
+installer = (updater_dir / "AndroidPackageInstallerHandoff.java").read_text(encoding="utf-8")
+install_status = (updater_dir / "PackageInstallerStatusActivity.java").read_text(encoding="utf-8")
+release_test = (root / "tools/GitHubTransportSmoke.java").read_text(encoding="utf-8")
 assert 'https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest' in release_client, "updater endpoint must remain fixed"
 assert release_client.count("https://") == 1, "release metadata client must not add other service endpoints"
 assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
-assert not manifest.findall("uses-permission"), "no manifest permission is enabled while installer permission scope is pending"
-assert not any(permission.get("{http://schemas.android.com/apk/res/android}name") == "android.permission.REQUEST_INSTALL_PACKAGES" for permission in manifest.findall("uses-permission")), "installer permission must not be added without owner approval"
-assert "INSTALLATION_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher installer gate must remain fail-closed"
-assert "buildConfig = true" in build and "!BuildConfig.DEBUG" in publisher_config, "updater must be release-only even after signer configuration"
+assert 'create("githubSideload")' in build and 'create("play")' in build, "explicit sideload and Play product flavors are required"
+assert '"UPDATER_INSTALLATION_ENABLED", "true"' in build and '"UPDATER_INSTALLATION_ENABLED", "false"' in build, "only sideload may opt into installation"
+assert "INSTALLATION_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher installer gate and signer pin must remain fail-closed"
+assert "BuildConfig.UPDATER_INSTALLATION_ENABLED" in publisher_config and "!BuildConfig.DEBUG" in publisher_config, "installer must be release-only and sideload-only"
 assert "UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)" in activity, "publisher configuration must gate even release-metadata network checks"
 assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new GitHubReleaseClient()"), "network policy must run before release-client construction"
 assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
+assert "StrictJsonParser.parse(json)" in release_client and "MAX_RESPONSE_BYTES" in release_client, "release JSON must use the bounded strict parser"
+assert "connectionFactory.open" in release_client and "connectionFactory.open" in downloader, "HTTP transports must remain fixture-testable"
+for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys"):
+    assert marker in release_test, f"missing updater transport/parser fixture: {marker}"
+assert "PackageInstaller.Session" in installer and "session.commit(statusPendingIntent.getIntentSender())" in installer, "verified APK must use the Android session API"
+assert "canRequestPackageInstalls()" in installer and "BuildConfig.DEBUG" in installer, "installer must require system source approval and a non-debug gated build"
+assert "PendingIntent.FLAG_MUTABLE" in installer and "PackageInstaller.STATUS_PENDING_USER_ACTION" in install_status, "Android status extras and confirmation action must be handled"
+assert "ACTION_MANAGE_UNKNOWN_APP_SOURCES" in activity and "startActivityForResult" in activity, "missing per-source Android Settings flow"
+assert '"Download and verify"' in activity and '"Cancel"' in activity and "new AndroidPackageInstallerHandoff" in activity, "download requires explicit user consent before verified handoff"
 assert "TaskLogic" not in updater_sources and "EncryptedTaskStore" not in updater_sources, "updater must not depend on or upload task/history data"
 assert updater_core.index("if (!consent.accept(release))") < updater_core.index("temporaryApk = downloader.download(release)"), "download must occur only after explicit consent"
 assert updater_core.index("verifier.inspect(temporaryApk)") < updater_core.index("handoff.handoff(temporaryApk)"), "handoff must follow APK verification"
 assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
 
-print("PASS V1 source policy: no manifest permissions/background components/runtime dependencies or optional media/model binaries; updater endpoint and consent gates are fixed")
+print("PASS V1 source policy: main and Play manifests are permission-free; GitHub sideload alone has updater permissions; no background polling/runtime dependencies/optional binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
-print("PASS permission/updater policy: no new permissions, release-only publisher-gated metadata network, validated release-asset redirects, no unapproved installer handoff, task data isolated")
+print("PASS permission/updater policy: release-only sideload gates, exact publisher verification, user-confirmed PackageInstaller handoff, Play permission isolation, task data isolated")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"

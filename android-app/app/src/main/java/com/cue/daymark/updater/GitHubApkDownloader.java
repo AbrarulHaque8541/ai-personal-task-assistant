@@ -17,9 +17,22 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
     private static final int READ_TIMEOUT_MILLIS = 30_000;
     private static final int MAX_REDIRECTS = 5;
     private final Context context;
+    private final ConnectionFactory connectionFactory;
+
+    interface ConnectionFactory {
+        HttpURLConnection open(URL url) throws IOException;
+    }
 
     public GitHubApkDownloader(Context context) {
+        this(context, url -> (HttpURLConnection) url.openConnection());
+    }
+
+    GitHubApkDownloader(Context context, ConnectionFactory connectionFactory) {
+        if (context == null || connectionFactory == null) {
+            throw new IllegalArgumentException("Context and connection factory are required.");
+        }
         this.context = context.getApplicationContext();
+        this.connectionFactory = connectionFactory;
     }
 
     @Override
@@ -41,7 +54,7 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
             URL currentUrl = new URL(release.assetUrl);
             int redirects = 0;
             while (true) {
-                connection = (HttpURLConnection) currentUrl.openConnection();
+                connection = connectionFactory.open(currentUrl);
                 connection.setInstanceFollowRedirects(false);
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);

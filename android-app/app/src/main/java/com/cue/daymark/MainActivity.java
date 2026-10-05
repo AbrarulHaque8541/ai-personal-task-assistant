@@ -6,6 +6,7 @@ import android.app.DatePickerDialog;
 import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -20,6 +21,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.net.Uri;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
@@ -52,6 +55,9 @@ import java.text.NumberFormat;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.cue.daymark.updater.AndroidApkVerifier;
+import com.cue.daymark.updater.AndroidPackageInstallerHandoff;
+import com.cue.daymark.updater.GitHubApkDownloader;
 import com.cue.daymark.updater.GitHubReleaseClient;
 import com.cue.daymark.updater.UpdaterCore;
 import com.cue.daymark.updater.UpdaterPublisherConfig;
@@ -67,6 +73,7 @@ public final class MainActivity extends Activity {
     private static final String HIGH_CONTRAST_KEY = "high_contrast";
     private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
     private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
+    private static final int REQUEST_INSTALL_SOURCE_SETTINGS = 7342;
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -87,7 +94,9 @@ public final class MainActivity extends Activity {
     private boolean powerMode;
     private boolean highContrast;
     private boolean updateCheckRunning;
+    private boolean updateTransferRunning;
     private boolean activityResumed;
+    private UpdaterCore.Release pendingInstallSourceRelease;
     private float textScale = 1.0f;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
@@ -159,6 +168,22 @@ public final class MainActivity extends Activity {
     protected void onPause() {
         activityResumed = false;
         super.onPause();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_INSTALL_SOURCE_SETTINGS) return;
+        UpdaterCore.Release pending = pendingInstallSourceRelease;
+        pendingInstallSourceRelease = null;
+        if (pending == null) return;
+        if (canRequestPackageInstalls()) {
+            // The Android settings approval is separate from consent to download; ask again.
+            showUpdateDetails(pending);
+        } else {
+            showInfo("No APK downloaded", "Android install-source approval was not granted. No APK was downloaded or installed; your existing app and encrypted tasks are unchanged.");
+        }
     }
 
     private int themeResource(int mode) {
@@ -1167,7 +1192,9 @@ public final class MainActivity extends Activity {
         boolean publisherConfigured = UpdaterPublisherConfig.isInstallationConfigured();
         if (!UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)) {
             if (manual) {
-                String reason = publisherConfigured
+                String reason = !BuildConfig.UPDATER_INSTALLATION_ENABLED
+                        ? "Update checks are available only in the GitHub sideload distribution."
+                        : publisherConfigured
                         ? "This build does not declare the Internet permission."
                         : "Update checks are disabled for this build; a release build and trusted publisher signing certificate are required.";
                 showInfo("Updates unavailable", reason + " No network request was made. "
@@ -1238,29 +1265,113 @@ public final class MainActivity extends Activity {
                 return "The GitHub release metadata was incomplete or invalid. No APK was downloaded.";
             case HTTP:
                 return "GitHub did not return a usable release response. No APK was downloaded.";
+            case APK_MISMATCH:
+                return "The downloaded APK did not match the release metadata or Daymark package/version. Nothing was installed.";
+            case SIGNER_MISMATCH:
+                return "The release signing certificate did not exactly match this installed app and publisher configuration. Nothing was installed. Do not uninstall Daymark; encrypted local tasks may be lost.";
+            case DOWNLOAD:
+                return "The APK download did not complete. Nothing was installed; Daymark tasks remain available.";
+            case HANDOFF:
+                return "Android could not start or complete the user-confirmed installation flow. Nothing was installed; do not uninstall Daymark because encrypted tasks may be lost.";
             default:
                 return "The update check could not be completed. No APK was downloaded.";
         }
     }
 
     private void showUpdateDetails(UpdaterCore.Release release) {
+        boolean installConfigured = BuildConfig.UPDATER_INSTALLATION_ENABLED
+                && UpdaterPublisherConfig.isInstallationConfigured();
+        boolean installSourceAllowed = canRequestPackageInstalls();
         String message = "Version " + release.versionName + "\n"
                 + release.name + "\n\n"
                 + (release.notes.trim().isEmpty() ? "No release notes were provided." : release.notes.trim())
                 + "\n\nAPK size: " + NumberFormat.getIntegerInstance(Locale.getDefault()).format(release.apkSizeBytes)
-                + " bytes. If you later choose to download, the release APK is retrieved from GitHub; cellular data charges may apply."
+                + " bytes. A download uses GitHub and may use mobile/cellular data. No APK is downloaded until you choose Download and verify."
                 + "\n\nDaymark sends no task data or history in an update request. Update checks contact the fixed public GitHub Releases endpoint only while the app is foregrounded or when you choose Check now."
-                + "\n\n" + (UpdaterPublisherConfig.isInstallationConfigured()
-                        ? "Android installation handoff is not enabled in this build. No APK was downloaded."
-                        : "Installation is disabled in this build because publisher release signing is not configured. No APK was downloaded.")
-                + " Do not uninstall to work around a signing mismatch; encrypted local tasks may be lost.";
-        new AlertDialog.Builder(this)
+                + "\n\n" + (installConfigured
+                        ? (installSourceAllowed
+                                ? "After verification, Android will show its own installation confirmation. The update is installed only if you approve that system prompt."
+                                : "Android first requires you to allow this GitHub sideload as an install source in system Settings. No APK is downloaded before that choice; after returning, review this release and choose Download and verify separately.")
+                        : "APK installation remains disabled until the GitHub sideload release build has an explicitly enabled, protected publisher signing configuration. No APK was downloaded.")
+                + " Cancel at either prompt to keep the existing app. Do not uninstall to work around a signing mismatch; encrypted local tasks may be lost.";
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
                 .setTitle("Update available")
-                .setMessage(message)
-                .setPositiveButton("OK", (dialog, which) -> rememberDismissedRelease(release.tag))
-                .setOnCancelListener(dialog -> rememberDismissedRelease(release.tag))
-                .setNegativeButton("Dismiss", (dialog, which) -> rememberDismissedRelease(release.tag))
-                .show();
+                .setMessage(message);
+        if (installConfigured) {
+            dialog.setPositiveButton(installSourceAllowed ? "Download and verify" : "Review system approval",
+                    (ignored, which) -> {
+                        if (canRequestPackageInstalls()) beginUpdateDownload(release);
+                        else requestInstallSourceApproval(release);
+                    });
+            dialog.setNegativeButton("Cancel", null);
+            dialog.setNeutralButton("Dismiss release", (ignored, which) -> rememberDismissedRelease(release.tag));
+        } else {
+            dialog.setPositiveButton("OK", (ignored, which) -> rememberDismissedRelease(release.tag));
+            dialog.setNegativeButton("Close", null);
+        }
+        dialog.show();
+    }
+
+    private boolean canRequestPackageInstalls() {
+        return Build.VERSION.SDK_INT >= 26 && getPackageManager().canRequestPackageInstalls();
+    }
+
+    private void requestInstallSourceApproval(UpdaterCore.Release release) {
+        pendingInstallSourceRelease = release;
+        Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + getPackageName()));
+        try {
+            startActivityForResult(settingsIntent, REQUEST_INSTALL_SOURCE_SETTINGS);
+        } catch (Exception exception) {
+            pendingInstallSourceRelease = null;
+            showInfo("Install-source settings unavailable", "Android could not open the system approval screen. No APK was downloaded; your existing app and encrypted tasks are unchanged.");
+        }
+    }
+
+    private void beginUpdateDownload(UpdaterCore.Release release) {
+        if (updateTransferRunning) {
+            Toast.makeText(this, "An update download is already running.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!BuildConfig.UPDATER_INSTALLATION_ENABLED || !UpdaterPublisherConfig.isInstallationConfigured()
+                || !hasInternetPermission() || !canRequestPackageInstalls()) {
+            showInfo("Update unavailable", "The GitHub sideload build, Internet access, protected publisher signer, and Android install-source approval are all required. No APK was downloaded; tasks remain usable.");
+            return;
+        }
+        updateTransferRunning = true;
+        Toast.makeText(this, "Downloading and verifying the APK. Daymark tasks remain usable.", Toast.LENGTH_LONG).show();
+        updaterExecutor.execute(() -> {
+            UpdaterCore.InstallStatus status = null;
+            UpdaterCore.UpdateException failure = null;
+            try {
+                AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
+                String installedSigner = verifier.installedSignerSha256();
+                status = UpdaterCore.downloadVerifyAndHandoff(release,
+                        getPackageName(), currentVersionCode(), Build.VERSION.SDK_INT,
+                        installedSigner, UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256,
+                        consentedRelease -> true,
+                        new GitHubApkDownloader(getApplicationContext()), verifier,
+                        new AndroidPackageInstallerHandoff(getApplicationContext()));
+            } catch (UpdaterCore.UpdateException exception) {
+                failure = exception;
+            } catch (Exception exception) {
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.HANDOFF,
+                        "Verified update could not be handed to Android.", exception);
+            }
+            final UpdaterCore.InstallStatus completedStatus = status;
+            final UpdaterCore.UpdateException completedFailure = failure;
+            mainHandler.post(() -> {
+                updateTransferRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (completedFailure != null) {
+                    showInfo("Update not installed", updateFailureMessage(completedFailure));
+                } else if (completedStatus == UpdaterCore.InstallStatus.HANDED_OFF) {
+                    showInfo("Android installation approval", "The fully verified APK was handed to Android. Installation will proceed only if you approve Android's system confirmation. Until then, the current app remains installed.");
+                } else {
+                    showInfo("Update cancelled", "No update was installed. The existing app and encrypted tasks remain unchanged.");
+                }
+            });
+        });
     }
 
     private void rememberDismissedRelease(String tag) {
@@ -1273,11 +1384,15 @@ public final class MainActivity extends Activity {
         try {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
+        String distributionDetails = BuildConfig.UPDATER_INSTALLATION_ENABLED
+                ? "GitHub sideload distribution: declares updater network/install permissions; update checks and installation remain disabled until protected publisher signing is explicitly configured."
+                : "Play distribution: no network or package-install permissions are declared. Tasks remain local and offline.";
         String details = "Daymark " + version + "\n\n"
                 + "Tasks: schema v1, encrypted in an app-private file.\n\n"
                 + "Encryption: AES-GCM; the key is stored in Android Keystore. Hardware protection depends on the device.\n\n"
                 + "Suggestions: due-date and priority rules only; no AI service.\n\n"
-                + "Offline: no account, network permission, background service, or optional content download.\n\n"
+                + distributionDetails + "\n\n"
+                + "No account, background updater polling, task uploads, or optional content download.\n\n"
                 + "Not included: voice input, GGUF models, command-line bridge, plugins, or app/OS updates.\n\n"
                 + "Copied diagnostics contain version, Android API, theme, task count, and storage status. They never contain task titles.";
         LinearLayout content = new LinearLayout(this);

@@ -1,9 +1,5 @@
 package com.cue.daymark.updater;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,7 +7,13 @@ import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,11 +28,26 @@ public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
             "(?s)<!--\\s*daymark-updater-v1\\s*(\\{.*?})\\s*-->");
     private static final Pattern METADATA_BLOCK = Pattern.compile("(?s)<!--\\s*daymark-updater-v1\\s*\\{.*?}\\s*-->");
 
+    interface ConnectionFactory {
+        HttpURLConnection open(URL url) throws IOException;
+    }
+
+    private final ConnectionFactory connectionFactory;
+
+    public GitHubReleaseClient() {
+        this(url -> (HttpURLConnection) url.openConnection());
+    }
+
+    GitHubReleaseClient(ConnectionFactory connectionFactory) {
+        if (connectionFactory == null) throw new IllegalArgumentException("Connection factory is required.");
+        this.connectionFactory = connectionFactory;
+    }
+
     @Override
     public UpdaterCore.Release fetchLatestStable() throws UpdaterCore.UpdateException {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(RELEASES_ENDPOINT).openConnection();
+            connection = connectionFactory.open(new URL(RELEASES_ENDPOINT));
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
             connection.setReadTimeout(READ_TIMEOUT_MILLIS);
@@ -66,12 +83,12 @@ public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
 
     static UpdaterCore.Release parseRelease(String json) throws UpdaterCore.UpdateException {
         try {
-            JSONObject release = new JSONObject(json);
-            boolean draft = release.optBoolean("draft", false);
-            boolean prerelease = release.optBoolean("prerelease", false);
-            String tag = release.optString("tag_name", "");
-            String name = release.isNull("name") ? "" : release.optString("name", "");
-            String body = release.isNull("body") ? "" : release.optString("body", "");
+            Map<String, Object> release = StrictJsonParser.object(StrictJsonParser.parse(json), "GitHub release");
+            boolean draft = StrictJsonParser.requiredBoolean(release, "draft");
+            boolean prerelease = StrictJsonParser.requiredBoolean(release, "prerelease");
+            String tag = StrictJsonParser.requiredString(release, "tag_name");
+            String name = StrictJsonParser.optionalString(release, "name", "");
+            String body = StrictJsonParser.optionalString(release, "body", "");
             if (draft || prerelease) {
                 return new UpdaterCore.Release(tag, versionFromTag(tag), name, stripMetadata(body),
                         "", 0L, 0, 0L, "", "", "", draft, prerelease);
@@ -79,38 +96,42 @@ public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
 
             Matcher metadataMatch = PUBLISHER_METADATA.matcher(body);
             if (!metadataMatch.find()) throw invalid("Release is missing Daymark publisher metadata.");
-            JSONObject metadata = new JSONObject(metadataMatch.group(1));
-            String applicationId = metadata.getString("applicationId");
-            long versionCode = metadata.getLong("versionCode");
-            int minSdkVersion = metadata.getInt("minSdkVersion");
-            String signerSha256 = metadata.getString("signerCertificateSha256");
+            String metadataJson = metadataMatch.group(1);
+            if (metadataMatch.find()) throw invalid("Release contains more than one Daymark publisher metadata block.");
+            Map<String, Object> metadata = StrictJsonParser.object(
+                    StrictJsonParser.parse(metadataJson), "Daymark publisher metadata");
+            String applicationId = StrictJsonParser.requiredString(metadata, "applicationId");
+            long versionCode = StrictJsonParser.requiredLong(metadata, "versionCode");
+            int minSdkVersion = StrictJsonParser.requiredInt(metadata, "minSdkVersion");
+            String signerSha256 = StrictJsonParser.requiredString(metadata, "signerCertificateSha256");
 
-            JSONArray assets = release.getJSONArray("assets");
-            JSONObject apkAsset = null;
-            for (int index = 0; index < assets.length(); index++) {
-                JSONObject asset = assets.getJSONObject(index);
-                if (asset.optString("name", "").toLowerCase(java.util.Locale.ROOT).endsWith(".apk")) {
+            List<Object> assets = StrictJsonParser.array(release.get("assets"), "GitHub assets");
+            Map<String, Object> apkAsset = null;
+            for (Object value : assets) {
+                Map<String, Object> asset = StrictJsonParser.object(value, "GitHub asset");
+                String assetName = StrictJsonParser.requiredString(asset, "name");
+                if (assetName.toLowerCase(Locale.ROOT).endsWith(".apk")) {
                     if (apkAsset != null) throw invalid("Release contains more than one APK asset.");
                     apkAsset = asset;
                 }
             }
             if (apkAsset == null) throw invalid("Release does not contain one APK asset.");
-            String digest = apkAsset.optString("digest", "");
+            String digest = StrictJsonParser.requiredString(apkAsset, "digest");
             if (!digest.matches("(?i)sha256:[0-9a-f]{64}")) {
                 throw invalid("Release APK is missing its GitHub SHA-256 digest.");
             }
-            String assetUrl = apkAsset.getString("browser_download_url");
+            String assetUrl = StrictJsonParser.requiredString(apkAsset, "browser_download_url");
             String versionName = versionFromTag(tag);
             UpdaterCore.Release result = new UpdaterCore.Release(tag, versionName,
-                    name == null || name.trim().isEmpty() ? tag : name,
+                    name.trim().isEmpty() ? tag : name,
                     stripMetadata(body), applicationId, versionCode, minSdkVersion,
-                    apkAsset.getLong("size"), digest.substring("sha256:".length()),
+                    StrictJsonParser.requiredLong(apkAsset, "size"), digest.substring("sha256:".length()),
                     signerSha256, assetUrl, draft, prerelease);
             UpdaterCore.validateRelease(result);
             return result;
         } catch (UpdaterCore.UpdateException exception) {
             throw exception;
-        } catch (JSONException | RuntimeException exception) {
+        } catch (RuntimeException exception) {
             throw new UpdaterCore.UpdateException(UpdaterCore.Failure.INVALID_METADATA,
                     "GitHub returned invalid release metadata.", exception);
         }
@@ -118,6 +139,7 @@ public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
 
     private static String readLimited(InputStream input, int maximumBytes) throws IOException,
             UpdaterCore.UpdateException {
+        byte[] bytes;
         try (InputStream stream = input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8_192];
             int read;
@@ -128,7 +150,16 @@ public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
                 }
                 output.write(buffer, 0, read);
             }
-            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+            bytes = output.toByteArray();
+        }
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException exception) {
+            throw new UpdaterCore.UpdateException(UpdaterCore.Failure.INVALID_METADATA,
+                    "GitHub release response was not valid UTF-8.", exception);
         }
     }
 

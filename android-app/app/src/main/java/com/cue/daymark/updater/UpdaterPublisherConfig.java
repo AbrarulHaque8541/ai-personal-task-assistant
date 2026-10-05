@@ -5,6 +5,7 @@ import com.cue.daymark.BuildConfig;
 /**
  * Fail-closed publisher gate. Keep installation disabled until the publisher has a
  * protected release signing setup and has pinned the exact signer certificate SHA-256.
+ * Only the GitHub sideload flavor may opt in; the Play flavor always remains disabled.
  * Never use the debug key fingerprint here.
  */
 public final class UpdaterPublisherConfig {
@@ -15,6 +16,7 @@ public final class UpdaterPublisherConfig {
 
     public static boolean isInstallationConfigured() {
         return !BuildConfig.DEBUG
+                && BuildConfig.UPDATER_INSTALLATION_ENABLED
                 && INSTALLATION_ENABLED
                 && UpdaterCore.normalizeSha256(PUBLISHER_SIGNER_SHA256) != null;
     }
