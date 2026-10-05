@@ -22,7 +22,7 @@ import java.util.List;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 
-/** App-private, authenticated-encryption storage. All calls run on MainActivity's I/O executor. */
+/** App-private authenticated storage; the process lock also serializes separate Activity executors. */
 final class EncryptedTaskStore {
     private static final String KEY_ALIAS = "daymark.task-store.aes-gcm.v1";
     private static final Object FILE_ACCESS_LOCK = new Object();
@@ -212,7 +212,9 @@ final class EncryptedTaskStore {
 
     private List<Task> decodeTasks(byte[] plaintext) throws Exception {
         JSONObject document = new JSONObject(new String(plaintext, java.nio.charset.StandardCharsets.UTF_8));
-        if (document.optInt("version", -1) != 1) throw new IOException("Task data schema version is not supported.");
+        if (!TaskSnapshotSchema.isVersionOne(document.opt("version"))) {
+            throw new IOException("Task data schema version is not supported.");
+        }
         JSONArray array = document.optJSONArray("tasks");
         if (array == null) throw new IOException("Task data is missing its task list.");
 
@@ -223,10 +225,12 @@ final class EncryptedTaskStore {
             Object completedValue = object.opt("completed");
             if (!(completedValue instanceof Boolean)) throw new IOException("Task completion value is malformed.");
             Object dueValue = object.opt("dueDate");
-            String dueDate = dueValue == null || dueValue == JSONObject.NULL ? null : String.valueOf(dueValue);
-            Task task = new Task(object.optString("id", ""), object.optString("title", ""), dueDate,
-                    object.optString("priority", ""), (Boolean) completedValue,
-                    object.optString("createdAt", ""), object.optString("updatedAt", ""));
+            String dueDate = dueValue == JSONObject.NULL ? null : TaskSnapshotSchema.requireString(dueValue);
+            Task task = new Task(TaskSnapshotSchema.requireString(object.opt("id")),
+                    TaskSnapshotSchema.requireString(object.opt("title")), dueDate,
+                    TaskSnapshotSchema.requireString(object.opt("priority")), (Boolean) completedValue,
+                    TaskSnapshotSchema.requireString(object.opt("createdAt")),
+                    TaskSnapshotSchema.requireString(object.opt("updatedAt")));
             result.add(task);
         }
         if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");

@@ -7,5 +7,6 @@ python3 "$ROOT/tools/check-backup-rules.py"
 javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotSchema.java" \
   "$ROOT/tools/TaskLogicSmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke

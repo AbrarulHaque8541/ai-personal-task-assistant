@@ -16,6 +16,7 @@ public final class TaskLogicSmoke {
         datesAreStrictAndDateOnly();
         CRUDKeepsStableIdentityAndTimestamps();
         storedTaskSnapshotsMatchWriterRules();
+        snapshotSchemaRejectsCoercibleWrongTypes();
         filtersAndSearchCompose();
         suggestionsUseOnlyTransparentLocalRules();
         System.out.println("PASS Android core logic smoke tests: " + assertions + " assertions");
@@ -54,6 +55,17 @@ public final class TaskLogicSmoke {
                 "overlong persisted title is rejected");
         expectIllegalArgument(() -> TaskLogic.create("x".repeat(161), null, "medium"),
                 "overlong task creation is rejected");
+    }
+
+    private static void snapshotSchemaRejectsCoercibleWrongTypes() {
+        check(TaskSnapshotSchema.isVersionOne(1), "numeric schema version one is accepted");
+        check(!TaskSnapshotSchema.isVersionOne("1"), "string schema version is not coerced to a number");
+        check(!TaskSnapshotSchema.isVersionOne(1.5), "fractional schema version is not truncated to one");
+        check("title".equals(TaskSnapshotSchema.requireString("title")), "actual JSON string values are accepted");
+        expectIllegalArgument(() -> TaskSnapshotSchema.requireString(42),
+                "numeric task fields are not coerced to strings");
+        expectIllegalArgument(() -> TaskSnapshotSchema.requireString(null),
+                "missing required task strings are rejected");
     }
 
     private static void filtersAndSearchCompose() {

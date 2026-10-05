@@ -71,5 +71,11 @@ check("synchronized (FILE_ACCESS_LOCK)" in STORE,
       "file load/save operations are serialized across Activity instances")
 check("verifyLoadedSnapshotUnchanged()" in BLOB_STORE,
       "a stale Activity cannot overwrite a newer encrypted snapshot")
+check("TaskSnapshotSchema.isVersionOne(document.opt(\"version\"))" in STORE
+      and "optInt(" not in STORE,
+      "snapshot versions are validated without numeric coercion")
+check("TaskSnapshotSchema.requireString(object.opt(\"title\"))" in STORE
+      and "optString(" not in STORE,
+      "required task strings are validated without string coercion")
 
 print(f"PASS storage failure UI/source checks: {checks} assertions")
