@@ -54,6 +54,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -67,6 +68,7 @@ import java.util.concurrent.Executors;
 import com.cue.daymark.updater.AndroidApkVerifier;
 import com.cue.daymark.updater.GitHubApkDownloader;
 import com.cue.daymark.updater.GitHubReleaseClient;
+import com.cue.daymark.updater.PendingSaveTransaction;
 import com.cue.daymark.updater.SafApkSaver;
 import com.cue.daymark.updater.UpdaterCore;
 import com.cue.daymark.updater.UpdaterPublisherConfig;
@@ -84,6 +86,7 @@ public final class MainActivity extends Activity {
     private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
     private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
     private static final int REQUEST_SAVE_VERIFIED_APK = 7343;
+    private static final String PENDING_SAVE_STATE_KEY = "updater.pending_save_transaction.v1";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -114,6 +117,7 @@ public final class MainActivity extends Activity {
     private AlertDialog updateDownloadDialog;
     private File pendingVerifiedApk;
     private UpdaterCore.Release pendingVerifiedRelease;
+    private PendingSaveTransaction pendingSaveTransaction;
     private float textScale = 1.0f;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
@@ -160,12 +164,41 @@ public final class MainActivity extends Activity {
 
         GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
         updaterRecoveryStore = new UpdaterRecoveryStore(getNoBackupFilesDir());
+        restorePendingSaveTransaction(savedInstanceState);
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
         updaterExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
         buildInterface();
         loadEncryptedTasks();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        if (pendingSaveTransaction != null) {
+            outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction);
+        }
+        super.onSaveInstanceState(outState);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void restorePendingSaveTransaction(Bundle savedInstanceState) {
+        if (savedInstanceState == null) return;
+        Object saved = savedInstanceState.getSerializable(PENDING_SAVE_STATE_KEY);
+        if (!(saved instanceof PendingSaveTransaction)) return;
+        PendingSaveTransaction transaction = (PendingSaveTransaction) saved;
+        try {
+            UpdaterRecoveryStore.PendingUpdate retained = updaterRecoveryStore.readPending();
+            if (retained != null && transaction.isValidFor(retained.release)
+                    && retained.verifiedApk.isFile()
+                    && retained.verifiedApk.length() == retained.release.apkSizeBytes) {
+                pendingSaveTransaction = transaction;
+                pendingVerifiedApk = retained.verifiedApk;
+                pendingVerifiedRelease = retained.release;
+            }
+        } catch (Exception ignored) {
+            // Invalid state is never trusted; any stale returned URI is handled narrowly in the result callback.
+        }
     }
 
     @Override
@@ -176,6 +209,7 @@ public final class MainActivity extends Activity {
         // Recovery metadata and the verified cache file outlive this Activity/process instance.
         pendingVerifiedApk = null;
         pendingVerifiedRelease = null;
+        pendingSaveTransaction = null;
         if (storageExecutor != null) storageExecutor.shutdown();
         if (updaterExecutor != null) updaterExecutor.shutdownNow();
         super.onDestroy();
@@ -185,7 +219,8 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
-        if (!updateTransferRunning && !verifiedSaveRunning && pendingVerifiedApk == null
+        if (!updateTransferRunning && !verifiedSaveRunning && pendingSaveTransaction == null
+                && pendingVerifiedApk == null
                 && !recoverPendingVerifiedUpdate()) {
             checkForUpdates(false);
         }
@@ -202,14 +237,25 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQUEST_SAVE_VERIFIED_APK) return;
+        PendingSaveTransaction transaction = pendingSaveTransaction;
         File verifiedApk = pendingVerifiedApk;
         UpdaterCore.Release release = pendingVerifiedRelease;
+        pendingSaveTransaction = null;
         pendingVerifiedApk = null;
         pendingVerifiedRelease = null;
-        if (verifiedApk == null || release == null) return;
+        if (transaction == null || verifiedApk == null || release == null
+                || !transaction.isValidFor(release)) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                deleteStalePickerResultIfIdentifiable(data.getData());
+            }
+            recoverPendingVerifiedUpdate();
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            showSaveFailureChoices(release, verifiedApk,
-                    "No save location was selected. The verified update remains in app-private storage.");
+            if (!recoverPendingVerifiedUpdate()) {
+                showSaveFailureChoices(release, verifiedApk,
+                        "No save location was selected. The verified update remains in app-private storage.");
+            }
             return;
         }
         Uri destination = data.getData();
@@ -218,10 +264,11 @@ public final class MainActivity extends Activity {
             boolean saved = false;
             String failureMessage = null;
             try {
-                copyVerifiedApkToDocument(verifiedApk, destination, release);
+                revalidatePendingSaveTransaction(transaction, verifiedApk, release);
+                copyVerifiedApkToDocument(verifiedApk, destination, release, transaction);
                 saved = true;
             } catch (Exception exception) {
-                failureMessage = "The verified APK could not be saved safely. Interrupted partial copies are staged with a .daymark-incomplete marker; if the provider failed during finalization, check the chosen folder before retrying. The verified source remains in app-private storage for retry or explicit discard.";
+                failureMessage = "The verified APK could not be saved safely. The source is revalidated before copying, the destination is read back before finalization, and interrupted copies use a .daymark-incomplete marker; if the provider failed during finalization, check the chosen folder before retrying. The verified source remains in app-private storage for retry or explicit discard.";
             }
             final boolean savedResult = saved;
             final String saveFailure = failureMessage;
@@ -235,6 +282,33 @@ public final class MainActivity extends Activity {
                 }
             });
         });
+    }
+
+    private void deleteStalePickerResultIfIdentifiable(Uri destination) {
+        try {
+            String name = queryDocumentDisplayName(destination);
+            if (SafApkSaver.isReservedPendingPickerName(name)) {
+                // Delete only the exact ACTION_CREATE_DOCUMENT result URI, never search by name.
+                DocumentsContract.deleteDocument(getContentResolver(), destination);
+            }
+        } catch (Exception ignored) {
+            // Unrecognized, renamed, or provider-inaccessible results are left untouched.
+        }
+    }
+
+    private void revalidatePendingSaveTransaction(PendingSaveTransaction transaction,
+            File verifiedApk, UpdaterCore.Release release) throws Exception {
+        UpdaterRecoveryStore.PendingUpdate retained = updaterRecoveryStore.readPending();
+        if (retained == null || !transaction.isValidFor(retained.release)
+                || !transaction.isValidFor(release)
+                || !verifiedApk.getCanonicalFile().equals(retained.verifiedApk.getCanonicalFile())
+                || !verifiedApk.isFile()) {
+            throw new IOException("The pending picker transaction no longer matches the retained verified update.");
+        }
+        AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
+        UpdaterCore.verifyDownloadedArtifact(release, verifiedApk, getPackageName(), currentVersionCode(),
+                Build.VERSION.SDK_INT, verifier.installedSignerSha256(),
+                UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256, verifier);
     }
 
     private int themeResource(int mode) {
@@ -1587,17 +1661,21 @@ public final class MainActivity extends Activity {
 
     @SuppressWarnings("deprecation")
     private void startVerifiedApkSave(UpdaterCore.Release release, File verifiedApk) {
+        String token = UUID.randomUUID().toString().replace("-", "").toLowerCase(Locale.ROOT);
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, token);
         pendingVerifiedApk = verifiedApk;
         pendingVerifiedRelease = release;
+        pendingSaveTransaction = transaction;
         Intent saveIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         saveIntent.addCategory(Intent.CATEGORY_OPENABLE);
         saveIntent.setType("application/vnd.android.package-archive");
-        saveIntent.putExtra(Intent.EXTRA_TITLE, "Daymark-v" + release.versionName + ".apk");
+        saveIntent.putExtra(Intent.EXTRA_TITLE, transaction.pickerTitle);
         try {
             startActivityForResult(saveIntent, REQUEST_SAVE_VERIFIED_APK);
         } catch (Exception exception) {
             pendingVerifiedApk = null;
             pendingVerifiedRelease = null;
+            pendingSaveTransaction = null;
             mainHandler.post(() -> showSaveFailureChoices(release, verifiedApk,
                     "Android's file picker could not be opened. The verified update remains in app-private storage."));
         }
@@ -1627,8 +1705,8 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
 
-    private void copyVerifiedApkToDocument(File source, Uri destination, UpdaterCore.Release release)
-            throws Exception {
+    private void copyVerifiedApkToDocument(File source, Uri destination, UpdaterCore.Release release,
+            PendingSaveTransaction transaction) throws Exception {
         // ACTION_CREATE_DOCUMENT returns a newly created document; all operations remain scoped
         // to that URI. Never open an existing document by a guessed display name.
         SafApkSaver.copyVerifiedApk(source, release, new SafApkSaver.Document() {
@@ -1657,6 +1735,14 @@ public final class MainActivity extends Activity {
                 }
             }
 
+            @Override public InputStream openForRead() throws IOException {
+                try {
+                    return getContentResolver().openInputStream(documentUri);
+                } catch (Exception exception) {
+                    throw new IOException("The selected document could not be read back for verification.", exception);
+                }
+            }
+
             @Override public boolean delete() throws IOException {
                 try {
                     return DocumentsContract.deleteDocument(getContentResolver(), documentUri);
@@ -1664,7 +1750,7 @@ public final class MainActivity extends Activity {
                     throw new IOException("The app-created document could not be removed.", exception);
                 }
             }
-        }, UUID.randomUUID().toString());
+        }, transaction.token, transaction.pickerTitle, transaction.preferredFinalName);
     }
 
     private String queryDocumentDisplayName(Uri documentUri) throws IOException {

@@ -3,11 +3,15 @@ package com.cue.daymark.updater;
 import android.content.Context;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FilterOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -46,7 +50,10 @@ public final class GitHubTransportSmoke {
         downloaderCancellationMidTransferCleansPartial();
         interruptedTransferIsRemovedOnRestartWithoutTouchingUserData();
         promotedCandidateIsRecoveredAndRevalidatedAfterRestart();
+        pickerSaveTransactionSurvivesRecreationBeforeResult();
+        safSaveFinalizesAfterIndependentReadBack();
         interruptedSafCopyLeavesClearlyMarkedPartialDocument();
+        interruptedSafCopyIoFailureCleansOnlyCreatedDocument();
         safProviderWithoutRenameDoesNotWriteFinalDocument();
         safFinalizationCollisionPreservesUnrelatedDocument();
         System.out.println("PASS updater transport/parser fixtures: " + assertions + " assertions");
@@ -404,26 +411,56 @@ public final class GitHubTransportSmoke {
         File directory = Files.createTempDirectory("daymark-saf-interruption-").toFile();
         File source = new File(directory, "verified-source.apk");
         Files.write(source.toPath(), APK);
-        File chosenDocument = new File(directory, "Daymark-v1.2.3.apk");
-        check(chosenDocument.createNewFile(), "host document provider creates a new picker-selected document");
+        UpdaterCore.Release release = validRelease();
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, repeat('e', 32));
+        File chosenDocument = new File(directory, transaction.pickerTitle);
+        check(chosenDocument.createNewFile(), "provider creates a unique temporary-title picker document");
+        File finalDocument = new File(directory, transaction.preferredFinalName);
         File unrelated = new File(directory, "unrelated.txt");
         byte[] unrelatedBytes = "preserve-me".getBytes(StandardCharsets.UTF_8);
         Files.write(unrelated.toPath(), unrelatedBytes);
         FakeSafDocument document = new FakeSafDocument(chosenDocument, true, false, true);
         try {
-            SafApkSaver.copyVerifiedApk(source, validRelease(), document, "process-death-test");
+            SafApkSaver.copyVerifiedApk(source, release, document, transaction.token,
+                    transaction.pickerTitle, transaction.preferredFinalName);
             throw new AssertionError("simulated process interruption did not occur during SAF copy");
         } catch (SimulatedProcessDeath expected) {
             assertions++;
         }
-        check(document.displayName().contains(".daymark-incomplete-process-death-test"),
-                "an interrupted SAF copy remains under a conspicuous non-final name");
+        check(document.displayName().contains(".daymark-incomplete-" + transaction.token),
+                "process death during copy leaves a conspicuously marked staging name");
         check(document.file().isFile() && document.file().length() > 0
                         && document.file().length() < APK.length,
-                "the interrupted provider document contains an identifiable partial copy");
-        check(!chosenDocument.exists(), "the final-looking APK name is not left with partial bytes");
+                "the interrupted provider document contains identifiable partial bytes");
+        check(!finalDocument.exists(), "no final-looking APK name exists before complete verification");
         check(Arrays.equals(unrelatedBytes, Files.readAllBytes(unrelated.toPath())),
                 "interrupted staging never changes an unrelated document");
+        deleteTree(directory);
+    }
+
+    private static void interruptedSafCopyIoFailureCleansOnlyCreatedDocument() throws Exception {
+        File directory = Files.createTempDirectory("daymark-saf-io-interruption-").toFile();
+        File source = new File(directory, "verified-source.apk");
+        Files.write(source.toPath(), APK);
+        UpdaterCore.Release release = validRelease();
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, repeat('a', 32));
+        File chosenDocument = new File(directory, transaction.pickerTitle);
+        check(chosenDocument.createNewFile(), "picker creates a fresh temporary document before interrupted copy");
+        byte[] unrelatedBytes = "unrelated-must-survive".getBytes(StandardCharsets.UTF_8);
+        File unrelated = new File(directory, "unrelated.txt");
+        Files.write(unrelated.toPath(), unrelatedBytes);
+        FakeSafDocument document = new FakeSafDocument(chosenDocument, false, false, true, true);
+        assertions++;
+        try {
+            SafApkSaver.copyVerifiedApk(source, release, document, transaction.token,
+                    transaction.pickerTitle, transaction.preferredFinalName);
+            throw new AssertionError("simulated destination I/O interruption unexpectedly succeeded");
+        } catch (IOException expected) {
+            // Ordinary I/O failure attempts best-effort deletion of only the URI-backed fixture.
+        }
+        check(!document.file().exists(), "ordinary copy interruption best-effort deletes its app-created partial document");
+        check(Arrays.equals(unrelatedBytes, Files.readAllBytes(unrelated.toPath())),
+                "ordinary copy interruption leaves an unrelated document byte-for-byte unchanged");
         deleteTree(directory);
     }
 
@@ -431,12 +468,15 @@ public final class GitHubTransportSmoke {
         File directory = Files.createTempDirectory("daymark-saf-no-rename-").toFile();
         File source = new File(directory, "verified-source.apk");
         Files.write(source.toPath(), APK);
-        File chosenDocument = new File(directory, "Daymark-v1.2.3.apk");
+        UpdaterCore.Release release = validRelease();
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, repeat('f', 32));
+        File chosenDocument = new File(directory, transaction.pickerTitle);
         check(chosenDocument.createNewFile(), "picker creates a new destination for a provider without rename support");
         FakeSafDocument document = new FakeSafDocument(chosenDocument, false, false, false);
         assertions++;
         try {
-            SafApkSaver.copyVerifiedApk(source, validRelease(), document, "no-rename-test");
+            SafApkSaver.copyVerifiedApk(source, release, document, transaction.token,
+                    transaction.pickerTitle, transaction.preferredFinalName);
             throw new AssertionError("provider without rename support unexpectedly accepted a copy");
         } catch (IOException expected) {
             // A provider that cannot mark the document must not receive partial APK bytes.
@@ -450,22 +490,77 @@ public final class GitHubTransportSmoke {
         File directory = Files.createTempDirectory("daymark-saf-collision-").toFile();
         File source = new File(directory, "verified-source.apk");
         Files.write(source.toPath(), APK);
-        File chosenDocument = new File(directory, "Daymark-v1.2.3.apk");
+        UpdaterCore.Release release = validRelease();
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, repeat('b', 32));
+        File chosenDocument = new File(directory, transaction.pickerTitle);
         check(chosenDocument.createNewFile(), "picker creates a fresh destination before copy");
         FakeSafDocument document = new FakeSafDocument(chosenDocument, false, true, true);
         byte[] unrelatedBytes = "unrelated-existing-document".getBytes(StandardCharsets.UTF_8);
         assertions++;
         try {
-            SafApkSaver.copyVerifiedApk(source, validRelease(), document, "collision-test");
+            SafApkSaver.copyVerifiedApk(source, release, document, transaction.token,
+                    transaction.pickerTitle, transaction.preferredFinalName);
             throw new AssertionError("finalization collision unexpectedly succeeded");
         } catch (IOException expected) {
             // The provider refuses the final rename instead of replacing the document that appeared there.
         }
-        File unrelated = new File(directory, "Daymark-v1.2.3.apk");
+        File unrelated = new File(directory, transaction.preferredFinalName);
         check(unrelated.isFile() && Arrays.equals(unrelatedBytes, Files.readAllBytes(unrelated.toPath())),
                 "finalization does not overwrite an unrelated document that occupies the requested name");
-        check(document.file().isFile() && document.displayName().contains(".daymark-incomplete-collision-test"),
+        check(document.file().isFile() && document.displayName().contains(".daymark-incomplete-" + transaction.token),
                 "failed provider finalization leaves the verified candidate identifiable under its staging name");
+        deleteTree(directory);
+    }
+
+    private static void pickerSaveTransactionSurvivesRecreationBeforeResult() throws Exception {
+        UpdaterCore.Release release = validRelease();
+        PendingSaveTransaction beforeRotation = new PendingSaveTransaction(release, repeat('c', 32));
+        ByteArrayOutputStream stateBytes = new ByteArrayOutputStream();
+        try (ObjectOutputStream state = new ObjectOutputStream(stateBytes)) {
+            state.writeObject(beforeRotation);
+        }
+        PendingSaveTransaction afterRecreation;
+        try (ObjectInputStream state = new ObjectInputStream(
+                new ByteArrayInputStream(stateBytes.toByteArray()))) {
+            afterRecreation = (PendingSaveTransaction) state.readObject();
+        }
+        check(afterRecreation.isValidFor(release),
+                "a saved picker transaction still matches its app-private verified release after recreation");
+        check(afterRecreation.token.equals(beforeRotation.token)
+                        && afterRecreation.pickerTitle.equals(beforeRotation.pickerTitle),
+                "recreation restores the exact transaction token and temporary picker title before the result arrives");
+        check(SafApkSaver.isReservedPendingPickerName(afterRecreation.pickerTitle),
+                "the default empty picker document has a strict, identifiable non-APK title");
+        check(!SafApkSaver.isReservedPendingPickerName(afterRecreation.preferredFinalName)
+                        && !SafApkSaver.isReservedPendingPickerName("unrelated.txt"),
+                "stale-result cleanup recognition excludes final APKs and unrelated document names");
+    }
+
+    private static void safSaveFinalizesAfterIndependentReadBack() throws Exception {
+        File directory = Files.createTempDirectory("daymark-saf-readback-").toFile();
+        File source = new File(directory, "verified-source.apk");
+        Files.write(source.toPath(), APK);
+        UpdaterCore.Release release = validRelease();
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, repeat('d', 32));
+        File pickerDocument = new File(directory, transaction.pickerTitle);
+        check(pickerDocument.createNewFile(), "picker creates only a unique temporary-title document before copy");
+        check(!new File(directory, transaction.preferredFinalName).exists(),
+                "the final-looking APK does not exist while the empty picker destination is pending");
+        FakeSafDocument document = new FakeSafDocument(pickerDocument, false, false, true);
+
+        SafApkSaver.copyVerifiedApk(source, release, document, transaction.token,
+                transaction.pickerTitle, transaction.preferredFinalName);
+
+        File finalized = new File(directory, transaction.preferredFinalName);
+        check(finalized.isFile() && !pickerDocument.exists(),
+                "successful verified read-back finalizes the temporary title to the requested APK name");
+        byte[] independentlyReadBytes = Files.readAllBytes(finalized.toPath());
+        check(Arrays.equals(APK, independentlyReadBytes),
+                "the test independently reads the finalized destination bytes after save");
+        check(sha256(independentlyReadBytes).equals(release.apkSha256),
+                "independently read destination bytes match the release SHA-256 digest");
+        check(document.readOpenedCount() == 1,
+                "the production saver independently opened the provider destination for read-back");
         deleteTree(directory);
     }
 
@@ -631,18 +726,24 @@ public final class GitHubTransportSmoke {
     }
 
     private static final class FakeSafDocument implements SafApkSaver.Document {
-        private final String initialName;
         private final boolean interruptDuringWrite;
+        private final boolean ioFailureDuringWrite;
         private final boolean createFinalCollision;
         private final boolean renameSupported;
         private File file;
         private boolean writeOpened;
+        private int readOpenedCount;
 
         FakeSafDocument(File file, boolean interruptDuringWrite,
                 boolean createFinalCollision, boolean renameSupported) {
+            this(file, interruptDuringWrite, createFinalCollision, renameSupported, false);
+        }
+
+        FakeSafDocument(File file, boolean interruptDuringWrite,
+                boolean createFinalCollision, boolean renameSupported, boolean ioFailureDuringWrite) {
             this.file = file;
-            this.initialName = file.getName();
             this.interruptDuringWrite = interruptDuringWrite;
+            this.ioFailureDuringWrite = ioFailureDuringWrite;
             this.createFinalCollision = createFinalCollision;
             this.renameSupported = renameSupported;
         }
@@ -652,7 +753,7 @@ public final class GitHubTransportSmoke {
         @Override public String renameTo(String displayName) throws IOException {
             if (!renameSupported) return null;
             File target = new File(file.getParentFile(), displayName);
-            if (createFinalCollision && displayName.equals(initialName)) {
+            if (createFinalCollision && displayName.endsWith(".apk")) {
                 Files.write(target.toPath(), "unrelated-existing-document".getBytes(StandardCharsets.UTF_8));
                 return null;
             }
@@ -665,7 +766,7 @@ public final class GitHubTransportSmoke {
         @Override public OutputStream openForWrite() throws IOException {
             writeOpened = true;
             OutputStream output = new FileOutputStream(file, false);
-            if (!interruptDuringWrite) return output;
+            if (!interruptDuringWrite && !ioFailureDuringWrite) return output;
             return new FilterOutputStream(output) {
                 private boolean interrupted;
 
@@ -673,6 +774,7 @@ public final class GitHubTransportSmoke {
                     if (!interrupted) {
                         out.write(bytes, offset, Math.max(1, length / 2));
                         interrupted = true;
+                        if (ioFailureDuringWrite) throw new IOException("simulated provider write failure");
                         throw new SimulatedProcessDeath();
                     }
                     out.write(bytes, offset, length);
@@ -680,10 +782,16 @@ public final class GitHubTransportSmoke {
             };
         }
 
+        @Override public InputStream openForRead() throws IOException {
+            readOpenedCount++;
+            return new FileInputStream(file);
+        }
+
         @Override public boolean delete() { return file.delete() || !file.exists(); }
 
         File file() { return file; }
         boolean writeOpened() { return writeOpened; }
+        int readOpenedCount() { return readOpenedCount; }
     }
 
     private static final class TestContext extends Context {

@@ -81,13 +81,22 @@ assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new
 assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
 assert "StrictJsonParser.parse(json)" in release_client and "MAX_RESPONSE_BYTES" in release_client, "release JSON must use the bounded strict parser"
 assert "connectionFactory.open" in release_client and "connectionFactory.open" in downloader, "HTTP transports must remain fixture-testable"
-for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys", "productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver", "promotedCandidateIsRecoveredAndRevalidatedAfterRestart", "interruptedSafCopyLeavesClearlyMarkedPartialDocument", "safFinalizationCollisionPreservesUnrelatedDocument"):
+for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys", "productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver", "promotedCandidateIsRecoveredAndRevalidatedAfterRestart", "pickerSaveTransactionSurvivesRecreationBeforeResult", "safSaveFinalizesAfterIndependentReadBack", "interruptedSafCopyLeavesClearlyMarkedPartialDocument", "interruptedSafCopyIoFailureCleansOnlyCreatedDocument", "safFinalizationCollisionPreservesUnrelatedDocument"):
     assert marker in release_test, f"missing updater transport/parser fixture: {marker}"
 assert ".daymark-incomplete-" in saf_saver, "SAF staging names must make incomplete copies conspicuous"
-assert saf_saver.index("renameTo(incompleteName)") < saf_saver.index("destination.openForWrite()") < saf_saver.index("renameTo(finalName)"), \
-    "SAF destinations must be marked before writing and finalized only after verified copying"
-assert "DocumentsContract.renameDocument" in activity and "openOutputStream(documentUri, \"w\")" in activity, \
+assert saf_saver.index("renameTo(incompleteName)") < saf_saver.index("destination.openForWrite()") < saf_saver.index("destination.openForRead()") < saf_saver.index("renameTo(finalName)"), \
+    "SAF destinations must be staged before writing, independently read back, then finalized"
+assert "DocumentsContract.renameDocument" in activity and "openOutputStream(documentUri, \"w\")" in activity \
+    and "openInputStream(documentUri)" in activity, \
     "Android SAF operations must remain scoped to the picker-created URI"
+assert "outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction)" in activity \
+    and "savedInstanceState.getSerializable(PENDING_SAVE_STATE_KEY)" in activity, \
+    "an Activity recreation while the picker is open must restore its pending transaction"
+assert "revalidatePendingSaveTransaction(transaction" in activity and "UpdaterCore.verifyDownloadedArtifact" in activity, \
+    "a restored picker callback must revalidate the app-private verified source before copying"
+assert "SafApkSaver.isReservedPendingPickerName(name)" in activity \
+    and "DocumentsContract.deleteDocument(getContentResolver(), destination)" in activity, \
+    "stale picker cleanup must inspect and delete only the exact returned URI with the reserved temporary name"
 assert "Files.write(verifiedTemp.toPath(), APK)" not in release_test, \
     "restart recovery coverage must not fabricate a digest-addressed verified artifact"
 assert "android.permission.REQUEST_INSTALL_PACKAGES" not in (root / "app/src/githubSideload/AndroidManifest.xml").read_text(encoding="utf-8"), "REQUEST_INSTALL_PACKAGES must remain absent"
