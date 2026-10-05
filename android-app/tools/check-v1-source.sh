@@ -94,9 +94,10 @@ assert "outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction)
     "an Activity recreation while the picker is open must restore its pending transaction"
 assert "revalidatePendingSaveTransaction(transaction" in activity and "UpdaterCore.verifyDownloadedArtifact" in activity, \
     "a restored picker callback must revalidate the app-private verified source before copying"
-assert "SafApkSaver.isReservedPendingPickerName(name)" in activity \
-    and "DocumentsContract.deleteDocument(getContentResolver(), destination)" in activity, \
-    "stale picker cleanup must inspect and delete only the exact returned URI with the reserved temporary name"
+assert "cleanStalePickerResult(data.getData())" in activity \
+    and "DocumentsContract.renameDocument(getContentResolver(), cleanupUri, orphanName)" in activity \
+    and "DocumentsContract.deleteDocument(getContentResolver(), cleanupUri)" in activity, \
+    "stale picker cleanup must mark and delete only the exact URI returned by ACTION_CREATE_DOCUMENT"
 assert "Files.write(verifiedTemp.toPath(), APK)" not in release_test, \
     "restart recovery coverage must not fabricate a digest-addressed verified artifact"
 assert "android.permission.REQUEST_INSTALL_PACKAGES" not in (root / "app/src/githubSideload/AndroidManifest.xml").read_text(encoding="utf-8"), "REQUEST_INSTALL_PACKAGES must remain absent"

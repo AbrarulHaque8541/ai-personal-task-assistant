@@ -246,7 +246,7 @@ public final class MainActivity extends Activity {
         if (transaction == null || verifiedApk == null || release == null
                 || !transaction.isValidFor(release)) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                deleteStalePickerResultIfIdentifiable(data.getData());
+                cleanStalePickerResult(data.getData());
             }
             recoverPendingVerifiedUpdate();
             return;
@@ -284,15 +284,22 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void deleteStalePickerResultIfIdentifiable(Uri destination) {
+    private void cleanStalePickerResult(Uri destination) {
+        // This callback is only for our ACTION_CREATE_DOCUMENT request. Rename/delete the returned
+        // newly-created URI itself; never search for, or delete, a document by display name.
+        Uri cleanupUri = destination;
+        String orphanName = "Daymark-orphaned-save-"
+                + UUID.randomUUID().toString().replace("-", "").toLowerCase(Locale.ROOT) + ".tmp";
         try {
-            String name = queryDocumentDisplayName(destination);
-            if (SafApkSaver.isReservedPendingPickerName(name)) {
-                // Delete only the exact ACTION_CREATE_DOCUMENT result URI, never search by name.
-                DocumentsContract.deleteDocument(getContentResolver(), destination);
-            }
+            Uri marked = DocumentsContract.renameDocument(getContentResolver(), cleanupUri, orphanName);
+            if (marked != null) cleanupUri = marked;
         } catch (Exception ignored) {
-            // Unrecognized, renamed, or provider-inaccessible results are left untouched.
+            // Providers may not support rename; still attempt deletion of this exact returned URI.
+        }
+        try {
+            DocumentsContract.deleteDocument(getContentResolver(), cleanupUri);
+        } catch (Exception ignored) {
+            // If cleanup is unsupported, a successful rename leaves a conspicuous orphan marker.
         }
     }
 
