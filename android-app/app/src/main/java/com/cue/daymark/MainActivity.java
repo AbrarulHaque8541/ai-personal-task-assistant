@@ -70,6 +70,7 @@ import com.cue.daymark.updater.GitHubApkDownloader;
 import com.cue.daymark.updater.GitHubReleaseClient;
 import com.cue.daymark.updater.UpdaterCore;
 import com.cue.daymark.updater.UpdaterPublisherConfig;
+import com.cue.daymark.updater.UpdaterRecoveryStore;
 
 public final class MainActivity extends Activity {
     private static final String PREFERENCES = "daymark.preferences.v1";
@@ -95,6 +96,7 @@ public final class MainActivity extends Activity {
 
     private ExecutorService storageExecutor;
     private ExecutorService updaterExecutor;
+    private UpdaterRecoveryStore updaterRecoveryStore;
     private EncryptedTaskStore taskStore;
     private boolean storageReady;
     private long saveRevision;
@@ -104,6 +106,9 @@ public final class MainActivity extends Activity {
     private boolean highContrast;
     private boolean updateCheckRunning;
     private boolean updateTransferRunning;
+    private boolean verifiedSaveRunning;
+    private boolean recoveryCheckRunning;
+    private boolean recoveryPromptShowing;
     private boolean activityResumed;
     private GitHubApkDownloader activeUpdateDownloader;
     private AlertDialog updateDownloadDialog;
@@ -154,6 +159,7 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
+        updaterRecoveryStore = new UpdaterRecoveryStore(getNoBackupFilesDir());
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
         updaterExecutor = Executors.newSingleThreadExecutor();
@@ -167,7 +173,9 @@ public final class MainActivity extends Activity {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         if (activeUpdateDownloader != null) activeUpdateDownloader.cancel();
         if (updateDownloadDialog != null && updateDownloadDialog.isShowing()) updateDownloadDialog.dismiss();
-        discardPendingVerifiedApk();
+        // Recovery metadata and the verified cache file outlive this Activity/process instance.
+        pendingVerifiedApk = null;
+        pendingVerifiedRelease = null;
         if (storageExecutor != null) storageExecutor.shutdown();
         if (updaterExecutor != null) updaterExecutor.shutdownNow();
         super.onDestroy();
@@ -177,7 +185,10 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
-        checkForUpdates(false);
+        if (!updateTransferRunning && !verifiedSaveRunning && pendingVerifiedApk == null
+                && !recoverPendingVerifiedUpdate()) {
+            checkForUpdates(false);
+        }
     }
 
     @Override
@@ -197,11 +208,12 @@ public final class MainActivity extends Activity {
         pendingVerifiedRelease = null;
         if (verifiedApk == null || release == null) return;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            verifiedApk.delete();
-            showInfo("APK not saved", "The verified APK was discarded. No update was installed.");
+            showSaveFailureChoices(release, verifiedApk,
+                    "No save location was selected. The verified update remains in app-private storage.");
             return;
         }
         Uri destination = data.getData();
+        verifiedSaveRunning = true;
         updaterExecutor.execute(() -> {
             boolean saved = false;
             String failureMessage = null;
@@ -209,20 +221,19 @@ public final class MainActivity extends Activity {
                 copyVerifiedApkToDocument(verifiedApk, destination, release);
                 saved = true;
             } catch (Exception exception) {
-                failureMessage = "The verified APK could not be saved safely. No update was installed.";
+                failureMessage = "The verified APK could not be saved safely. It remains in app-private storage for retry or explicit discard.";
                 try { DocumentsContract.deleteDocument(getContentResolver(), destination); }
                 catch (Exception ignored) { }
-            } finally {
-                verifiedApk.delete();
             }
             final boolean savedResult = saved;
             final String saveFailure = failureMessage;
             mainHandler.post(() -> {
-                if (isFinishing() || isDestroyed()) return;
+                verifiedSaveRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
                 if (savedResult) {
-                    showInfo("Verified APK saved", "The APK passed the size, hash, package, version, minimum Android version, and signer checks. Daymark did not open an installer or install it. If you choose to continue, open the saved APK yourself from Files; Android controls any install-source approval and final confirmation.");
+                    showInfo("Verified APK saved", "A copy was saved to your chosen location. Daymark did not open an installer or install it. The verified app-private copy remains available until you explicitly discard it; open the saved copy yourself from Files if you choose to continue.");
                 } else {
-                    showInfo("APK not saved", saveFailure);
+                    showSaveFailureChoices(release, verifiedApk, saveFailure);
                 }
             });
         });
@@ -1361,13 +1372,19 @@ public final class MainActivity extends Activity {
             showInfo("Update unavailable", "The GitHub sideload build, Internet access, and a protected publisher signer are required. No APK was downloaded; tasks remain usable.");
             return;
         }
+        try {
+            updaterRecoveryStore.recordPending(release);
+        } catch (Exception exception) {
+            showInfo("Update not started", "A prior verified update must be recovered or explicitly discarded before another download. No APK was downloaded.");
+            return;
+        }
         updateTransferRunning = true;
         GitHubApkDownloader downloader = new GitHubApkDownloader(getApplicationContext(), allowMobileData,
                 () -> isWifiConnected(getApplicationContext()));
         activeUpdateDownloader = downloader;
         updateDownloadDialog = new AlertDialog.Builder(this)
                 .setTitle("Downloading and verifying")
-                .setMessage("The APK is being downloaded to temporary app storage. Cancel stops the transfer or discards it if verification has started; nothing is saved until all checks pass.")
+                .setMessage("The APK is being downloaded to temporary app storage. Cancel stops active transfer or verification. A fully verified APK remains private until you choose Save or Discard.")
                 .setNegativeButton("Cancel", (dialog, which) -> downloader.cancel())
                 .create();
         updateDownloadDialog.setCancelable(false);
@@ -1392,6 +1409,10 @@ public final class MainActivity extends Activity {
                 failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,
                         "Downloaded update could not be safely verified.", exception);
             }
+            if (failure != null || (result != null && result.status == UpdaterCore.VerificationStatus.CANCELLED)) {
+                try { updaterRecoveryStore.clearIfNoVerifiedArtifact(release); }
+                catch (Exception ignored) { }
+            }
             final UpdaterCore.VerificationResult completedResult = result;
             final UpdaterCore.UpdateException completedFailure = failure;
             mainHandler.post(() -> {
@@ -1402,9 +1423,7 @@ public final class MainActivity extends Activity {
                 updateDownloadDialog = null;
                 if (activeUpdateDownloader == downloader) activeUpdateDownloader = null;
                 if (!activityResumed || isFinishing() || isDestroyed()) {
-                    if (completedResult != null && completedResult.verifiedApk != null) {
-                        completedResult.verifiedApk.delete();
-                    }
+                    // A verified result remains paired with its persistent recovery record.
                     return;
                 }
                 if (completedFailure != null) {
@@ -1430,15 +1449,142 @@ public final class MainActivity extends Activity {
         return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
     }
 
+    /** Revalidate any retained artifact before offering it; no verified cache file is swept at startup. */
+    private boolean recoverPendingVerifiedUpdate() {
+        if (updaterRecoveryStore == null || recoveryPromptShowing) return recoveryPromptShowing;
+        boolean hasRecord = updaterRecoveryStore.hasPendingRecord();
+        if (!hasRecord) {
+            try {
+                List<File> orphanedArtifacts = updaterRecoveryStore.listVerifiedArtifacts();
+                if (!orphanedArtifacts.isEmpty()) {
+                    offerUnrecoverableArtifact(orphanedArtifacts.get(0));
+                    return true;
+                }
+            } catch (IOException ignored) { }
+            return false;
+        }
+        if (recoveryCheckRunning) return true;
+        recoveryCheckRunning = true;
+        updaterExecutor.execute(() -> {
+            UpdaterRecoveryStore.PendingUpdate pending = null;
+            UpdaterCore.UpdateException failure = null;
+            boolean unreadableRecord = false;
+            try {
+                pending = updaterRecoveryStore.readPending();
+                if (pending != null && !pending.verifiedApk.isFile()) {
+                    updaterRecoveryStore.clearIfNoVerifiedArtifact(pending.release);
+                    pending = null;
+                } else if (pending != null) {
+                    AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
+                    UpdaterCore.verifyDownloadedArtifact(pending.release, pending.verifiedApk,
+                            getPackageName(), currentVersionCode(), Build.VERSION.SDK_INT,
+                            verifier.installedSignerSha256(),
+                            UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256, verifier);
+                }
+            } catch (UpdaterCore.UpdateException exception) {
+                failure = exception;
+                unreadableRecord = pending == null;
+            } catch (Exception exception) {
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,
+                        "Retained update could not be safely revalidated.", exception);
+                unreadableRecord = pending == null;
+            }
+            final UpdaterRecoveryStore.PendingUpdate recovered = pending;
+            final UpdaterCore.UpdateException recoveryFailure = failure;
+            final boolean recoveryRecordUnreadable = unreadableRecord;
+            mainHandler.post(() -> {
+                recoveryCheckRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (recovered != null) {
+                    if (recoveryFailure == null) offerManualApkSave(recovered.release, recovered.verifiedApk);
+                    else offerInvalidRecovery(recovered);
+                } else if (recoveryRecordUnreadable) {
+                    offerUnreadableRecoveryRecord();
+                } else if (!recoverPendingVerifiedUpdate()) {
+                    checkForUpdates(false);
+                }
+            });
+        });
+        return true;
+    }
+
+    private void offerInvalidRecovery(UpdaterRecoveryStore.PendingUpdate pending) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Update recovery not verified")
+                .setMessage("The retained APK no longer matches its stored digest, package, version, or signer expectations. It will not be offered for saving or opening. Keep it in private storage or explicitly discard it.")
+                .setPositiveButton("Discard retained APK", (ignored, which) -> discardVerifiedUpdate(pending.release))
+                .setNegativeButton("Keep for now", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    private void offerUnreadableRecoveryRecord() {
+        try {
+            List<File> artifacts = updaterRecoveryStore.listVerifiedArtifacts();
+            if (!artifacts.isEmpty()) {
+                offerUnrecoverableArtifact(artifacts.get(0));
+                return;
+            }
+        } catch (IOException ignored) { }
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Update recovery unavailable")
+                .setMessage("The retained update record could not be validated and no APK will be offered. Clear only the invalid recovery record, or keep it for now?")
+                .setPositiveButton("Clear invalid record", (ignored, which) -> {
+                    try { updaterRecoveryStore.clearInvalidRecordAfterUserChoice(); }
+                    catch (IOException exception) {
+                        showInfo("Recovery record retained", "The invalid update record could not be cleared safely.");
+                    }
+                })
+                .setNegativeButton("Keep for now", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    private void offerUnrecoverableArtifact(File artifact) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Retained APK needs review")
+                .setMessage("A verified-cache APK has no readable recovery metadata, so Daymark cannot safely offer it for saving or opening. It will remain in private storage unless you explicitly discard it.")
+                .setPositiveButton("Discard retained APK", (ignored, which) -> {
+                    try {
+                        updaterRecoveryStore.discardOrphanAfterUserChoice(artifact);
+                        Toast.makeText(this, "Retained APK discarded. Nothing was installed.", Toast.LENGTH_LONG).show();
+                    } catch (IOException exception) {
+                        showInfo("APK retained", "The retained update could not be discarded safely.");
+                    }
+                    mainHandler.post(() -> {
+                        if (activityResumed && !recoverPendingVerifiedUpdate()) checkForUpdates(false);
+                    });
+                })
+                .setNegativeButton("Keep for now", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
     @SuppressWarnings("deprecation")
     private void offerManualApkSave(UpdaterCore.Release release, File verifiedApk) {
-        new AlertDialog.Builder(this)
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("APK verified — not installed")
-                .setMessage("The APK passed the declared size, SHA-256, package, version, minimum Android version, and signer checks. Daymark will not open an installer. Save a copy to a location you choose; if you decide to continue, open it yourself from Files. Android controls any install-source approval and final confirmation.")
+                .setMessage("The APK passed the declared size, SHA-256, package, version, minimum Android version, and signer checks. The verified app-private copy is retained across restarts until you explicitly discard it. Daymark will not open an installer. Save a copy to a location you choose; if you decide to continue, open it yourself from Files. Android controls any install-source approval and final confirmation.")
                 .setPositiveButton("Save verified APK", (ignored, which) -> startVerifiedApkSave(release, verifiedApk))
-                .setNegativeButton("Discard", (ignored, which) -> verifiedApk.delete())
-                .setOnCancelListener(ignored -> verifiedApk.delete())
-                .show();
+                .setNegativeButton("Discard", (ignored, which) -> discardVerifiedUpdate(release))
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
     }
 
     @SuppressWarnings("deprecation")
@@ -1452,15 +1598,35 @@ public final class MainActivity extends Activity {
         try {
             startActivityForResult(saveIntent, REQUEST_SAVE_VERIFIED_APK);
         } catch (Exception exception) {
-            discardPendingVerifiedApk();
-            showInfo("APK not saved", "Android's file picker could not be opened. The verified temporary APK was discarded; no update was installed.");
+            pendingVerifiedApk = null;
+            pendingVerifiedRelease = null;
+            mainHandler.post(() -> showSaveFailureChoices(release, verifiedApk,
+                    "Android's file picker could not be opened. The verified update remains in app-private storage."));
         }
     }
 
-    private void discardPendingVerifiedApk() {
-        if (pendingVerifiedApk != null) pendingVerifiedApk.delete();
-        pendingVerifiedApk = null;
-        pendingVerifiedRelease = null;
+    private void discardVerifiedUpdate(UpdaterCore.Release release) {
+        try {
+            updaterRecoveryStore.removeAfterUserChoice(release);
+            Toast.makeText(this, "Verified update discarded. Nothing was installed.", Toast.LENGTH_LONG).show();
+        } catch (Exception exception) {
+            showInfo("Update retained", "The verified update could not be discarded safely and remains in app-private storage.");
+        }
+    }
+
+    private void showSaveFailureChoices(UpdaterCore.Release release, File verifiedApk, String message) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("APK not saved")
+                .setMessage(message + " No update was installed.")
+                .setPositiveButton("Try saving again", (ignored, which) -> startVerifiedApkSave(release, verifiedApk))
+                .setNegativeButton("Discard", (ignored, which) -> discardVerifiedUpdate(release))
+                .setNeutralButton("Keep for later", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
     }
 
     private void copyVerifiedApkToDocument(File source, Uri destination, UpdaterCore.Release release)

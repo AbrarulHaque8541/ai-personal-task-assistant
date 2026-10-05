@@ -12,7 +12,7 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Downloads one consented GitHub release APK into the app-private cache, with strict byte bounds. */
+/** Downloads one consented GitHub release APK into bounded, persistent, app-private updater storage. */
 public final class GitHubApkDownloader implements UpdaterCore.Downloader {
     private static final int CONNECT_TIMEOUT_MILLIS = 15_000;
     private static final int READ_TIMEOUT_MILLIS = 30_000;
@@ -71,7 +71,7 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
     public static synchronized void cleanupPartialDownloads(Context context) {
         if (startupCleanupComplete || context == null) return;
         startupCleanupComplete = true;
-        File directory = new File(context.getCacheDir(), TEMP_DIRECTORY_NAME);
+        File directory = new File(context.getNoBackupFilesDir(), TEMP_DIRECTORY_NAME);
         File[] files = directory.listFiles();
         if (files == null) return;
         for (File file : files) {
@@ -90,7 +90,7 @@ public final class GitHubApkDownloader implements UpdaterCore.Downloader {
             throw new UpdaterCore.UpdateException(UpdaterCore.Failure.INVALID_METADATA,
                     "APK URL is not a Daymark GitHub release asset.");
         }
-        File directory = new File(context.getCacheDir(), TEMP_DIRECTORY_NAME);
+        File directory = new File(context.getNoBackupFilesDir(), TEMP_DIRECTORY_NAME);
         if (!directory.isDirectory() && !directory.mkdirs()) {
             throw new UpdaterCore.UpdateException(UpdaterCore.Failure.DOWNLOAD,
                     "Could not create private temporary storage for the APK.");

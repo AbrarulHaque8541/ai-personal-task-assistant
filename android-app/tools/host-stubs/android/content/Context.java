@@ -6,4 +6,5 @@ import java.io.File;
 public abstract class Context {
     public abstract Context getApplicationContext();
     public abstract File getCacheDir();
+    public abstract File getNoBackupFilesDir();
 }

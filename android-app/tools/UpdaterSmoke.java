@@ -1,10 +1,12 @@
 package com.cue.daymark;
 
 import com.cue.daymark.updater.UpdaterCore;
+import com.cue.daymark.updater.UpdaterRecoveryStore;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.RandomAccessFile;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,6 +35,7 @@ public final class UpdaterSmoke {
         signingCertificateMismatchFailsClosed();
         emptyPublisherSignerBlocksConsentAndDownload();
         verifiedArtifactIsReportedWithoutInstallHandoff();
+        verifiedArtifactRecoverySurvivesRestartAndRevalidates();
         System.out.println("PASS updater host tests: " + assertions + " assertions");
     }
 
@@ -257,6 +260,60 @@ public final class UpdaterSmoke {
         check(result.verifiedApk.delete(), "caller can discard the verified temporary APK after saving or cancellation");
     }
 
+    private static void verifiedArtifactRecoverySurvivesRestartAndRevalidates() throws Exception {
+        File root = Files.createTempDirectory("daymark-updater-recovery-").toFile();
+        File storageDirectory = new File(root, "updater-no-backup");
+        File taskDataDirectory = new File(root, "tasks");
+        check(storageDirectory.mkdirs() && taskDataDirectory.mkdirs(),
+                "host recovery storage is persistent app-private and separate from task data");
+        File taskData = new File(taskDataDirectory, "encrypted-tasks.data");
+        Files.write(taskData.toPath(), new byte[] { 7, 8, 9 });
+
+        UpdaterRecoveryStore firstProcess = new UpdaterRecoveryStore(storageDirectory);
+        UpdaterCore.Release release = validRelease();
+        firstProcess.recordPending(release);
+        UpdaterRecoveryStore.PendingUpdate firstRecord = firstProcess.readPending();
+        check(firstProcess.hasPendingRecord() && firstRecord != null,
+                "release expectations are persisted before transfer for crash-safe recovery");
+        File verifiedApk = firstRecord.verifiedApk;
+        check(verifiedApk.getParentFile().mkdirs(), "verified-cache directory is created");
+        try (FileOutputStream output = new FileOutputStream(verifiedApk)) { output.write(APK_BYTES); }
+
+        UpdaterRecoveryStore restartedProcess = new UpdaterRecoveryStore(storageDirectory);
+        UpdaterRecoveryStore.PendingUpdate recovered = restartedProcess.readPending();
+        check(recovered != null && recovered.verifiedApk.isFile()
+                        && recovered.verifiedApk.getName().equals(UpdaterCore.verifiedArtifactFileName(release.apkSha256)),
+                "restart recovers the deterministic verified artifact using its persisted expected metadata");
+
+        byte[] original = Files.readAllBytes(recovered.verifiedApk.toPath());
+        try (FileOutputStream output = new FileOutputStream(recovered.verifiedApk)) { output.write(new byte[] { 1, 2, 3 }); }
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH,
+                () -> UpdaterCore.verifyDownloadedArtifact(recovered.release, recovered.verifiedApk,
+                        UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER, apk -> identity()),
+                "recovery rechecks the stored expected digest before offering a file");
+        check(recovered.verifiedApk.isFile() && restartedProcess.hasPendingRecord(),
+                "failed digest revalidation preserves the artifact and recovery record for explicit discard");
+        try (FileOutputStream output = new FileOutputStream(recovered.verifiedApk)) { output.write(original); }
+
+        expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH,
+                () -> UpdaterCore.verifyDownloadedArtifact(recovered.release, recovered.verifiedApk,
+                        UpdaterCore.APPLICATION_ID, 1L, 35, repeat('b', 64), repeat('b', 64), apk -> identity()),
+                "recovery rechecks the installed/publisher signer before offering a file");
+        expectFailure(UpdaterCore.Failure.APK_MISMATCH,
+                () -> UpdaterCore.verifyDownloadedArtifact(recovered.release, recovered.verifiedApk,
+                        "com.attacker.app", 1L, 35, SIGNER, SIGNER, apk -> identity()),
+                "recovery rechecks the installed package identity before offering a file");
+        UpdaterCore.verifyDownloadedArtifact(recovered.release, recovered.verifiedApk,
+                UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER, apk -> identity());
+        check(recovered.verifiedApk.isFile(), "valid recovery remains available after successful revalidation");
+
+        restartedProcess.removeAfterUserChoice(recovered.release);
+        check(!recovered.verifiedApk.exists() && !restartedProcess.hasPendingRecord(),
+                "only an explicit user discard removes the retained APK and recovery record");
+        check(taskData.isFile(), "explicit updater discard leaves task data untouched");
+        deleteTree(root);
+    }
+
     private static UpdaterCore.Release validRelease() {
         return release("v1.1.0", 2L, hash(APK_BYTES), SIGNER, false, false);
     }
@@ -285,6 +342,14 @@ public final class UpdaterSmoke {
             throw new UpdaterCore.UpdateException(UpdaterCore.Failure.DOWNLOAD,
                     "Unable to create fake APK for updater test.", exception);
         }
+    }
+
+    private static void deleteTree(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) for (File child : children) deleteTree(child);
+        }
+        file.delete();
     }
 
     private static String hash(byte[] bytes) {

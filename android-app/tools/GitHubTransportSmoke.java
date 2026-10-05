@@ -39,7 +39,7 @@ public final class GitHubTransportSmoke {
         downloaderEnforcesExplicitNetworkChoice();
         downloaderRejectsUntrustedRedirectsAndCleansTemporaryFiles();
         downloaderEnforcesRedirectAndBodyBounds();
-        downloaderRejectsActualBodyOver100MiB();
+        productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver();
         downloaderCancellationMidTransferCleansPartial();
         interruptedTransferIsRemovedOnRestartWithoutTouchingUserData();
         System.out.println("PASS updater transport/parser fixtures: " + assertions + " assertions");
@@ -193,8 +193,10 @@ public final class GitHubTransportSmoke {
             return sequence.removeFirst();
         });
         File downloaded = downloader.download(validRelease());
-        check(Arrays.equals(APK, Files.readAllBytes(downloaded.toPath())), "exact APK bytes are copied to private cache");
-        check(downloaded.getParentFile().getName().equals("daymark-update-tmp"), "APK temporary path is app cache scoped");
+        check(Arrays.equals(APK, Files.readAllBytes(downloaded.toPath())), "exact APK bytes are copied to persistent private updater storage");
+        check(downloaded.getParentFile().getName().equals("daymark-update-tmp"), "APK temporary path is scoped to persistent no-backup app storage");
+        check(!new File(context.getCacheDir(), "daymark-update-tmp").exists(),
+                "updater staging does not use Android's evictable cache directory");
         check(requested.size() == 2 && requested.get(1).contains("release-assets.githubusercontent.com"),
                 "download follows one validated GitHub asset redirect");
         check(!original.getInstanceFollowRedirects() && !asset.getInstanceFollowRedirects(),
@@ -252,18 +254,40 @@ public final class GitHubTransportSmoke {
         deleteTree(cache);
     }
 
-    private static void downloaderRejectsActualBodyOver100MiB() throws Exception {
+    private static void productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver() throws Exception {
         File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
+        String maxDigest = sha256RepeatedByte(UpdaterCore.MAX_APK_BYTES, (byte) 0x5a);
         UpdaterCore.Release maxRelease = new UpdaterCore.Release("v1.2.3", "1.2.3", "Daymark 1.2.3", "Notes",
-                UpdaterCore.APPLICATION_ID, 2L, 26, UpdaterCore.MAX_APK_BYTES, sha256(APK), SIGNER,
+                UpdaterCore.APPLICATION_ID, 2L, 26, UpdaterCore.MAX_APK_BYTES, maxDigest, SIGNER,
                 assetUrl(), false, false);
+
+        FakeHttpConnection exact = response(HttpURLConnection.HTTP_OK,
+                new SizedInputStream(UpdaterCore.MAX_APK_BYTES, null, false));
+        exact.header("Content-Length", Long.toString(UpdaterCore.MAX_APK_BYTES));
+        UpdaterCore.VerificationResult accepted = UpdaterCore.downloadAndVerify(
+                maxRelease, UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
+                release -> true,
+                new GitHubApkDownloader(new TestContext(cache), url -> exact),
+                apk -> new UpdaterCore.ApkIdentity(UpdaterCore.APPLICATION_ID, "1.2.3", 2L, 26, SIGNER));
+        check(accepted.status == UpdaterCore.VerificationStatus.VERIFIED,
+                "production downloader and core accept exactly the 100 MiB ceiling");
+        check(accepted.verifiedApk.length() == 104_857_600L,
+                "accepted production artifact is exactly 104,857,600 bytes");
+        check(accepted.verifiedApk.getName().equals(UpdaterCore.verifiedArtifactFileName(maxDigest)),
+                "accepted production artifact is promoted to its digest-addressed verified name");
+        check(accepted.verifiedApk.delete(), "host test removes accepted exact-limit artifact");
+
         FakeHttpConnection oversized = response(HttpURLConnection.HTTP_OK,
                 new SizedInputStream(UpdaterCore.MAX_APK_BYTES + 1L, null, false));
+        oversized.header("Content-Length", Long.toString(UpdaterCore.MAX_APK_BYTES));
         expectDownloadFailure(UpdaterCore.Failure.APK_MISMATCH,
-                () -> new GitHubApkDownloader(new TestContext(cache), url -> oversized).download(maxRelease),
-                "an actual streamed body above the 100 MiB ceiling is rejected");
+                () -> UpdaterCore.downloadAndVerify(maxRelease, UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
+                        release -> true,
+                        new GitHubApkDownloader(new TestContext(cache), url -> oversized),
+                        apk -> { throw new AssertionError("APK verifier must not run after streamed size rejection"); }),
+                "production downloader and core reject an actual streamed body one byte over the 100 MiB ceiling");
         check(listFiles(new File(cache, "daymark-update-tmp")).isEmpty(),
-                "actual 100 MiB ceiling rejection deletes the staging file");
+                "actual 100 MiB plus one rejection removes staging and leaves no verified APK");
         deleteTree(cache);
     }
 
@@ -286,6 +310,9 @@ public final class GitHubTransportSmoke {
     private static void interruptedTransferIsRemovedOnRestartWithoutTouchingUserData() throws Exception {
         File cache = Files.createTempDirectory("daymark-updater-cache-").toFile();
         TestContext context = new TestContext(cache);
+        File filesDirectory = context.getNoBackupFilesDir();
+        UpdaterRecoveryStore recoveryStore = new UpdaterRecoveryStore(filesDirectory);
+        recoveryStore.recordPending(validRelease());
         FakeHttpConnection response = response(HttpURLConnection.HTTP_OK,
                 new SizedInputStream(APK.length, null, true));
         response.header("Content-Length", Integer.toString(APK.length));
@@ -302,16 +329,21 @@ public final class GitHubTransportSmoke {
 
         File savedApk = new File(cache, "Daymark-v1.2.3.apk");
         File taskData = new File(cache, "encrypted-tasks.data");
-        File verifiedTemp = new File(tempDirectory, "daymark-update-preserved.verified.apk");
+        UpdaterRecoveryStore.PendingUpdate pending = recoveryStore.readPending();
+        File verifiedTemp = pending.verifiedApk;
         Files.write(savedApk.toPath(), APK);
         Files.write(taskData.toPath(), new byte[] { 1, 2, 3 });
+        if (!verifiedTemp.getParentFile().isDirectory()) {
+            check(verifiedTemp.getParentFile().mkdirs(), "test verified-cache directory is created");
+        }
         Files.write(verifiedTemp.toPath(), APK);
 
         GitHubApkDownloader.cleanupPartialDownloads(context);
         check(partialFiles(tempDirectory).isEmpty(), "startup cleanup removes only leftover partial APKs");
         check(savedApk.isFile(), "startup cleanup leaves a user-selected saved APK untouched");
         check(taskData.isFile(), "startup cleanup leaves task data untouched");
-        check(verifiedTemp.isFile(), "startup cleanup leaves a verified cache artifact untouched");
+        check(verifiedTemp.isFile(), "startup cleanup leaves a persistent verified artifact untouched");
+        check(recoveryStore.hasPendingRecord(), "startup cleanup preserves the recovery record for the verified cache artifact");
         deleteTree(cache);
     }
 
@@ -382,6 +414,27 @@ public final class GitHubTransportSmoke {
             byte[] hash = MessageDigest.getInstance("SHA-256").digest(bytes);
             StringBuilder result = new StringBuilder(64);
             for (byte value : hash) result.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
+            return result.toString();
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    private static String sha256RepeatedByte(long byteCount, byte value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] block = new byte[16 * 1024];
+            Arrays.fill(block, value);
+            long remaining = byteCount;
+            while (remaining > 0L) {
+                int count = (int) Math.min((long) block.length, remaining);
+                digest.update(block, 0, count);
+                remaining -= count;
+            }
+            StringBuilder result = new StringBuilder(64);
+            for (byte hashByte : digest.digest()) {
+                result.append(String.format(java.util.Locale.ROOT, "%02x", hashByte & 0xff));
+            }
             return result.toString();
         } catch (Exception exception) {
             throw new AssertionError(exception);
@@ -459,7 +512,8 @@ public final class GitHubTransportSmoke {
         private final File cache;
         TestContext(File cache) { this.cache = cache; }
         @Override public Context getApplicationContext() { return this; }
-        @Override public File getCacheDir() { return cache; }
+        @Override public File getCacheDir() { return new File(cache, "evictable-cache"); }
+        @Override public File getNoBackupFilesDir() { return cache; }
     }
 
     private static final class FakeHttpConnection extends HttpURLConnection {

@@ -80,7 +80,7 @@ assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new
 assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
 assert "StrictJsonParser.parse(json)" in release_client and "MAX_RESPONSE_BYTES" in release_client, "release JSON must use the bounded strict parser"
 assert "connectionFactory.open" in release_client and "connectionFactory.open" in downloader, "HTTP transports must remain fixture-testable"
-for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys"):
+for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys", "productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver"):
     assert marker in release_test, f"missing updater transport/parser fixture: {marker}"
 assert "android.permission.REQUEST_INSTALL_PACKAGES" not in (root / "app/src/githubSideload/AndroidManifest.xml").read_text(encoding="utf-8"), "REQUEST_INSTALL_PACKAGES must remain absent"
 assert not any("PackageInstaller" in path.read_text(encoding="utf-8") for path in main.rglob("*.java")), "PackageInstaller handoff must not ship in main source"
@@ -90,7 +90,12 @@ assert '"Download and verify"' in activity and '"Cancel"' in activity and "downl
 assert "VerificationStatus.VERIFIED" in activity and "APK verified — not installed" in activity, "successful verification must not imply installation"
 assert '"Wi-Fi only (recommended)"' in activity and '"Allow mobile data"' in activity, "download requires a clear network choice with Wi-Fi as default"
 assert "NETWORK_POLICY" in updater_core and "isWifiConnected" in downloader, "Wi-Fi-only choice must be enforced before and during transfer"
-assert "ACTION_CREATE_DOCUMENT" in activity and "open the saved APK yourself from Files" in activity, "verified APK must be saved for user-directed manual opening"
+assert "ACTION_CREATE_DOCUMENT" in activity and "open the saved copy yourself from Files" in activity, "verified APK must be saved for user-directed manual opening"
+recovery_store = (updater_dir / "UpdaterRecoveryStore.java").read_text(encoding="utf-8")
+assert "updaterRecoveryStore.recordPending(release)" in activity and "UpdaterCore.verifyDownloadedArtifact" in activity, "restart recovery must persist expectations before download and revalidate before offering"
+assert "removeAfterUserChoice(release)" in activity and "verifiedApk.delete()" not in activity, "verified cache APKs must not be implicitly deleted"
+assert "clearIfNoVerifiedArtifact" in recovery_store and "verifiedArtifactFileName" in recovery_store, "recovery record cleanup must preserve any promoted artifact"
+assert downloader.count("getNoBackupFilesDir()") == 2 and "getCacheDir()" not in downloader, "updater staging and cleanup must avoid evictable cache storage"
 assert "TaskLogic" not in updater_sources and "EncryptedTaskStore" not in updater_sources, "updater must not depend on or upload task/history data"
 assert updater_core.index("if (!consent.accept(release))") < updater_core.index("temporaryApk = downloader.download(release)"), "download must occur only after explicit consent"
 assert "uri.getPort() == -1 || uri.getPort() == 443" in updater_core, "release asset URLs must reject non-default HTTPS ports"

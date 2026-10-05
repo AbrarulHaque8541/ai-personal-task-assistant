@@ -206,37 +206,10 @@ public final class UpdaterCore {
         try {
             temporaryApk = downloader.download(release);
             ensureNotCancelled(downloader);
-            if (temporaryApk == null || !temporaryApk.isFile()) {
-                throw new UpdateException(Failure.DOWNLOAD, "APK download did not produce a file.");
-            }
-            long actualBytes = temporaryApk.length();
-            if (actualBytes != release.apkSizeBytes || actualBytes <= 0L || actualBytes > MAX_APK_BYTES) {
-                throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK size did not match release metadata.");
-            }
-            String actualHash = sha256(temporaryApk);
+            verifyDownloadedArtifact(release, temporaryApk, installedApplicationId, installedVersionCode,
+                    deviceSdk, runningSignerSha256, configuredPublisherSignerSha256, verifier);
             ensureNotCancelled(downloader);
-            if (!normalizeSha256(actualHash).equals(normalizeSha256(release.apkSha256))) {
-                throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK SHA-256 did not match release metadata.");
-            }
-            ApkIdentity apk = verifier.inspect(temporaryApk);
-            ensureNotCancelled(downloader);
-            if (apk == null || !APPLICATION_ID.equals(apk.applicationId)
-                    || !release.applicationId.equals(apk.applicationId)
-                    || !release.versionName.equals(apk.versionName)
-                    || release.versionCode != apk.versionCode
-                    || release.minSdkVersion != apk.minSdkVersion
-                    || apk.minSdkVersion > deviceSdk) {
-                throw new UpdateException(Failure.APK_MISMATCH,
-                        "APK package ID, version, or minimum Android version did not match release metadata.");
-            }
-            String apkSigner = normalizeSha256(apk.signerSha256);
-            if (apkSigner == null || !apkSigner.equals(releaseSigner)
-                    || !apkSigner.equals(runningSigner) || !apkSigner.equals(configuredSigner)) {
-                throw new UpdateException(Failure.SIGNER_MISMATCH,
-                        "APK signing certificate does not match the installed app and publisher configuration.");
-            }
-            ensureNotCancelled(downloader);
-            temporaryApk = promoteVerifiedFile(temporaryApk);
+            temporaryApk = promoteVerifiedFile(temporaryApk, release.apkSha256);
             keepVerifiedApk = true;
             return new VerificationResult(VerificationStatus.VERIFIED, temporaryApk);
         } catch (UpdateException exception) {
@@ -257,11 +230,73 @@ public final class UpdaterCore {
         }
     }
 
-    private static File promoteVerifiedFile(File temporaryApk) throws UpdateException {
-        String name = temporaryApk.getName();
-        String verifiedName = name.endsWith(".partial")
-                ? name.substring(0, name.length() - ".partial".length()) + ".verified.apk"
-                : name + ".verified.apk";
+    /** Revalidates a retained file before it can be offered after a process restart. */
+    public static void verifyDownloadedArtifact(Release release, File apk,
+            String installedApplicationId, long installedVersionCode, int deviceSdk,
+            String runningSignerSha256, String configuredPublisherSignerSha256,
+            ApkVerifier verifier) throws UpdateException {
+        if (verifier == null) throw invalid("APK verifier is required.");
+        validateRelease(release);
+        if (release.draft || release.prerelease || release.versionCode <= installedVersionCode) {
+            throw invalid("Release is not a newer stable update.");
+        }
+        if (!APPLICATION_ID.equals(installedApplicationId)
+                || !APPLICATION_ID.equals(release.applicationId)) {
+            throw new UpdateException(Failure.APK_MISMATCH, "Update package ID does not match Daymark.");
+        }
+        if (deviceSdk < release.minSdkVersion) {
+            throw new UpdateException(Failure.APK_MISMATCH, "This update requires a newer Android version.");
+        }
+        String configuredSigner = normalizeSha256(configuredPublisherSignerSha256);
+        String runningSigner = normalizeSha256(runningSignerSha256);
+        String releaseSigner = normalizeSha256(release.signerSha256);
+        if (configuredSigner == null || runningSigner == null
+                || !configuredSigner.equals(runningSigner)
+                || !releaseSigner.equals(runningSigner)) {
+            throw new UpdateException(Failure.SIGNER_MISMATCH,
+                    "Publisher, release, and installed-app signing certificates do not match.");
+        }
+        if (apk == null || !apk.isFile()) {
+            throw new UpdateException(Failure.DOWNLOAD, "Retained APK is missing from private storage.");
+        }
+        long actualBytes = apk.length();
+        if (actualBytes != release.apkSizeBytes || actualBytes <= 0L || actualBytes > MAX_APK_BYTES) {
+            throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK size did not match release metadata.");
+        }
+        String actualHash = sha256(apk);
+        if (!normalizeSha256(actualHash).equals(normalizeSha256(release.apkSha256))) {
+            throw new UpdateException(Failure.APK_MISMATCH, "Downloaded APK SHA-256 did not match release metadata.");
+        }
+        ApkIdentity identity = verifier.inspect(apk);
+        if (identity == null || !APPLICATION_ID.equals(identity.applicationId)
+                || !release.applicationId.equals(identity.applicationId)
+                || !release.versionName.equals(identity.versionName)
+                || release.versionCode != identity.versionCode
+                || release.minSdkVersion != identity.minSdkVersion
+                || identity.minSdkVersion > deviceSdk) {
+            throw new UpdateException(Failure.APK_MISMATCH,
+                    "APK package ID, version, or minimum Android version did not match release metadata.");
+        }
+        String apkSigner = normalizeSha256(identity.signerSha256);
+        if (apkSigner == null || !apkSigner.equals(releaseSigner)
+                || !apkSigner.equals(runningSigner) || !apkSigner.equals(configuredSigner)) {
+            throw new UpdateException(Failure.SIGNER_MISMATCH,
+                    "APK signing certificate does not match the installed app and publisher configuration.");
+        }
+    }
+
+    public static String verifiedArtifactFileName(String apkSha256) throws UpdateException {
+        String normalized = normalizeSha256(apkSha256);
+        if (normalized == null) throw invalid("Verified APK filename requires a SHA-256 digest.");
+        return "daymark-update-" + normalized + ".verified.apk";
+    }
+
+    public static boolean isVerifiedArtifactFileName(String name) {
+        return name != null && name.matches("daymark-update-[A-Za-z0-9_-]{1,128}\\.verified\\.apk");
+    }
+
+    private static File promoteVerifiedFile(File temporaryApk, String apkSha256) throws UpdateException {
+        String verifiedName = verifiedArtifactFileName(apkSha256);
         File verifiedApk = new File(temporaryApk.getParentFile(), verifiedName);
         if (verifiedApk.exists() || !temporaryApk.renameTo(verifiedApk)) {
             throw new UpdateException(Failure.DOWNLOAD,
