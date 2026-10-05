@@ -58,8 +58,11 @@ import android.widget.Toast;
 import android.webkit.CookieManager;
 import android.webkit.WebStorage;
 
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -214,7 +217,7 @@ public final class MainActivity extends Activity {
         if (reminderStorageReady) {
             long now = System.currentTimeMillis();
             for (Reminder reminder : reminders.values()) {
-                if (!reminder.delivered && reminder.triggerAtMillis <= now) {
+                if (reminder.deliveryPending || (!reminder.delivered && reminder.triggerAtMillis <= now)) {
                     dueReminderNeedsRearm = true;
                     break;
                 }
@@ -1103,6 +1106,8 @@ public final class MainActivity extends Activity {
                 loadedReminders = reminderStore.rebaseForCurrentTimezone();
                 if (failure == null) {
                     loadedReminders = reconcileReminders(loaded, loadedReminders);
+                    loadedReminders = ReminderReceiver.reconcilePendingNotifications(
+                            getApplicationContext(), reminderStore, loadedReminders);
                     ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
                 } else {
                     for (Reminder reminder : loadedReminders) {
@@ -1179,6 +1184,7 @@ public final class MainActivity extends Activity {
                 List<Task> loadedTasks = taskStore.load();
                 loaded = reminderStore.rebaseForCurrentTimezone();
                 loaded = reconcileReminders(loadedTasks, loaded);
+                loaded = ReminderReceiver.reconcilePendingNotifications(getApplicationContext(), reminderStore, loaded);
                 ReminderScheduler.rescheduleAll(getApplicationContext(), loaded);
             } catch (Exception exception) {
                 failure = exception;
@@ -1803,15 +1809,20 @@ public final class MainActivity extends Activity {
     }
 
     private String reminderSummary(Reminder reminder) {
+        String status = reminder.deliveryPending ? "Notification pending · "
+                : (reminder.delivered ? "Delivered · " : "Scheduled · ");
         if (Reminder.MODE_LOCAL_DATE_TIME.equals(reminder.mode)) {
             LocalDateTime local = LocalDateTime.parse(reminder.localDateTime);
             String formatted = DateTimeFormatter.ofPattern("EEE, MMM d, yyyy 'at' h:mm a", Locale.getDefault())
                     .format(local);
-            return (reminder.delivered ? "Delivered · " : "Scheduled · ") + formatted;
+            ZoneOffset offset = ZoneOffset.ofTotalSeconds(reminder.offsetSeconds);
+            return status + formatted + " · " + ReminderLogic.formatUtcOffset(offset)
+                    + " (" + reminder.zoneId + ")";
         }
-        long remaining = Math.max(0L, reminder.triggerAtMillis - System.currentTimeMillis());
-        long minutes = (remaining + 59_999L) / 60_000L;
-        return reminder.delivered ? "Reminder delivered" : "Scheduled in about " + minutes + (minutes == 1 ? " minute" : " minutes");
+        if (reminder.deliveryPending) return "Notification pending";
+        if (reminder.delivered) return "Reminder delivered";
+        long minutes = ReminderLogic.remainingMinutesCeiling(reminder.triggerAtMillis, System.currentTimeMillis());
+        return "Scheduled in about " + minutes + (minutes == 1 ? " minute" : " minutes");
     }
 
     private void showReminderEditor(Task task, Reminder existing) {
@@ -1819,14 +1830,19 @@ public final class MainActivity extends Activity {
             showToast("Reminders are available for open tasks when encrypted storage is ready.");
             return;
         }
+        ZoneId initialZone = existing != null && Reminder.MODE_LOCAL_DATE_TIME.equals(existing.mode)
+                ? ZoneId.of(existing.zoneId) : ZoneId.systemDefault();
         LocalDateTime initial = existing != null && Reminder.MODE_LOCAL_DATE_TIME.equals(existing.mode)
                 ? LocalDateTime.parse(existing.localDateTime)
-                : LocalDateTime.now().withSecond(0).withNano(0).plusHours(1);
+                : LocalDateTime.now(initialZone).withSecond(0).withNano(0).plusHours(1);
+        final String[] selectedZoneId = { initialZone.getId() };
         final String[] selectedLocalDateTime = { initial.toString() };
         final int[] initialMinutes = { 30 };
         if (existing != null && Reminder.MODE_TIMER.equals(existing.mode) && !existing.delivered) {
-            long remaining = Math.max(60_000L, existing.triggerAtMillis - System.currentTimeMillis());
-            initialMinutes[0] = (int) Math.min(ReminderLogic.MAX_TIMER_MINUTES, (remaining + 59_999L) / 60_000L);
+            long remainingMinutes = ReminderLogic.remainingMinutesCeiling(
+                    existing.triggerAtMillis, System.currentTimeMillis());
+            initialMinutes[0] = (int) Math.max(1L,
+                    Math.min(ReminderLogic.MAX_TIMER_MINUTES, remainingMinutes));
         }
         reminderSoundSelection = existing == null || existing.soundUri == null
                 ? (existing == null ? RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION) : null)
@@ -1860,6 +1876,8 @@ public final class MainActivity extends Activity {
         dateControls.addView(dateButton, pickerParams);
         dateControls.addView(timeButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         form.addView(dateControls, bottomMargin(dp(8)));
+        TextView zoneLabel = text("Time zone: " + initialZone.getId(), 12, palette.muted, Typeface.NORMAL);
+        form.addView(zoneLabel, bottomMargin(dp(8)));
         Runnable updateDateTimeLabels = () -> {
             LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
             dateButton.setText(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy", Locale.getDefault()).format(value));
@@ -1869,9 +1887,16 @@ public final class MainActivity extends Activity {
         dateButton.setOnClickListener(view -> {
             LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
             new DatePickerDialog(this, (picker, year, month, day) -> {
-                LocalDateTime current = LocalDateTime.parse(selectedLocalDateTime[0]);
-                selectedLocalDateTime[0] = current.withYear(year).withMonth(month + 1).withDayOfMonth(day).toString();
-                updateDateTimeLabels.run();
+                try {
+                    LocalDateTime current = LocalDateTime.parse(selectedLocalDateTime[0]);
+                    LocalDate chosenDate = LocalDate.of(year, month + 1, 1);
+                    int safeDay = Math.min(day, chosenDate.lengthOfMonth());
+                    selectedLocalDateTime[0] = chosenDate.withDayOfMonth(safeDay)
+                            .atTime(current.toLocalTime()).toString();
+                    updateDateTimeLabels.run();
+                } catch (DateTimeException exception) {
+                    showInfo("Unsupported date", "Choose a calendar date Android can represent.");
+                }
             }, value.getYear(), value.getMonthValue() - 1, value.getDayOfMonth()).show();
         });
         timeButton.setOnClickListener(view -> {
@@ -1926,10 +1951,12 @@ public final class MainActivity extends Activity {
         boolean startWithTimer = existing != null && Reminder.MODE_TIMER.equals(existing.mode);
         modeGroup.check(startWithTimer ? timerMode.getId() : dateMode.getId());
         dateControls.setVisibility(startWithTimer ? View.GONE : View.VISIBLE);
+        zoneLabel.setVisibility(startWithTimer ? View.GONE : View.VISIBLE);
         timerControls.setVisibility(startWithTimer ? View.VISIBLE : View.GONE);
         modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
             boolean timerSelected = checkedId == timerMode.getId();
             dateControls.setVisibility(timerSelected ? View.GONE : View.VISIBLE);
+            zoneLabel.setVisibility(timerSelected ? View.GONE : View.VISIBLE);
             timerControls.setVisibility(timerSelected ? View.VISIBLE : View.GONE);
         });
 
@@ -1944,26 +1971,86 @@ public final class MainActivity extends Activity {
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
             try {
                 String sound = reminderSoundSelection == null ? null : reminderSoundSelection.toString();
-                Reminder next;
                 if (modeGroup.getCheckedRadioButtonId() == dateMode.getId()) {
-                    next = ReminderLogic.atLocalDateTime(task.id, task.title,
-                            LocalDateTime.parse(selectedLocalDateTime[0]), java.time.ZoneId.systemDefault(),
-                            System.currentTimeMillis(), sound);
-                } else {
-                    String value = minutesInput.getText() == null ? "" : minutesInput.getText().toString().trim();
-                    int minutes = Integer.parseInt(value);
-                    next = ReminderLogic.afterMinutes(task.id, task.title, minutes,
-                            System.currentTimeMillis(), sound);
+                    LocalDateTime local = LocalDateTime.parse(selectedLocalDateTime[0]);
+                    ZoneId zone = ZoneId.of(selectedZoneId[0]);
+                    List<ReminderLogic.ResolvedDateTime> candidates =
+                            ReminderLogic.resolveLocalDateTime(local, zone);
+                    if (candidates.isEmpty()) {
+                        showInfo("Time doesn't exist", "That local time is skipped when clocks move forward in "
+                                + zone.getId() + ". Choose another time; Daymark will not shift it automatically.");
+                        return;
+                    }
+                    if (candidates.size() == 2) {
+                        showOverlapOccurrenceChoice(task, dialog, candidates, sound);
+                        return;
+                    }
+                    saveResolvedDateTimeReminder(task, dialog, candidates.get(0), sound);
+                    return;
                 }
+                String value = minutesInput.getText() == null ? "" : minutesInput.getText().toString().trim();
+                int minutes = Integer.parseInt(value);
+                Reminder next = ReminderLogic.afterMinutes(task.id, task.title, minutes,
+                        System.currentTimeMillis(), sound);
                 dialog.dismiss();
                 requestNotificationAndSave(next);
             } catch (NumberFormatException exception) {
                 minutesInput.setError("Enter a number of minutes");
+            } catch (DateTimeException exception) {
+                showInfo("Check reminder time", "Choose a calendar date and time Android can represent.");
             } catch (IllegalArgumentException exception) {
                 showInfo("Check reminder time", exception.getMessage());
             }
         }));
         dialog.show();
+    }
+
+    private void showOverlapOccurrenceChoice(Task task, AlertDialog editor,
+                                             List<ReminderLogic.ResolvedDateTime> candidates,
+                                             String sound) {
+        DateTimeFormatter previewFormat = DateTimeFormatter.ofPattern(
+                "EEE, MMM d, yyyy 'at' h:mm a", Locale.getDefault());
+        String[] labels = new String[candidates.size()];
+        for (int index = 0; index < candidates.size(); index++) {
+            labels[index] = candidates.get(index).choiceLabel(previewFormat);
+        }
+        int[] selected = { -1 };
+        Button[] confirmChoice = { null };
+        AlertDialog choice = new AlertDialog.Builder(this)
+                .setTitle("This time occurs twice")
+                .setMessage("Choose which occurrence you intend. The displayed UTC offset is saved with the time, "
+                        + "so the reminder summary matches the scheduled instant.")
+                .setSingleChoiceItems(labels, -1, (dialog, which) -> {
+                    selected[0] = which;
+                    if (confirmChoice[0] != null) confirmChoice[0].setEnabled(true);
+                })
+                .setNegativeButton("Back", null)
+                .setPositiveButton("Use selected time", null)
+                .create();
+        choice.setOnShowListener(ignored -> {
+            Button useSelected = choice.getButton(AlertDialog.BUTTON_POSITIVE);
+            confirmChoice[0] = useSelected;
+            useSelected.setEnabled(false);
+            useSelected.setOnClickListener(view -> {
+                if (selected[0] < 0 || selected[0] >= candidates.size()) return;
+                ReminderLogic.ResolvedDateTime resolved = candidates.get(selected[0]);
+                choice.dismiss();
+                saveResolvedDateTimeReminder(task, editor, resolved, sound);
+            });
+        });
+        choice.show();
+    }
+
+    private void saveResolvedDateTimeReminder(Task task, AlertDialog editor,
+                                              ReminderLogic.ResolvedDateTime resolved, String sound) {
+        try {
+            Reminder next = ReminderLogic.fromResolvedDateTime(task.id, task.title, resolved,
+                    System.currentTimeMillis(), sound);
+            editor.dismiss();
+            requestNotificationAndSave(next);
+        } catch (IllegalArgumentException exception) {
+            showInfo("Check reminder time", exception.getMessage());
+        }
     }
 
     private void requestNotificationAndSave(Reminder reminder) {

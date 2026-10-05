@@ -76,18 +76,18 @@ reminder_logic = (main / "java/com/cue/daymark/ReminderLogic.java").read_text(en
 reminder_store = (main / "java/com/cue/daymark/EncryptedReminderStore.java").read_text(encoding="utf-8")
 reminder_scheduler = (main / "java/com/cue/daymark/ReminderScheduler.java").read_text(encoding="utf-8")
 reminder_receiver = (main / "java/com/cue/daymark/ReminderReceiver.java").read_text(encoding="utf-8")
-for expected in ("MODE_LOCAL_DATE_TIME", "MODE_TIMER", "soundUri", "triggerAtMillis"):
+for expected in ("MODE_LOCAL_DATE_TIME", "MODE_TIMER", "soundUri", "triggerAtMillis", "zoneId", "offsetSeconds", "deliveryPending"):
     assert expected in reminder, f"reminder record must include validated {expected} state"
-for expected in ("afterTimezoneChange", "shouldRestoreAfterReboot", "snooze", "removeForTask", "MIN_IDLE_ALARM_INTERVAL_MILLIS", "needsInexactRevocationFallback"):
+for expected in ("resolveLocalDateTime", "absoluteEpochMillis", "afterTimezoneChange", "shouldRestoreAfterReboot", "deliveryRecoveryAction", "beginDelivery", "completeDelivery", "revocationFallbackAtMillis", "snooze", "removeForTask", "MIN_IDLE_ALARM_INTERVAL_MILLIS", "needsInexactRevocationFallback"):
     assert expected in reminder_logic, f"missing testable reminder rule: {expected}"
-for expected in ("AES/GCM/NoPadding", "AndroidKeyStore", "updateAAD(MAGIC)", "reminders.enc", "synchronized (FILE_LOCK)"):
+for expected in ("AES/GCM/NoPadding", "AndroidKeyStore", "updateAAD(MAGIC)", "reminders.enc", "synchronized (FILE_LOCK)", "markDeliveryPending", "markDelivered", "migrateLegacyReminder", "document.put(\"version\", 2)"):
     assert expected in reminder_store, f"reminder storage must preserve encryption/serialization protection: {expected}"
 for expected in ("canScheduleExactAlarms()", "setExactAndAllowWhileIdle", "setAndAllowWhileIdle", "fallbackPendingIntent", "manager.cancel(fallback)", "getNotificationChannel(id)", "createNotificationChannel(channel)"):
     assert expected in reminder_scheduler, f"missing alarm/channel safety boundary: {expected}"
 assert "if (enabled) schedule(context, reminder)" in reminder_scheduler and "else cancel(context, reminder.taskId)" in reminder_scheduler, "notification revocation must cancel alarms without deleting active reminder data"
 assert "setSound(sound, attributes)" in reminder_scheduler
 assert reminder_scheduler.index("getNotificationChannel(id) != null") < reminder_scheduler.index("createNotificationChannel(channel)"), "existing channel settings must never be rewritten"
-for expected in ("ACTION_BOOT_COMPLETED", "ACTION_TIMEZONE_CHANGED", "ACTION_TIME_CHANGED", "ACTION_FALLBACK", "ACTION_SNOOZE", "ACTION_CANCEL", "markDelivered"):
+for expected in ("ACTION_BOOT_COMPLETED", "ACTION_TIMEZONE_CHANGED", "ACTION_TIME_CHANGED", "ACTION_FALLBACK", "ACTION_SNOOZE", "ACTION_CANCEL", "markDeliveryPending", "markDelivered", "reconcilePendingNotifications"):
     assert expected in reminder_receiver or expected in reminder_receiver.replace("Intent.", ""), f"missing receiver action: {expected}"
 assert "goAsync()" in reminder_receiver and "setExact" not in reminder_receiver
 assert "shouldDeliverForTask(pending, task)" in reminder_receiver and "belongsToOpenTask(current, task)" in reminder_receiver, "fire and snooze actions must verify the task is still open"
@@ -95,7 +95,18 @@ assert "reconcileAndReschedule(context, store)" in reminder_receiver, "boot/time
 assert "if (task == null || task.completed)" in activity, "startup reconciliation must remove reminders for deleted or completed tasks"
 assert "saveTasksAsync(() ->" in activity and "cancelReminderAsync(task.id, false)" in activity, "task completion/deletion must cancel reminders only after a successful task save"
 assert "restoreReminderAsync(restore)" in activity, "undo must restore a reminder only after the task save succeeds"
-assert reminder_receiver.index("if (!ReminderScheduler.notificationsEnabled(context))") < reminder_receiver.index("store.markDelivered(taskId)"), "do not consume a reminder before confirming notifications can be posted"
+delivery_flow = reminder_receiver.split("private void deliverIfCurrent", 1)[1].split("private boolean isSystemRescheduleAction", 1)[0]
+assert delivery_flow.index("store.markDeliveryPending(taskId)") < delivery_flow.rindex("postPendingNotification(context, store, taskId)"), "persist retryable pending state before attempting the notification post"
+pending_flow = reminder_receiver.split("private void postPendingNotification", 1)[1].split("private Task findTask", 1)[0]
+assert pending_flow.index("if (!postNotification(context, pending)) return;") < pending_flow.index("store.markDelivered(taskId)"), "do not mark delivered until Android accepts a notification post"
+assert "manager.notify(ReminderScheduler.notificationTag(reminder.taskId)" in reminder_receiver, "restart retries must replace the same stable tagged notification"
+assert "manager.cancel(notificationTag(taskId), notificationId(taskId))" in reminder_scheduler, "cancellation must target the stable notification identity"
+assert "reconcilePendingNotifications(getApplicationContext(), reminderStore" in activity, "app start/resume must reconcile durable pending posts"
+for expected in ("showOverlapOccurrenceChoice", "Time doesn't exist", "will not shift it automatically", "Time zone:", "choiceLabel"):
+    assert expected in activity, f"missing explicit DST UX: {expected}"
+reminder_smoke = (root / "tools/ReminderLogicSmoke.java").read_text(encoding="utf-8")
+for expected in ("dstGapsAreRejectedAndBothOverlapOffsetsMatchTheirPreview", "absoluteReminderBoundsAreEpochMillisBoundsWithoutShortHorizon", "notificationPostingSurvivesEveryCrashWindow", "Long.MAX_VALUE"):
+    assert expected in reminder_smoke, f"missing focused reminder regression test: {expected}"
 assert "<uses-permission android:name=\"android.permission.USE_EXACT_ALARM\"" not in (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 for blanket in ("android.permission.READ_MEDIA_AUDIO", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WAKE_LOCK", "android.permission.FOREGROUND_SERVICE"):
     assert blanket not in (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8"), f"unexpected broad permission: {blanket}"

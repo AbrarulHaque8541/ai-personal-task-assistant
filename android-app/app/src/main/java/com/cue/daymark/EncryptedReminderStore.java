@@ -20,12 +20,15 @@ import java.nio.file.StandardCopyOption;
 import java.security.GeneralSecurityException;
 import java.security.Key;
 import java.security.KeyStore;
+import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.TimeZone;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -91,13 +94,32 @@ final class EncryptedReminderStore {
         }
     }
 
-    Reminder markDelivered(String taskId) throws Exception {
+    Reminder markDeliveryPending(String taskId) throws Exception {
         synchronized (FILE_LOCK) {
             List<Reminder> reminders = loadLocked();
             for (int index = 0; index < reminders.size(); index++) {
                 Reminder reminder = reminders.get(index);
                 if (reminder.taskId.equals(taskId) && !reminder.delivered) {
-                    Reminder delivered = reminder.withDelivered(true);
+                    if (reminder.deliveryPending) return reminder;
+                    Reminder pending = ReminderLogic.beginDelivery(reminder);
+                    if (pending == null) return null;
+                    reminders.set(index, pending);
+                    saveLocked(reminders);
+                    return pending;
+                }
+            }
+            return null;
+        }
+    }
+
+    Reminder markDelivered(String taskId) throws Exception {
+        synchronized (FILE_LOCK) {
+            List<Reminder> reminders = loadLocked();
+            for (int index = 0; index < reminders.size(); index++) {
+                Reminder reminder = reminders.get(index);
+                if (reminder.taskId.equals(taskId) && reminder.deliveryPending && !reminder.delivered) {
+                    Reminder delivered = ReminderLogic.completeDelivery(reminder);
+                    if (delivered == null) return null;
                     reminders.set(index, delivered);
                     saveLocked(reminders);
                     return delivered;
@@ -143,19 +165,8 @@ final class EncryptedReminderStore {
 
     List<Reminder> rebaseForCurrentTimezone() throws Exception {
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            boolean changed = false;
-            java.time.ZoneId zone = TimeZone.getDefault().toZoneId();
-            for (int index = 0; index < reminders.size(); index++) {
-                Reminder reminder = reminders.get(index);
-                Reminder rebased = ReminderLogic.afterTimezoneChange(reminder, zone);
-                if (rebased.triggerAtMillis != reminder.triggerAtMillis) {
-                    reminders.set(index, rebased);
-                    changed = true;
-                }
-            }
-            if (changed) saveLocked(reminders);
-            return reminders;
+            // Preserve the user's saved instant, zone, and offset; system broadcasts re-arm that same instant.
+            return loadLocked();
         }
     }
 
@@ -246,44 +257,88 @@ final class EncryptedReminderStore {
             object.put("taskTitle", reminder.taskTitle);
             object.put("mode", reminder.mode);
             object.put("localDateTime", reminder.localDateTime == null ? JSONObject.NULL : reminder.localDateTime);
+            object.put("zoneId", reminder.zoneId == null ? JSONObject.NULL : reminder.zoneId);
+            object.put("offsetSeconds", reminder.offsetSeconds == null ? JSONObject.NULL : reminder.offsetSeconds);
             object.put("triggerAtMillis", reminder.triggerAtMillis);
             object.put("soundUri", reminder.soundUri == null ? JSONObject.NULL : reminder.soundUri);
+            object.put("deliveryPending", reminder.deliveryPending);
             object.put("delivered", reminder.delivered);
             array.put(object);
         }
         JSONObject document = new JSONObject();
-        document.put("version", 1);
+        document.put("version", 2);
         document.put("reminders", array);
         return document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private List<Reminder> decodeReminders(byte[] plaintext) throws Exception {
         JSONObject document = new JSONObject(new String(plaintext, java.nio.charset.StandardCharsets.UTF_8));
-        if (document.optInt("version", -1) != 1) throw new IOException("Reminder data schema version is not supported.");
+        int version = document.optInt("version", -1);
+        if (version != 1 && version != 2) throw new IOException("Reminder data schema version is not supported.");
         JSONArray array = document.optJSONArray("reminders");
         if (array == null || array.length() > MAX_REMINDERS) throw new IOException("Reminder data is malformed.");
         List<Reminder> result = new ArrayList<>(array.length());
         Set<String> taskIds = new HashSet<>();
         for (int index = 0; index < array.length(); index++) {
             JSONObject object = array.optJSONObject(index);
-            if (object == null || !(object.opt("delivered") instanceof Boolean)) {
+            if (object == null || !(object.opt("delivered") instanceof Boolean)
+                    || (version == 2 && !(object.opt("deliveryPending") instanceof Boolean))) {
                 throw new IOException("Reminder record is malformed.");
             }
             Object localValue = object.opt("localDateTime");
             Object soundValue = object.opt("soundUri");
-            Reminder reminder = new Reminder(
-                    object.optString("taskId", ""), object.optString("taskTitle", ""),
-                    object.optString("mode", ""),
-                    localValue == null || localValue == JSONObject.NULL ? null : String.valueOf(localValue),
-                    object.optLong("triggerAtMillis", -1),
-                    soundValue == null || soundValue == JSONObject.NULL ? null : String.valueOf(soundValue),
-                    (Boolean) object.opt("delivered"));
+            String taskId = object.optString("taskId", "");
+            String taskTitle = object.optString("taskTitle", "");
+            String mode = object.optString("mode", "");
+            String localDateTime = localValue == null || localValue == JSONObject.NULL
+                    ? null : String.valueOf(localValue);
+            long triggerAtMillis = object.optLong("triggerAtMillis", -1);
+            String soundUri = soundValue == null || soundValue == JSONObject.NULL
+                    ? null : String.valueOf(soundValue);
+            boolean delivered = (Boolean) object.opt("delivered");
+            Reminder reminder;
+            if (version == 1) {
+                reminder = migrateLegacyReminder(taskId, taskTitle, mode, triggerAtMillis, soundUri, delivered);
+            } else {
+                Object zoneValue = object.opt("zoneId");
+                Object offsetValue = object.opt("offsetSeconds");
+                String zoneId = zoneValue == null || zoneValue == JSONObject.NULL
+                        ? null : String.valueOf(zoneValue);
+                Integer offsetSeconds = offsetValue instanceof Number
+                        ? ((Number) offsetValue).intValue() : null;
+                reminder = new Reminder(taskId, taskTitle, mode, localDateTime, zoneId,
+                        offsetSeconds, triggerAtMillis, soundUri,
+                        (Boolean) object.opt("deliveryPending"), delivered);
+            }
             if (!reminder.isValid() || !taskIds.add(reminder.taskId)) {
                 throw new IOException("Reminder data failed validation.");
             }
             result.add(reminder);
         }
+        if (version == 1) saveLocked(result);
         return result;
+    }
+
+    private Reminder migrateLegacyReminder(String taskId, String taskTitle, String mode,
+                                           long triggerAtMillis,
+                                           String soundUri, boolean delivered) throws IOException {
+        if (Reminder.MODE_TIMER.equals(mode)) {
+            return new Reminder(taskId, taskTitle, mode, null, null, null,
+                    triggerAtMillis, soundUri, false, delivered);
+        }
+        if (!Reminder.MODE_LOCAL_DATE_TIME.equals(mode) || triggerAtMillis <= 0) {
+            throw new IOException("Legacy reminder data failed validation.");
+        }
+        try {
+            ZoneId zone = ZoneId.systemDefault();
+            ZonedDateTime actual = Instant.ofEpochMilli(triggerAtMillis).atZone(zone);
+            // Older releases shifted a DST-gap entry implicitly; migrate its actual scheduled display time.
+            String migratedLocal = actual.toLocalDateTime().toString();
+            return new Reminder(taskId, taskTitle, mode, migratedLocal, zone.getId(),
+                    actual.getOffset().getTotalSeconds(), triggerAtMillis, soundUri, false, delivered);
+        } catch (DateTimeException exception) {
+            throw new IOException("Legacy reminder time is outside the supported range.", exception);
+        }
     }
 
     private static byte[] readAll(File file) throws IOException {

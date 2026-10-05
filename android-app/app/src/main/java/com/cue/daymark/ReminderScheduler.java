@@ -29,7 +29,8 @@ final class ReminderScheduler {
     }
 
     static ReminderLogic.SchedulePlan schedule(Context context, Reminder reminder) {
-        if (reminder == null || reminder.delivered || !notificationsEnabled(context)) {
+        if (reminder == null || !reminder.isValid() || reminder.deliveryPending
+                || reminder.delivered || !notificationsEnabled(context)) {
             return ReminderLogic.SchedulePlan.NO_SCHEDULE;
         }
         AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
@@ -43,9 +44,11 @@ final class ReminderScheduler {
                 manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminder.triggerAtMillis, pending);
                 if (ReminderLogic.needsInexactRevocationFallback(Build.VERSION.SDK_INT, exactAccess)) {
                     // Exact access can be revoked without a revoke broadcast; retain a distinct inexact backstop.
-                    long fallbackAt = reminder.triggerAtMillis > Long.MAX_VALUE - ReminderLogic.MIN_IDLE_ALARM_INTERVAL_MILLIS
-                            ? Long.MAX_VALUE : reminder.triggerAtMillis + ReminderLogic.MIN_IDLE_ALARM_INTERVAL_MILLIS;
-                    manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fallbackAt, fallback);
+                    manager.cancel(fallback);
+                    Long fallbackAt = ReminderLogic.revocationFallbackAtMillis(reminder.triggerAtMillis);
+                    if (fallbackAt != null) {
+                        manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fallbackAt, fallback);
+                    }
                 }
                 return plan;
             } catch (SecurityException revoked) {
@@ -89,7 +92,7 @@ final class ReminderScheduler {
 
     static void cancelNotification(Context context, String taskId) {
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager != null) manager.cancel(notificationId(taskId));
+        if (manager != null) manager.cancel(notificationTag(taskId), notificationId(taskId));
     }
 
     static boolean notificationsEnabled(Context context) {
@@ -100,8 +103,11 @@ final class ReminderScheduler {
     }
 
     static int notificationId(String taskId) {
-        int value = taskId == null ? 1 : taskId.hashCode() & 0x7fffffff;
-        return value == 0 ? 1 : value;
+        return ReminderLogic.notificationId(taskId);
+    }
+
+    static String notificationTag(String taskId) {
+        return ReminderLogic.notificationTag(taskId);
     }
 
     static String ensureChannel(Context context, String soundUri) {

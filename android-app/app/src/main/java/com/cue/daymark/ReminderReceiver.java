@@ -1,6 +1,5 @@
 package com.cue.daymark;
 
-import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -8,15 +7,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-import java.util.List;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.time.ZoneId;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Performs small local alarm actions and restores scheduled reminders after system changes. */
+/** Performs local alarm actions and restores scheduled/pending reminders after system changes. */
 public final class ReminderReceiver extends BroadcastReceiver {
     static final String ACTION_FIRE = "com.cue.daymark.action.REMINDER_FIRE";
     static final String ACTION_FALLBACK = "com.cue.daymark.action.REMINDER_FALLBACK";
@@ -38,7 +36,7 @@ public final class ReminderReceiver extends BroadcastReceiver {
             try {
                 handle(appContext, action, taskId);
             } catch (Exception ignored) {
-                // Encrypted storage failures are fail-closed; never replace or disclose task data.
+                // Encrypted storage failures are fail-closed; pending state remains recoverable on a later restart.
             } finally {
                 result.finish();
             }
@@ -74,36 +72,38 @@ public final class ReminderReceiver extends BroadcastReceiver {
     }
 
     private void deliverIfCurrent(Context context, EncryptedReminderStore store, String taskId) throws Exception {
-        Reminder pending = store.find(taskId);
-        if (pending == null || pending.delivered) return;
+        Reminder current = store.find(taskId);
+        if (current == null || current.delivered) return;
         Task task = findTask(context, taskId);
-        if (!ReminderLogic.shouldDeliverForTask(pending, task)) {
+        if (!ReminderLogic.shouldDeliverForTask(current, task)) {
             store.remove(taskId);
             ReminderScheduler.cancel(context, taskId);
             ReminderScheduler.cancelNotification(context, taskId);
             return;
         }
-        if (!task.title.equals(pending.taskTitle)) {
+        if (!task.title.equals(current.taskTitle)) {
             store.updateTaskTitle(taskId, task.title);
-            pending = pending.withTitle(task.title);
+            current = current.withTitle(task.title);
         }
-        Reminder rebased = ReminderLogic.afterTimezoneChange(pending, ZoneId.systemDefault());
-        if (rebased.triggerAtMillis != pending.triggerAtMillis) {
-            store.put(rebased);
-            pending = rebased;
+        if (current.deliveryPending) {
+            ReminderScheduler.cancel(context, taskId);
+            postPendingNotification(context, store, taskId);
+            return;
         }
-        if (pending.triggerAtMillis > System.currentTimeMillis()) {
-            ReminderScheduler.schedule(context, pending);
+        if (current.triggerAtMillis > System.currentTimeMillis()) {
+            ReminderScheduler.schedule(context, current);
             return;
         }
         if (!ReminderScheduler.notificationsEnabled(context)) {
             ReminderScheduler.cancel(context, taskId);
             return;
         }
-        Reminder delivered = store.markDelivered(taskId);
-        if (delivered == null) return;
+
+        // Commit a retryable state before posting. A process death here leaves a record startup can reconcile.
+        Reminder pending = store.markDeliveryPending(taskId);
+        if (pending == null) return;
         ReminderScheduler.cancel(context, taskId);
-        postNotification(context, delivered);
+        postPendingNotification(context, store, taskId);
     }
 
     private boolean isSystemRescheduleAction(String action) {
@@ -142,7 +142,53 @@ public final class ReminderReceiver extends BroadcastReceiver {
                 active.add(current);
             }
         }
+        active = reconcilePendingNotifications(context, store, active);
         ReminderScheduler.rescheduleAll(context, active);
+    }
+
+    /** Retry durable pending posts after app start or when notification permission is restored. */
+    static List<Reminder> reconcilePendingNotifications(Context context, EncryptedReminderStore store,
+                                                        List<Reminder> reminders) throws Exception {
+        if (context == null || store == null || reminders == null) return reminders;
+        ReminderReceiver receiver = new ReminderReceiver();
+        List<Reminder> currentRecords = new ArrayList<>();
+        for (Reminder reminder : reminders) {
+            if (ReminderLogic.deliveryRecoveryAction(reminder)
+                    == ReminderLogic.DeliveryRecoveryAction.POST_NOTIFICATION) {
+                try {
+                    receiver.postPendingNotification(context.getApplicationContext(), store, reminder.taskId);
+                } catch (Exception ignored) {
+                    // Keep deliveryPending durable; the next app/system reschedule can retry it.
+                }
+            }
+            Reminder current = store.find(reminder.taskId);
+            if (current != null) currentRecords.add(current);
+        }
+        return currentRecords;
+    }
+
+    private void postPendingNotification(Context context, EncryptedReminderStore store,
+                                         String taskId) throws Exception {
+        Reminder pending = store.find(taskId);
+        if (pending == null || pending.delivered || !pending.deliveryPending) return;
+        Task task = findTask(context, taskId);
+        if (!ReminderLogic.shouldDeliverForTask(pending, task)) {
+            store.remove(taskId);
+            ReminderScheduler.cancel(context, taskId);
+            ReminderScheduler.cancelNotification(context, taskId);
+            return;
+        }
+        if (!task.title.equals(pending.taskTitle)) {
+            store.updateTaskTitle(taskId, task.title);
+            pending = pending.withTitle(task.title);
+        }
+        if (!ReminderScheduler.notificationsEnabled(context)) return;
+        ReminderScheduler.cancel(context, taskId);
+        if (!postNotification(context, pending)) return;
+
+        // The notification is now accepted by Android. If this write fails, startup re-posts the same tag/ID.
+        Reminder delivered = store.markDelivered(taskId);
+        if (delivered == null) ReminderScheduler.cancelNotification(context, taskId);
     }
 
     private Task findTask(Context context, String taskId) throws Exception {
@@ -152,10 +198,10 @@ public final class ReminderReceiver extends BroadcastReceiver {
         return null;
     }
 
-    private void postNotification(Context context, Reminder reminder) {
-        if (!ReminderScheduler.notificationsEnabled(context)) return;
+    private boolean postNotification(Context context, Reminder reminder) {
+        if (!ReminderScheduler.notificationsEnabled(context)) return false;
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager == null) return;
+        if (manager == null) return false;
         String channelId = ReminderScheduler.ensureChannel(context, reminder.soundUri);
         Intent open = new Intent(context, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -175,6 +221,8 @@ public final class ReminderReceiver extends BroadcastReceiver {
                 .addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel,
                         "Cancel reminder", ReminderScheduler.actionPendingIntent(context, ACTION_CANCEL,
                         reminder.taskId)).build());
-        manager.notify(ReminderScheduler.notificationId(reminder.taskId), builder.build());
+        manager.notify(ReminderScheduler.notificationTag(reminder.taskId),
+                ReminderScheduler.notificationId(reminder.taskId), builder.build());
+        return true;
     }
 }
