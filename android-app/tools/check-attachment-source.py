@@ -15,8 +15,14 @@ android = "{http://schemas.android.com/apk/res/android}"
 assert "Intent.ACTION_OPEN_DOCUMENT" in main and "Intent.CATEGORY_OPENABLE" in main
 assert 'picker.setType("*/*")' in main, "preserve arbitrary provider MIME types"
 assert "EXTRA_LOCAL_ONLY" not in main, "keep Android document-provider choice neutral"
-assert "FLAG_GRANT_PERSISTABLE_URI_PERMISSION" not in main
-assert "takePersistableUriPermission" not in main
+portable_grant_helpers = main.split("private boolean retainPortableImportUri", 1)[1].split(
+    "private void showPortableImportKeyDialog", 1)[0]
+attachment_source = main.replace(portable_grant_helpers, "")
+assert "FLAG_GRANT_PERSISTABLE_URI_PERMISSION" not in attachment_source
+assert "takePersistableUriPermission" not in attachment_source
+saved_state = main.split("protected void onSaveInstanceState", 1)[1].split(
+    "protected void onActivityResult", 1)[0]
+assert "pendingPickedAttachmentUri" not in saved_state, "attachment provider URIs must remain transient"
 assert "READ_EXTERNAL_STORAGE" not in main and "READ_MEDIA_" not in main
 assert not list(manifest.findall("uses-permission")), "attachment selection must not add broad storage permissions"
 providers = manifest.findall(".//provider")

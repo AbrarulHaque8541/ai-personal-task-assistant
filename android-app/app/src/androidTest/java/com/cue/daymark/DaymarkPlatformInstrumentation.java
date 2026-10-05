@@ -10,6 +10,8 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.util.AtomicFile;
 
 import org.json.JSONObject;
@@ -26,12 +28,19 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.security.Key;
+import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.crypto.SecretKey;
+import javax.crypto.KeyGenerator;
 import javax.crypto.spec.SecretKeySpec;
 
 /** Platform-only instrumentation; intentionally uses no JUnit/AndroidX test dependency. */
@@ -45,6 +54,8 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
         try {
             importLegacySnapshotRoundTripAndRollback();
             attachmentProviderPipeAndAndroidCrypto();
+            portableImportUriJournalPreservesRecreationAndCleansOrphans();
+            portableBackupRekeysAndReconcilesProcessDeath();
             result.putString("result", "passed");
             result.putInt("assertions", assertions);
             finish(Activity.RESULT_OK, result);
@@ -122,6 +133,191 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
             check(Arrays.equals(tamperedCiphertext, readFile(snapshotFile)),
                     "blocked save preserves the exact damaged snapshot bytes");
         } finally {
+            deleteTree(root);
+        }
+    }
+
+    private void portableImportUriJournalPreservesRecreationAndCleansOrphans() throws Exception {
+        File root = makeTestDirectory("portable-uri-journal");
+        String selected = "content://documents.example/document/activity-recreation.dmbackup";
+        String unrelated = "content://documents.example/document/unrelated";
+        Set<String> grants = new HashSet<>(Arrays.asList(selected, unrelated));
+        File journalFile = new File(root, "active-import-uri.bin");
+        try {
+            PortableBackupManager.ActiveImportUriJournal journal =
+                    new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
+            PortableImportGrantRecovery.Selection selection = PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                    journal, selected, exactUri -> {
+                if (!grants.remove(exactUri)) throw new IOException("selected URI grant was not held");
+            });
+            PortableImportGrantRecovery.ActivityState saved = PortableImportGrantRecovery.activityStateForSelection(
+                    journal, selection, grants::contains);
+            check(saved != null && selected.equals(saved.uri)
+                            && selection.operationToken.equals(saved.operationToken),
+                    "saved Activity state contains the journaled URI and non-secret operation token");
+            PortableBackupManager.ActiveImportUriJournal afterRecreation =
+                    new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
+            PortableImportGrantRecovery.Selection restored = PortableImportGrantRecovery.restorePendingActivitySelection(
+                    afterRecreation, saved.uri, saved.operationToken, grants::contains);
+            check(selection.matches(restored), "recreated Activity validates the real AtomicFile journal record");
+            boolean retained = PortableImportGrantRecovery.reconcileStartup(afterRecreation, restored,
+                    () -> check(grants.contains(selected), "recreation reconciles before keeping the selected URI grant"),
+                    grants::contains, exactUri -> { throw new AssertionError("valid recreation must retain its grant"); });
+            check(retained && selection.matches(afterRecreation.read()) && grants.contains(selected),
+                    "valid Activity recreation preserves the journal and exact selected read grant");
+
+            PortableImportGrantRecovery.finishAfterWork(afterRecreation, selection, () -> { }, exactUri -> {
+                check(selected.equals(exactUri), "user cancellation releases only the URI persisted in AtomicFile");
+                grants.remove(exactUri);
+            });
+            check(afterRecreation.read() == null && !grants.contains(selected) && grants.contains(unrelated),
+                    "cancelled key flow clears its real AtomicFile journal and preserves unrelated grants");
+
+            String orphanUri = "content://documents.example/document/process-death.dmbackup";
+            grants.add(orphanUri);
+            PortableImportGrantRecovery.Selection orphan = new PortableImportGrantRecovery.Selection(
+                    UUID.randomUUID().toString(), orphanUri);
+            afterRecreation.write(orphan); // Deliberately not registered in this process: models process death.
+            check(PortableImportGrantRecovery.restorePendingActivitySelection(afterRecreation,
+                            orphan.uri, orphan.operationToken, grants::contains) == null,
+                    "a saved token from a new process is not accepted as Activity recreation");
+            AtomicBoolean reconciled = new AtomicBoolean();
+            boolean orphanPreserved = PortableImportGrantRecovery.reconcileStartup(afterRecreation, null, () -> {
+                reconciled.set(true);
+            }, grants::contains, exactUri -> {
+                check(reconciled.get(), "process-death orphan cleanup follows transaction reconciliation");
+                check(orphanUri.equals(exactUri), "process-death recovery releases only the journaled URI");
+                grants.remove(exactUri);
+            });
+            check(!orphanPreserved && afterRecreation.read() == null && !grants.contains(orphanUri)
+                            && grants.contains(unrelated),
+                    "real AtomicFile orphan is cleared after process death without touching other grants");
+
+            String legacyUri = "content://documents.example/document/legacy-uri-only.dmbackup";
+            grants.add(legacyUri);
+            try (FileOutputStream legacyFile = new FileOutputStream(journalFile)) {
+                legacyFile.write(legacyUri.getBytes(StandardCharsets.UTF_8));
+            }
+            PortableBackupManager.ActiveImportUriJournal legacyJournal =
+                    new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
+            check(legacyJournal.read().operationToken == null,
+                    "pre-token AtomicFile journal is recognized as a cleanup-only legacy record");
+            AtomicBoolean legacyReconciled = new AtomicBoolean();
+            PortableImportGrantRecovery.recoverAfterProcessDeath(legacyJournal, () -> {
+                legacyReconciled.set(true);
+            }, exactUri -> {
+                check(legacyReconciled.get(), "legacy URI-only cleanup follows transaction reconciliation");
+                check(legacyUri.equals(exactUri), "legacy cleanup releases only its exact URI");
+                grants.remove(exactUri);
+            });
+            check(legacyJournal.read() == null && !grants.contains(legacyUri) && grants.contains(unrelated),
+                    "legacy journal is removed without disturbing unrelated grants");
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private void portableBackupRekeysAndReconcilesProcessDeath() throws Exception {
+        File root = makeTestDirectory("portable-recovery");
+        String sourceAlias = "daymark.test.portable." + UUID.randomUUID();
+        byte[] recoveryKey = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        String recoveryCode = PortableBackupCodec.encodeRecoveryKey(recoveryKey);
+        try {
+            File sourceDirectory = new File(root, "source-blobs");
+            AttachmentBlobStore sourceBlobs = new AttachmentBlobStore(sourceDirectory,
+                    new AliasKeyAccess(sourceAlias));
+            String sourceTaskId = UUID.randomUUID().toString();
+            String sourceAttachmentA = UUID.randomUUID().toString();
+            String sourceAttachmentB = UUID.randomUUID().toString();
+            byte[] payloadA = "first portable attachment from the source key".getBytes(StandardCharsets.UTF_8);
+            byte[] payloadB = "second portable attachment from the source key".getBytes(StandardCharsets.UTF_8);
+            sourceBlobs.importStream(sourceTaskId, sourceAttachmentA, new ByteArrayInputStream(payloadA),
+                    AttachmentLogic.MAX_TOTAL_BYTES, payloadA.length, () -> false);
+            sourceBlobs.importStream(sourceTaskId, sourceAttachmentB, new ByteArrayInputStream(payloadB),
+                    AttachmentLogic.MAX_TOTAL_BYTES - payloadA.length, payloadB.length, () -> false);
+            Task sourceTask = new Task(sourceTaskId, "Portable source marker", "2026-10-07", "high", false,
+                    "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z", Arrays.asList(
+                    new AttachmentRef(sourceAttachmentA, "source-a.bin", "application/octet-stream", payloadA.length),
+                    new AttachmentRef(sourceAttachmentB, "source-b.bin", "application/octet-stream", payloadB.length)));
+            ByteArrayOutputStream archiveOutput = new ByteArrayOutputStream();
+            PortableBackupCodec.writeArchive(archiveOutput, recoveryKey, Collections.singletonList(sourceTask),
+                    (task, attachment) -> sourceBlobs.openInput(task.id, attachment.id),
+                    new SecureRandom(), () -> false);
+            byte[] archive = archiveOutput.toByteArray();
+            deleteKeyAlias(sourceAlias);
+            check(!hasKeyAlias(sourceAlias), "source attachment Keystore alias is removed before restore");
+
+            File rejectRoot = new File(root, "reject-target");
+            check(rejectRoot.mkdirs(), "malformed-archive target root is created");
+            IsolatedContext rejectContext = new IsolatedContext(getTargetContext(), rejectRoot);
+            AndroidAttachmentStore rejectAttachments = new AndroidAttachmentStore(rejectContext);
+            EncryptedTaskStore rejectTasks = new EncryptedTaskStore(rejectContext);
+            byte[] damaged = archive.clone();
+            damaged[damaged.length - 1] ^= 0x40;
+            expectIOException(() -> new PortableBackupManager(rejectContext).restore(
+                    new ByteArrayInputStream(damaged), PortableBackupCodec.decodeRecoveryKey(recoveryCode),
+                    rejectTasks, rejectAttachments, () -> false),
+                    "bad second attachment tag fails before any imported attachment is staged");
+            check(rejectTasks.load().isEmpty(), "failed full-archive authentication leaves task snapshot empty");
+            File rejectedPayloads = new File(rejectContext.getNoBackupFilesDir(), "attachments");
+            check(!rejectedPayloads.exists() || rejectedPayloads.list().length == 0,
+                    "all attachments are authenticated before local encrypted blobs are created");
+
+            File targetRoot = new File(root, "target");
+            check(targetRoot.mkdirs(), "fresh restore target root is created");
+            IsolatedContext targetContext = new IsolatedContext(getTargetContext(), targetRoot);
+            AndroidAttachmentStore targetAttachments = new AndroidAttachmentStore(targetContext);
+            EncryptedTaskStore targetTasks = new EncryptedTaskStore(targetContext);
+
+            PortableBackupManager diesBeforeSnapshot = new PortableBackupManager(targetContext,
+                    new PortableBackupManager.RestoreCheckpoint() {
+                        @Override public void afterAttachmentBlobsCommitted() { throw new SimulatedProcessDeath(); }
+                        @Override public void afterTaskSnapshotCommitted() { }
+                    });
+            expectProcessDeath(() -> diesBeforeSnapshot.restore(new ByteArrayInputStream(archive),
+                    PortableBackupCodec.decodeRecoveryKey(recoveryCode), targetTasks, targetAttachments,
+                    () -> false), "process death after blob commit is injected");
+            check(targetTasks.load().isEmpty(), "pre-snapshot interruption leaves the original task snapshot unchanged");
+            PortableBackupManager afterRestart = new PortableBackupManager(targetContext);
+            afterRestart.reconcile(targetTasks.load(), targetAttachments);
+            targetAttachments.cleanupOrphans(Collections.emptySet());
+            File targetPayloads = new File(targetContext.getNoBackupFilesDir(), "attachments");
+            check(!targetPayloads.exists() || targetPayloads.list().length == 0,
+                    "restart reconciliation removes unreferenced committed blobs after pre-snapshot interruption");
+
+            PortableBackupManager diesAfterSnapshot = new PortableBackupManager(targetContext,
+                    new PortableBackupManager.RestoreCheckpoint() {
+                        @Override public void afterAttachmentBlobsCommitted() { }
+                        @Override public void afterTaskSnapshotCommitted() { throw new SimulatedProcessDeath(); }
+                    });
+            expectProcessDeath(() -> diesAfterSnapshot.restore(new ByteArrayInputStream(archive),
+                    PortableBackupCodec.decodeRecoveryKey(recoveryCode), targetTasks, targetAttachments,
+                    () -> false), "process death after task snapshot commit is injected");
+            List<Task> committedSnapshot = targetTasks.load();
+            check(committedSnapshot.size() == 1, "task snapshot commits only after all encrypted blobs are committed");
+            afterRestart.reconcile(committedSnapshot, targetAttachments);
+            List<Task> recovered = targetTasks.load();
+            check(recovered.size() == 1, "restart reconciliation recognizes the complete snapshot and preserves it");
+            Task restoredTask = recovered.get(0);
+            check(!restoredTask.id.equals(sourceTaskId), "restored task receives a fresh app-owned ID");
+            check(restoredTask.attachments.size() == 2
+                            && !restoredTask.attachments.get(0).id.equals(sourceAttachmentA)
+                            && !restoredTask.attachments.get(1).id.equals(sourceAttachmentB),
+                    "restored attachments receive fresh app-owned IDs");
+            try (InputStream restoredA = targetAttachments.openDecrypted(restoredTask.id, restoredTask.attachments.get(0).id);
+                 InputStream restoredB = targetAttachments.openDecrypted(restoredTask.id, restoredTask.attachments.get(1).id)) {
+                check(Arrays.equals(payloadA, readAll(restoredA)) && Arrays.equals(payloadB, readAll(restoredB)),
+                        "portable restore re-encrypts authenticated bytes under the destination Android Keystore key");
+            }
+            check(hasKeyAlias("daymark.attachment-payload.aes-gcm.v1"),
+                    "destination Android Keystore attachment key exists independently of the removed source key");
+            expectIOException(() -> afterRestart.restore(new ByteArrayInputStream(archive),
+                    PortableBackupCodec.decodeRecoveryKey(recoveryCode), targetTasks, targetAttachments,
+                    () -> false), "recovered backup ID is blocked from a second import");
+            check(targetTasks.load().size() == 1, "duplicate import prevention preserves the one committed task copy");
+        } finally {
+            deleteKeyAlias(sourceAlias);
+            PortableBackupCodec.clear(recoveryKey);
             deleteTree(root);
         }
     }
@@ -284,6 +480,22 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
         } catch (FileNotFoundException expected) { }
     }
 
+    private void expectIOException(IoOperation operation, String message) throws Exception {
+        assertions++;
+        try {
+            operation.run();
+            throw new AssertionError(message + ": expected IOException");
+        } catch (IOException expected) { }
+    }
+
+    private void expectProcessDeath(IoOperation operation, String message) throws Exception {
+        assertions++;
+        try {
+            operation.run();
+            throw new AssertionError(message + ": expected simulated process death");
+        } catch (SimulatedProcessDeath expected) { }
+    }
+
     private void expectNoPlaintext(InputOperation operation, String message) throws Exception {
         assertions++;
         int released = 0;
@@ -335,6 +547,18 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
         }
     }
 
+    private static boolean hasKeyAlias(String alias) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        return keyStore.containsAlias(alias);
+    }
+
+    private static void deleteKeyAlias(String alias) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias);
+    }
+
     private File makeTestDirectory(String label) throws IOException {
         File root = new File(getTargetContext().getCacheDir(),
                 "daymark-instrumentation-" + label + "-" + UUID.randomUUID());
@@ -368,6 +592,49 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
             return key;
         }
     }
+
+    private static final class AliasKeyAccess implements AttachmentBlobStore.KeyAccess {
+        private final String alias;
+        AliasKeyAccess(String alias) { this.alias = alias; }
+
+        @Override
+        public SecretKey loadExistingKey() throws IOException {
+            try {
+                KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+                keyStore.load(null);
+                if (!keyStore.containsAlias(alias)) throw new IOException("The source test key is missing.");
+                Key key = keyStore.getKey(alias, null);
+                if (!(key instanceof SecretKey)) throw new IOException("The source test key is unavailable.");
+                return (SecretKey) key;
+            } catch (IOException failure) {
+                throw failure;
+            } catch (Exception failure) {
+                throw new IOException("The source test key could not be opened.", failure);
+            }
+        }
+
+        @Override
+        public SecretKey createKeyForNewStore() throws IOException {
+            try {
+                if (hasKeyAlias(alias)) return loadExistingKey();
+                KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+                KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(alias,
+                        KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setKeySize(256)
+                        .setRandomizedEncryptionRequired(true)
+                        .setUserAuthenticationRequired(false)
+                        .build();
+                generator.init(spec);
+                return generator.generateKey();
+            } catch (Exception failure) {
+                throw new IOException("A source test Keystore key could not be generated.", failure);
+            }
+        }
+    }
+
+    private static final class SimulatedProcessDeath extends Error { }
 
     private static final class PlatformAtomicFileAccess implements EncryptedBlobStore.AtomicFileAccess {
         private final AtomicFile atomicFile;
