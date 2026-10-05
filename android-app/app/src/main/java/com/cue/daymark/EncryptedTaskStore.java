@@ -26,15 +26,18 @@ import javax.crypto.SecretKey;
 final class EncryptedTaskStore {
     private static final String KEY_ALIAS = "daymark.task-store.aes-gcm.v1";
     private static final Object FILE_ACCESS_LOCK = new Object();
-    private final File storeFile;
     private final EncryptedBlobStore encryptedStore;
     private boolean loadReady;
 
     EncryptedTaskStore(Context context) {
-        storeFile = new File(context.getFilesDir(), "tasks.enc");
+        this(new File(context.getFilesDir(), "tasks.enc"), new AndroidKeyAccess());
+    }
+
+    /** Uses the production codec and AtomicFile adapter with an isolated path/key adapter. */
+    EncryptedTaskStore(File storeFile, EncryptedBlobStore.KeyAccess keyAccess) {
         AtomicFile atomicFile = new AtomicFile(storeFile);
         encryptedStore = new EncryptedBlobStore(
-                new AndroidAtomicFileAccess(atomicFile, storeFile), new AndroidKeyAccess());
+                new AndroidAtomicFileAccess(atomicFile, storeFile), keyAccess);
     }
 
     List<Task> load() throws Exception {

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "2e8cae89-3dd4-43e3-82d4-51a8df643501",
+      "title": "Replace the scratched desk mat",
+      "dueDate": "2026-10-06",
+      "priority": "high",
+      "completed": false,
+      "createdAt": "2026-10-05T10:15:30Z",
+      "updatedAt": "2026-10-05T12:04:11Z"
+    },
+    {
+      "id": "fa271a20-7586-4fc1-8855-7f8cb9059b73",
+      "title": "Read Crème & save notes",
+      "dueDate": null,
+      "priority": "low",
+      "completed": true,
+      "createdAt": "2026-10-04T08:00:00Z",
+      "updatedAt": "2026-10-05T14:02:59Z"
+    }
+  ]
+}

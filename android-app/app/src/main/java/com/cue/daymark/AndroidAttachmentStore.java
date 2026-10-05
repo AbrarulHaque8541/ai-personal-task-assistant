@@ -106,7 +106,8 @@ final class AndroidAttachmentStore {
         }
     }
 
-    private static final class AndroidKeyAccess implements AttachmentBlobStore.KeyAccess {
+    /** Package-scoped for instrumentation of the real Android Keystore-backed blob path. */
+    static final class AndroidKeyAccess implements AttachmentBlobStore.KeyAccess {
         @Override
         public SecretKey loadExistingKey() throws IOException {
             KeyStore keyStore = loadKeyStore();
