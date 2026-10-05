@@ -4,6 +4,6 @@
   "private": true,
   "description": "Daymark — local-first personal task manager, reference web prototype.",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test"
   }
 }

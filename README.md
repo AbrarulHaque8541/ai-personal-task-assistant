@@ -23,7 +23,7 @@ The task-logic unit tests use the Node.js built-in test runner (Node 18+):
 ```sh
 npm test
 # or directly:
-node --test tests/
+node --test
 ```
 
 No install step is needed; the tests have no third-party dependencies.

@@ -47,12 +47,16 @@
       setStorageStatus('Saved data could not be read', true);
       // Preserve the unreadable payload instead of silently discarding it, so a
       // future fix or manual recovery can still reach the original data.
+      let backupSaved = false;
       try {
         localStorage.setItem(BACKUP_KEY, saved);
+        backupSaved = true;
       } catch (backupError) {
         console.warn('Could not keep a backup of unreadable Daymark tasks:', backupError);
       }
-      showToast('Saved tasks could not be read. The original data was kept in a browser backup.');
+      showToast(backupSaved
+        ? 'Saved tasks could not be read. The original data was kept in a browser backup.'
+        : 'Saved tasks could not be read. Browser storage could not create a recovery backup; the original entry was left unchanged.');
       return [];
     }
   }
