@@ -6,6 +6,19 @@ android {
     namespace = "com.cue.daymark"
     compileSdk = 35
 
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("githubSideload") {
+            dimension = "distribution"
+            buildConfigField("boolean", "UPDATER_ENABLED", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "UPDATER_ENABLED", "false")
+        }
+    }
+
     defaultConfig {
         applicationId = "com.cue.daymark"
         minSdk = 26
@@ -21,7 +34,7 @@ android {
     }
 
     buildFeatures {
-        buildConfig = false
+        buildConfig = true
     }
 
     packaging {

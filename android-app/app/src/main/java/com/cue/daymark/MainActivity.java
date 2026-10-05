@@ -3,10 +3,13 @@ package com.cue.daymark;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
@@ -16,11 +19,15 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.DocumentsContract;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
@@ -57,8 +64,19 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.text.NumberFormat;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.cue.daymark.updater.AndroidApkVerifier;
+import com.cue.daymark.updater.GitHubApkDownloader;
+import com.cue.daymark.updater.GitHubReleaseClient;
+import com.cue.daymark.updater.PendingSaveTransaction;
+import com.cue.daymark.updater.SafApkSaver;
+import com.cue.daymark.updater.UpdaterCore;
+import com.cue.daymark.updater.UpdaterPublisherConfig;
+import com.cue.daymark.updater.UpdaterRecoveryStore;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
@@ -75,6 +93,10 @@ public final class MainActivity extends Activity {
     private static final String POWER_MODE_KEY = "power_mode";
     private static final String TEXT_SIZE_KEY = "text_size_mode";
     private static final String HIGH_CONTRAST_KEY = "high_contrast";
+    private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
+    private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
+    private static final int REQUEST_SAVE_VERIFIED_APK = 7343;
+    private static final String PENDING_SAVE_STATE_KEY = "updater.pending_save_transaction.v1";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -86,6 +108,8 @@ public final class MainActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private ExecutorService storageExecutor;
+    private ExecutorService updaterExecutor;
+    private UpdaterRecoveryStore updaterRecoveryStore;
     private EncryptedTaskStore taskStore;
     private AndroidAttachmentStore attachmentStore;
     private PortableBackupManager portableBackupManager;
@@ -118,6 +142,17 @@ public final class MainActivity extends Activity {
     private int textSizeMode;
     private boolean powerMode;
     private boolean highContrast;
+    private boolean updateCheckRunning;
+    private boolean updateTransferRunning;
+    private boolean verifiedSaveRunning;
+    private boolean recoveryCheckRunning;
+    private boolean recoveryPromptShowing;
+    private boolean activityResumed;
+    private GitHubApkDownloader activeUpdateDownloader;
+    private AlertDialog updateDownloadDialog;
+    private File pendingVerifiedApk;
+    private UpdaterCore.Release pendingVerifiedRelease;
+    private PendingSaveTransaction pendingSaveTransaction;
     private float textScale = 1.0f;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
@@ -166,8 +201,12 @@ public final class MainActivity extends Activity {
         setTheme(themeResource(themeMode));
         super.onCreate(savedInstanceState);
 
+        GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
+        updaterRecoveryStore = new UpdaterRecoveryStore(getNoBackupFilesDir());
+        restorePendingSaveTransaction(savedInstanceState);
         palette = Palette.from(this, themeMode, highContrast);
         storageExecutor = Executors.newSingleThreadExecutor();
+        updaterExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
         attachmentStore = new AndroidAttachmentStore(getApplicationContext());
         portableBackupManager = new PortableBackupManager(getApplicationContext());
@@ -195,6 +234,34 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        if (pendingSaveTransaction != null) {
+            outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction);
+        }
+        super.onSaveInstanceState(outState);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void restorePendingSaveTransaction(Bundle savedInstanceState) {
+        if (savedInstanceState == null) return;
+        Object saved = savedInstanceState.getSerializable(PENDING_SAVE_STATE_KEY);
+        if (!(saved instanceof PendingSaveTransaction)) return;
+        PendingSaveTransaction transaction = (PendingSaveTransaction) saved;
+        try {
+            UpdaterRecoveryStore.PendingUpdate retained = updaterRecoveryStore.readPending();
+            if (retained != null && transaction.isValidFor(retained.release)
+                    && retained.verifiedApk.isFile()
+                    && retained.verifiedApk.length() == retained.release.apkSizeBytes) {
+                pendingSaveTransaction = transaction;
+                pendingVerifiedApk = retained.verifiedApk;
+                pendingVerifiedRelease = retained.release;
+            }
+        } catch (Exception ignored) {
+            // Invalid state is never trusted; any stale returned URI is handled narrowly in the result callback.
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         portableCancelRequested = true;
@@ -204,7 +271,14 @@ public final class MainActivity extends Activity {
         }
         if (pendingExportArchive != null && pendingExportArchive.exists()) pendingExportArchive.delete();
         if (!isChangingConfigurations()) discardPendingPortableImport();
+        if (activeUpdateDownloader != null) activeUpdateDownloader.cancel();
+        if (updateDownloadDialog != null && updateDownloadDialog.isShowing()) updateDownloadDialog.dismiss();
+        // Recovery metadata and the verified cache file outlive this Activity/process instance.
+        pendingVerifiedApk = null;
+        pendingVerifiedRelease = null;
+        pendingSaveTransaction = null;
         if (storageExecutor != null) storageExecutor.shutdown();
+        if (updaterExecutor != null) updaterExecutor.shutdownNow();
         super.onDestroy();
     }
 
@@ -226,12 +300,79 @@ public final class MainActivity extends Activity {
                 // An incomplete or unreadable journal is recovered conservatively on startup.
             }
         }
+        if (pendingSaveTransaction != null) {
+            state.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction);
+        }
         super.onSaveInstanceState(state);
     }
 
+    protected void onResume() {
+        super.onResume();
+        activityResumed = true;
+        if (!updateTransferRunning && !verifiedSaveRunning && pendingSaveTransaction == null
+                && pendingVerifiedApk == null
+                && !recoverPendingVerifiedUpdate()) {
+            checkForUpdates(false);
+        }
+    }
+
     @Override
+    protected void onPause() {
+        activityResumed = false;
+        super.onPause();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_SAVE_VERIFIED_APK) return;
+        PendingSaveTransaction transaction = pendingSaveTransaction;
+        File verifiedApk = pendingVerifiedApk;
+        UpdaterCore.Release release = pendingVerifiedRelease;
+        pendingSaveTransaction = null;
+        pendingVerifiedApk = null;
+        pendingVerifiedRelease = null;
+        if (transaction == null || verifiedApk == null || release == null
+                || !transaction.isValidFor(release)) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                cleanStalePickerResult(data.getData());
+            }
+            recoverPendingVerifiedUpdate();
+            return;
+        }
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            if (!recoverPendingVerifiedUpdate()) {
+                showSaveFailureChoices(release, verifiedApk,
+                        "No save location was selected. The verified update remains in app-private storage.");
+            }
+            return;
+        }
+        Uri destination = data.getData();
+        verifiedSaveRunning = true;
+        updaterExecutor.execute(() -> {
+            boolean saved = false;
+            String failureMessage = null;
+            try {
+                revalidatePendingSaveTransaction(transaction, verifiedApk, release);
+                copyVerifiedApkToDocument(verifiedApk, destination, release, transaction);
+                saved = true;
+            } catch (Exception exception) {
+                failureMessage = "The verified APK could not be saved safely. The source is revalidated before copying, the destination is read back before finalization, and interrupted copies use a .daymark-incomplete marker; if the provider failed during finalization, check the chosen folder before retrying. The verified source remains in app-private storage for retry or explicit discard.";
+            }
+            final boolean savedResult = saved;
+            final String saveFailure = failureMessage;
+            mainHandler.post(() -> {
+                verifiedSaveRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (savedResult) {
+                    showInfo("Verified APK saved", "A copy was saved to your chosen location. Daymark did not open an installer or install it. The verified app-private copy remains available until you explicitly discard it; open the saved copy yourself from Files if you choose to continue.");
+                } else {
+                    showSaveFailureChoices(release, verifiedApk, saveFailure);
+                }
+            });
+        });
+    }
         if (requestCode == REQUEST_ATTACH_DOCUMENT) {
             String taskId = pendingAttachmentTaskId;
             pendingAttachmentTaskId = null;
@@ -266,6 +407,40 @@ public final class MainActivity extends Activity {
             if (!retainPortableImportUri(data.getData(), data.getFlags())) return;
             showPortableImportKeyDialog();
         }
+    }
+
+    private void cleanStalePickerResult(Uri destination) {
+        // This callback is only for our ACTION_CREATE_DOCUMENT request. Rename/delete the returned
+        // newly-created URI itself; never search for, or delete, a document by display name.
+        Uri cleanupUri = destination;
+        String orphanName = "Daymark-orphaned-save-"
+                + UUID.randomUUID().toString().replace("-", "").toLowerCase(Locale.ROOT) + ".tmp";
+        try {
+            Uri marked = DocumentsContract.renameDocument(getContentResolver(), cleanupUri, orphanName);
+            if (marked != null) cleanupUri = marked;
+        } catch (Exception ignored) {
+            // Providers may not support rename; still attempt deletion of this exact returned URI.
+        }
+        try {
+            DocumentsContract.deleteDocument(getContentResolver(), cleanupUri);
+        } catch (Exception ignored) {
+            // If cleanup is unsupported, a successful rename leaves a conspicuous orphan marker.
+        }
+    }
+
+    private void revalidatePendingSaveTransaction(PendingSaveTransaction transaction,
+            File verifiedApk, UpdaterCore.Release release) throws Exception {
+        UpdaterRecoveryStore.PendingUpdate retained = updaterRecoveryStore.readPending();
+        if (retained == null || !transaction.isValidFor(retained.release)
+                || !transaction.isValidFor(release)
+                || !verifiedApk.getCanonicalFile().equals(retained.verifiedApk.getCanonicalFile())
+                || !verifiedApk.isFile()) {
+            throw new IOException("The pending picker transaction no longer matches the retained verified update.");
+        }
+        AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
+        UpdaterCore.verifyDownloadedArtifact(release, verifiedApk, getPackageName(), currentVersionCode(),
+                Build.VERSION.SDK_INT, verifier.installedSignerSha256(),
+                UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256, verifier);
     }
 
     private int themeResource(int mode) {
@@ -2254,7 +2429,8 @@ public final class MainActivity extends Activity {
                 "Reduced motion",
                 "Permission status: " + permissionStatusLabel(),
                 "Advanced details",
-                "Encrypted backup / restore"
+                "Encrypted backup / restore",
+                "Check now"
         };
         new AlertDialog.Builder(this)
                 .setTitle("More settings")
@@ -2267,7 +2443,8 @@ public final class MainActivity extends Activity {
                     else if (selected == 5) showReducedMotionInfo();
                     else if (selected == 6) showPermissionStatus();
                     else if (selected == 7) showAdvancedDetails();
-                    else showPortableBackupDialog();
+                    else if (selected == 8) showPortableBackupDialog();
+                    else checkForUpdates(true);
                 })
                 .setNegativeButton("Close", null)
                 .show();
@@ -2364,17 +2541,482 @@ public final class MainActivity extends Activity {
         showInfo("Permission status", message);
     }
 
+    private void checkForUpdates(boolean manual) {
+        boolean publisherConfigured = UpdaterPublisherConfig.isUpdaterConfigured();
+        if (!UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)) {
+            if (manual) {
+                String reason = !BuildConfig.UPDATER_ENABLED
+                        ? "Update checks are available only in the GitHub sideload distribution."
+                        : publisherConfigured
+                        ? "This build does not declare the Internet permission."
+                        : "Update checks are disabled for this build; a release build and trusted publisher signing certificate are required.";
+                showInfo("Updates unavailable", reason + " No network request was made. "
+                        + "Your tasks remain available offline.");
+            }
+            return;
+        }
+        if (updateCheckRunning) {
+            if (manual) Toast.makeText(this, "An update check is already running.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        SharedPreferences preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long lastCheck = preferences.getLong(LAST_UPDATE_CHECK_KEY, 0L);
+        if (!UpdaterCore.shouldCheck(lastCheck, now, manual)) return;
+        updateCheckRunning = true;
+        preferences.edit().putLong(LAST_UPDATE_CHECK_KEY, now).apply();
+        updaterExecutor.execute(() -> {
+            UpdaterCore.CheckResult result = null;
+            UpdaterCore.UpdateException failure = null;
+            try {
+                long installedVersionCode = currentVersionCode();
+                result = UpdaterCore.check(new GitHubReleaseClient(), getPackageName(), installedVersionCode);
+            } catch (UpdaterCore.UpdateException exception) {
+                failure = exception;
+            } catch (Exception exception) {
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.HTTP,
+                        "Update metadata could not be read.", exception);
+            }
+            final UpdaterCore.CheckResult checked = result;
+            final UpdaterCore.UpdateException error = failure;
+            mainHandler.post(() -> {
+                updateCheckRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (error != null) {
+                    if (manual) showInfo("Update check", updateFailureMessage(error));
+                    return;
+                }
+                if (checked == null || checked.status == UpdaterCore.CheckStatus.NO_UPDATE) {
+                    if (manual) showInfo("Update check", "No newer stable Daymark release was found. The app remains usable offline.");
+                    return;
+                }
+                String dismissedTag = preferences.getString(DISMISSED_UPDATE_TAG_KEY, "");
+                if (!manual && checked.release.tag.equals(dismissedTag)) return;
+                showUpdateDetails(checked.release);
+            });
+        });
+    }
+
+    private boolean hasInternetPermission() {
+        return getPackageManager().checkPermission(Manifest.permission.INTERNET, getPackageName())
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @SuppressWarnings("deprecation")
+    private long currentVersionCode() throws PackageManager.NameNotFoundException {
+        PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+        return Build.VERSION.SDK_INT >= 28 ? packageInfo.getLongVersionCode() : packageInfo.versionCode;
+    }
+
+    private String updateFailureMessage(UpdaterCore.UpdateException error) {
+        switch (error.failure) {
+            case OFFLINE:
+                return "GitHub could not be reached. Check your connection and try Check now later. Daymark tasks remain available offline.";
+            case RATE_LIMITED:
+                return "GitHub is rate-limiting update checks. Wait before trying Check now again. Daymark tasks remain available.";
+            case NETWORK_POLICY:
+                return "Wi-Fi only was selected. Connect to Wi-Fi or explicitly allow mobile data before downloading. No APK was saved.";
+            case INVALID_METADATA:
+                return "The GitHub release metadata was incomplete or invalid. No APK was downloaded.";
+            case HTTP:
+                return "GitHub did not return a usable release response. No APK was downloaded.";
+            case APK_MISMATCH:
+                return "The downloaded APK did not match the release metadata or Daymark package/version. Nothing was installed.";
+            case SIGNER_MISMATCH:
+                return "The release signing certificate did not exactly match this installed app and publisher configuration. Nothing was installed. Do not uninstall Daymark; encrypted local tasks may be lost.";
+            case DOWNLOAD:
+                return "The APK download did not complete. Nothing was installed; Daymark tasks remain available.";
+            case CANCELLED:
+                return "The APK download was cancelled. No verified APK was saved; Daymark tasks remain available.";
+            default:
+                return "The update check could not be completed. No APK was downloaded.";
+        }
+    }
+
+    private void showUpdateDetails(UpdaterCore.Release release) {
+        boolean updaterConfigured = BuildConfig.UPDATER_ENABLED
+                && UpdaterPublisherConfig.isUpdaterConfigured() && hasInternetPermission();
+        String message = "Version " + release.versionName + "\n"
+                + release.name + "\n\n"
+                + (release.notes.trim().isEmpty() ? "No release notes were provided." : release.notes.trim())
+                + "\n\nAPK size: " + NumberFormat.getIntegerInstance(Locale.getDefault()).format(release.apkSizeBytes)
+                + " bytes. Choose Wi-Fi only (the default) or explicitly allow mobile data below. No APK is downloaded until you choose Download and verify."
+                + "\n\nDaymark sends no task data or history in an update request. Update checks contact the fixed public GitHub Releases endpoint only while the app is foregrounded or when you choose Check now."
+                + "\n\nAfter verification, you choose where to save the APK and open it yourself from Files if you want to continue. Daymark does not open an installer or install it; Android controls any install-source approval and final confirmation."
+                + "\n\nDo not uninstall to work around a signing mismatch; encrypted local tasks may be lost.";
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("Update available")
+                .setMessage(message);
+        if (updaterConfigured) {
+            boolean[] allowMobileData = { false };
+            dialog.setSingleChoiceItems(new String[] { "Wi-Fi only (recommended)", "Allow mobile data" }, 0,
+                    (choiceDialog, selected) -> allowMobileData[0] = selected == 1);
+            dialog.setPositiveButton("Download and verify",
+                    (ignored, which) -> beginUpdateDownload(release, allowMobileData[0]));
+            dialog.setNegativeButton("Cancel", null);
+            dialog.setNeutralButton("Dismiss release", (ignored, which) -> rememberDismissedRelease(release.tag));
+        } else {
+            dialog.setPositiveButton("OK", (ignored, which) -> rememberDismissedRelease(release.tag));
+            dialog.setNegativeButton("Close", null);
+        }
+        dialog.show();
+    }
+
+    private void beginUpdateDownload(UpdaterCore.Release release, boolean allowMobileData) {
+        if (updateTransferRunning) {
+            Toast.makeText(this, "An update download is already running.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!BuildConfig.UPDATER_ENABLED || !UpdaterPublisherConfig.isUpdaterConfigured()
+                || !hasInternetPermission()) {
+            showInfo("Update unavailable", "The GitHub sideload build, Internet access, and a protected publisher signer are required. No APK was downloaded; tasks remain usable.");
+            return;
+        }
+        try {
+            updaterRecoveryStore.recordPending(release);
+        } catch (Exception exception) {
+            showInfo("Update not started", "A prior verified update must be recovered or explicitly discarded before another download. No APK was downloaded.");
+            return;
+        }
+        updateTransferRunning = true;
+        GitHubApkDownloader downloader = new GitHubApkDownloader(getApplicationContext(), allowMobileData,
+                () -> isWifiConnected(getApplicationContext()));
+        activeUpdateDownloader = downloader;
+        updateDownloadDialog = new AlertDialog.Builder(this)
+                .setTitle("Downloading and verifying")
+                .setMessage("The APK is being downloaded to temporary app storage. Cancel stops active transfer or verification. A fully verified APK remains private until you choose Save or Discard.")
+                .setNegativeButton("Cancel", (dialog, which) -> downloader.cancel())
+                .create();
+        updateDownloadDialog.setCancelable(false);
+        updateDownloadDialog.show();
+        Toast.makeText(this, allowMobileData
+                ? "Downloading and verifying the APK using the network you allowed."
+                : "Downloading and verifying the APK over Wi-Fi only.", Toast.LENGTH_LONG).show();
+        updaterExecutor.execute(() -> {
+            UpdaterCore.VerificationResult result = null;
+            UpdaterCore.UpdateException failure = null;
+            try {
+                AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
+                String installedSigner = verifier.installedSignerSha256();
+                result = UpdaterCore.downloadAndVerify(release,
+                        getPackageName(), currentVersionCode(), Build.VERSION.SDK_INT,
+                        installedSigner, UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256,
+                        consentedRelease -> true,
+                        downloader, verifier);
+            } catch (UpdaterCore.UpdateException exception) {
+                failure = exception;
+            } catch (Exception exception) {
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,
+                        "Downloaded update could not be safely verified.", exception);
+            }
+            if (failure != null || (result != null && result.status == UpdaterCore.VerificationStatus.CANCELLED)) {
+                try { updaterRecoveryStore.clearIfNoVerifiedArtifact(release); }
+                catch (Exception ignored) { }
+            }
+            final UpdaterCore.VerificationResult completedResult = result;
+            final UpdaterCore.UpdateException completedFailure = failure;
+            mainHandler.post(() -> {
+                updateTransferRunning = false;
+                if (updateDownloadDialog != null && updateDownloadDialog.isShowing()) {
+                    updateDownloadDialog.dismiss();
+                }
+                updateDownloadDialog = null;
+                if (activeUpdateDownloader == downloader) activeUpdateDownloader = null;
+                if (!activityResumed || isFinishing() || isDestroyed()) {
+                    // A verified result remains paired with its persistent recovery record.
+                    return;
+                }
+                if (completedFailure != null) {
+                    showInfo(completedFailure.failure == UpdaterCore.Failure.CANCELLED
+                            ? "Download cancelled" : "Update verification failed",
+                            updateFailureMessage(completedFailure));
+                } else if (completedResult != null
+                        && completedResult.status == UpdaterCore.VerificationStatus.VERIFIED
+                        && completedResult.verifiedApk != null) {
+                    offerManualApkSave(release, completedResult.verifiedApk);
+                } else {
+                    showInfo("Verification cancelled", "No update was installed. The existing app and encrypted tasks remain unchanged.");
+                }
+            });
+        });
+    }
+
+    private static boolean isWifiConnected(Context context) {
+        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (manager == null) return false;
+        Network activeNetwork = manager.getActiveNetwork();
+        NetworkCapabilities capabilities = activeNetwork == null ? null : manager.getNetworkCapabilities(activeNetwork);
+        return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+    }
+
+    /** Revalidate any retained artifact before offering it; no verified cache file is swept at startup. */
+    private boolean recoverPendingVerifiedUpdate() {
+        if (updaterRecoveryStore == null || recoveryPromptShowing) return recoveryPromptShowing;
+        boolean hasRecord = updaterRecoveryStore.hasPendingRecord();
+        if (!hasRecord) {
+            try {
+                List<File> orphanedArtifacts = updaterRecoveryStore.listVerifiedArtifacts();
+                if (!orphanedArtifacts.isEmpty()) {
+                    offerUnrecoverableArtifact(orphanedArtifacts.get(0));
+                    return true;
+                }
+            } catch (IOException ignored) { }
+            return false;
+        }
+        if (recoveryCheckRunning) return true;
+        recoveryCheckRunning = true;
+        updaterExecutor.execute(() -> {
+            UpdaterRecoveryStore.PendingUpdate pending = null;
+            UpdaterCore.UpdateException failure = null;
+            boolean unreadableRecord = false;
+            try {
+                pending = updaterRecoveryStore.readPending();
+                if (pending != null && !pending.verifiedApk.isFile()) {
+                    updaterRecoveryStore.clearIfNoVerifiedArtifact(pending.release);
+                    pending = null;
+                } else if (pending != null) {
+                    AndroidApkVerifier verifier = new AndroidApkVerifier(getApplicationContext());
+                    UpdaterCore.verifyDownloadedArtifact(pending.release, pending.verifiedApk,
+                            getPackageName(), currentVersionCode(), Build.VERSION.SDK_INT,
+                            verifier.installedSignerSha256(),
+                            UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256, verifier);
+                }
+            } catch (UpdaterCore.UpdateException exception) {
+                failure = exception;
+                unreadableRecord = pending == null;
+            } catch (Exception exception) {
+                failure = new UpdaterCore.UpdateException(UpdaterCore.Failure.APK_MISMATCH,
+                        "Retained update could not be safely revalidated.", exception);
+                unreadableRecord = pending == null;
+            }
+            final UpdaterRecoveryStore.PendingUpdate recovered = pending;
+            final UpdaterCore.UpdateException recoveryFailure = failure;
+            final boolean recoveryRecordUnreadable = unreadableRecord;
+            mainHandler.post(() -> {
+                recoveryCheckRunning = false;
+                if (!activityResumed || isFinishing() || isDestroyed()) return;
+                if (recovered != null) {
+                    if (recoveryFailure == null) offerManualApkSave(recovered.release, recovered.verifiedApk);
+                    else offerInvalidRecovery(recovered);
+                } else if (recoveryRecordUnreadable) {
+                    offerUnreadableRecoveryRecord();
+                } else if (!recoverPendingVerifiedUpdate()) {
+                    checkForUpdates(false);
+                }
+            });
+        });
+        return true;
+    }
+
+    private void offerInvalidRecovery(UpdaterRecoveryStore.PendingUpdate pending) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Update recovery not verified")
+                .setMessage("The retained APK no longer matches its stored digest, package, version, or signer expectations. It will not be offered for saving or opening. Keep it in private storage or explicitly discard it.")
+                .setPositiveButton("Discard retained APK", (ignored, which) -> discardVerifiedUpdate(pending.release))
+                .setNegativeButton("Keep for now", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    private void offerUnreadableRecoveryRecord() {
+        try {
+            List<File> artifacts = updaterRecoveryStore.listVerifiedArtifacts();
+            if (!artifacts.isEmpty()) {
+                offerUnrecoverableArtifact(artifacts.get(0));
+                return;
+            }
+        } catch (IOException ignored) { }
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Update recovery unavailable")
+                .setMessage("The retained update record could not be validated and no APK will be offered. Clear only the invalid recovery record, or keep it for now?")
+                .setPositiveButton("Clear invalid record", (ignored, which) -> {
+                    try { updaterRecoveryStore.clearInvalidRecordAfterUserChoice(); }
+                    catch (IOException exception) {
+                        showInfo("Recovery record retained", "The invalid update record could not be cleared safely.");
+                    }
+                })
+                .setNegativeButton("Keep for now", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    private void offerUnrecoverableArtifact(File artifact) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Retained APK needs review")
+                .setMessage("A verified-cache APK has no readable recovery metadata, so Daymark cannot safely offer it for saving or opening. It will remain in private storage unless you explicitly discard it.")
+                .setPositiveButton("Discard retained APK", (ignored, which) -> {
+                    try {
+                        updaterRecoveryStore.discardOrphanAfterUserChoice(artifact);
+                        Toast.makeText(this, "Retained APK discarded. Nothing was installed.", Toast.LENGTH_LONG).show();
+                    } catch (IOException exception) {
+                        showInfo("APK retained", "The retained update could not be discarded safely.");
+                    }
+                    mainHandler.post(() -> {
+                        if (activityResumed && !recoverPendingVerifiedUpdate()) checkForUpdates(false);
+                    });
+                })
+                .setNegativeButton("Keep for now", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void offerManualApkSave(UpdaterCore.Release release, File verifiedApk) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("APK verified — not installed")
+                .setMessage("The APK passed the declared size, SHA-256, package, version, minimum Android version, and signer checks. The verified app-private copy is retained across restarts until you explicitly discard it. Daymark will not open an installer. Save a copy to a location you choose; if you decide to continue, open it yourself from Files. Android controls any install-source approval and final confirmation.")
+                .setPositiveButton("Save verified APK", (ignored, which) -> startVerifiedApkSave(release, verifiedApk))
+                .setNegativeButton("Discard", (ignored, which) -> discardVerifiedUpdate(release))
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    @SuppressWarnings("deprecation")
+    private void startVerifiedApkSave(UpdaterCore.Release release, File verifiedApk) {
+        String token = UUID.randomUUID().toString().replace("-", "").toLowerCase(Locale.ROOT);
+        PendingSaveTransaction transaction = new PendingSaveTransaction(release, token);
+        pendingVerifiedApk = verifiedApk;
+        pendingVerifiedRelease = release;
+        pendingSaveTransaction = transaction;
+        Intent saveIntent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        saveIntent.addCategory(Intent.CATEGORY_OPENABLE);
+        saveIntent.setType("application/vnd.android.package-archive");
+        saveIntent.putExtra(Intent.EXTRA_TITLE, transaction.pickerTitle);
+        try {
+            startActivityForResult(saveIntent, REQUEST_SAVE_VERIFIED_APK);
+        } catch (Exception exception) {
+            pendingVerifiedApk = null;
+            pendingVerifiedRelease = null;
+            pendingSaveTransaction = null;
+            mainHandler.post(() -> showSaveFailureChoices(release, verifiedApk,
+                    "Android's file picker could not be opened. The verified update remains in app-private storage."));
+        }
+    }
+
+    private void discardVerifiedUpdate(UpdaterCore.Release release) {
+        try {
+            updaterRecoveryStore.removeAfterUserChoice(release);
+            Toast.makeText(this, "Verified update discarded. Nothing was installed.", Toast.LENGTH_LONG).show();
+        } catch (Exception exception) {
+            showInfo("Update retained", "The verified update could not be discarded safely and remains in app-private storage.");
+        }
+    }
+
+    private void showSaveFailureChoices(UpdaterCore.Release release, File verifiedApk, String message) {
+        if (recoveryPromptShowing) return;
+        recoveryPromptShowing = true;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("APK not saved")
+                .setMessage(message + " No update was installed.")
+                .setPositiveButton("Try saving again", (ignored, which) -> startVerifiedApkSave(release, verifiedApk))
+                .setNegativeButton("Discard", (ignored, which) -> discardVerifiedUpdate(release))
+                .setNeutralButton("Keep for later", null)
+                .setCancelable(false)
+                .create();
+        dialog.setOnDismissListener(ignored -> recoveryPromptShowing = false);
+        dialog.show();
+    }
+
+    private void copyVerifiedApkToDocument(File source, Uri destination, UpdaterCore.Release release,
+            PendingSaveTransaction transaction) throws Exception {
+        // ACTION_CREATE_DOCUMENT returns a newly created document; all operations remain scoped
+        // to that URI. Never open an existing document by a guessed display name.
+        SafApkSaver.copyVerifiedApk(source, release, new SafApkSaver.Document() {
+            private Uri documentUri = destination;
+
+            @Override public String displayName() throws IOException {
+                return queryDocumentDisplayName(documentUri);
+            }
+
+            @Override public String renameTo(String requestedName) throws IOException {
+                try {
+                    Uri renamed = DocumentsContract.renameDocument(getContentResolver(), documentUri, requestedName);
+                    if (renamed == null) return null;
+                    documentUri = renamed;
+                    return queryDocumentDisplayName(documentUri);
+                } catch (Exception exception) {
+                    throw new IOException("The selected document provider could not rename the app-created document.", exception);
+                }
+            }
+
+            @Override public OutputStream openForWrite() throws IOException {
+                try {
+                    return getContentResolver().openOutputStream(documentUri, "w");
+                } catch (Exception exception) {
+                    throw new IOException("The selected document could not be opened for writing.", exception);
+                }
+            }
+
+            @Override public InputStream openForRead() throws IOException {
+                try {
+                    return getContentResolver().openInputStream(documentUri);
+                } catch (Exception exception) {
+                    throw new IOException("The selected document could not be read back for verification.", exception);
+                }
+            }
+
+            @Override public boolean delete() throws IOException {
+                try {
+                    return DocumentsContract.deleteDocument(getContentResolver(), documentUri);
+                } catch (Exception exception) {
+                    throw new IOException("The app-created document could not be removed.", exception);
+                }
+            }
+        }, transaction.token, transaction.pickerTitle, transaction.preferredFinalName);
+    }
+
+    private String queryDocumentDisplayName(Uri documentUri) throws IOException {
+        try (Cursor cursor = getContentResolver().query(documentUri,
+                new String[] { DocumentsContract.Document.COLUMN_DISPLAY_NAME }, null, null, null)) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                throw new IOException("The selected document name could not be read.");
+            }
+            int nameColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);
+            if (nameColumn < 0) throw new IOException("The selected provider omitted the document name.");
+            return cursor.getString(nameColumn);
+        } catch (IOException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IOException("The selected document name could not be read.", exception);
+        }
+    }
+
+    private void rememberDismissedRelease(String tag) {
+        getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
+                .putString(DISMISSED_UPDATE_TAG_KEY, tag).apply();
+    }
+
     private void showAdvancedDetails() {
         String version = "unknown";
         try {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception ignored) { }
+        String distributionDetails = BuildConfig.UPDATER_ENABLED
+                ? "GitHub sideload distribution: declares INTERNET and ACCESS_NETWORK_STATE for foreground checks and consented, Wi-Fi/mobile-choice downloads. Verified APKs can be saved for manual opening; Daymark does not launch an installer. The protected publisher release gate is closed."
+                : "Play distribution: no network or package-install permissions are declared. Tasks remain local and offline.";
         String details = "Daymark " + version + "\n\n"
                 + "Tasks: encrypted in an app-private file; attachment references use schema v2. Existing v1 task data remains readable.\n\n"
                 + "Encryption: AES-GCM; the key is stored in Android Keystore. Hardware protection depends on the device.\n\n"
                 + "Attachments: encrypted app-private payloads; up to 20 MiB per file, 100 MiB total, and five per task. No attachment is opened or executed by Daymark.\n\n"
                 + "Suggestions: due-date and priority rules only; no AI service.\n\n"
-                + "Offline: no account, network permission, background service, or optional content download.\n\n"
+                + distributionDetails + "\n\n"
+                + "No account, background updater polling, task uploads, or optional content download.\n\n"
                 + "Not included: voice input, GGUF models, command-line bridge, plugins, or app/OS updates.\n\n"
                 + "Copied diagnostics contain version, Android API, theme, task count, and storage status. They never contain task titles.";
         LinearLayout content = new LinearLayout(this);

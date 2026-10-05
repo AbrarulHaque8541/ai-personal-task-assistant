@@ -17,7 +17,15 @@ root = pathlib.Path(sys.argv[1])
 manifest = ET.parse(root / "app/src/main/AndroidManifest.xml").getroot()
 app = manifest.find("application")
 assert app is not None, "missing application element"
-assert not list(manifest.findall("uses-permission")), "V1 must not declare permissions or network access"
+play_manifest = ET.parse(root / "app/src/play/AndroidManifest.xml").getroot()
+sideload_manifest = ET.parse(root / "app/src/githubSideload/AndroidManifest.xml").getroot()
+android_name = "{http://schemas.android.com/apk/res/android}name"
+permission_names = lambda manifest_root: {item.get(android_name) for item in manifest_root.findall("uses-permission")}
+assert permission_names(manifest) == set(), "shared manifest must remain permission-free"
+assert permission_names(play_manifest) == set(), "Play flavor must not declare permissions"
+assert permission_names(sideload_manifest) == {
+    "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"
+}, "GitHub sideload may declare only network and connectivity-state permissions"
 assert app.get("{http://schemas.android.com/apk/res/android}allowBackup") == "false", "backup must stay disabled"
 assert app.get("{http://schemas.android.com/apk/res/android}usesCleartextTraffic") == "false", "cleartext must stay disabled"
 assert not list(app.findall("service")), "V1 must not add services"
@@ -28,6 +36,17 @@ provider = providers[0]
 android = "{http://schemas.android.com/apk/res/android}"
 assert provider.get(android + "name") == ".AttachmentContentProvider"
 assert provider.get(android + "exported") == "false" and provider.get(android + "grantUriPermissions") == "true"
+providers = app.findall("provider")
+assert len(providers) == 1, "only the grant-only attachment content provider is allowed"
+provider = providers[0]
+android = "{http://schemas.android.com/apk/res/android}"
+assert provider.get(android + "name") == ".AttachmentContentProvider"
+assert provider.get(android + "exported") == "false" and provider.get(android + "grantUriPermissions") == "true"
+play_app = play_manifest.find("application")
+sideload_app = sideload_manifest.find("application")
+assert play_app is not None and not list(play_app), "Play flavor must not add updater activities or components"
+assert sideload_app is not None and not list(sideload_app), \
+    "GitHub sideload has no PackageInstaller/status activity; verified APKs are opened manually"
 
 main = root / "app/src/main"
 for path in main.rglob("*"):
@@ -101,6 +120,68 @@ store = (main / "java/com/cue/daymark/EncryptedTaskStore.java").read_text(encodi
 assert "TaskLogic.isValidTaskList(tasks)" in store, "encrypted writer must reject invalid or duplicate task snapshots"
 assert "TaskLogic.isValidTaskList(result)" in store, "encrypted reader must use the same task-list validation contract"
 
+updater_dir = main / "java/com/cue/daymark/updater"
+updater_sources = "\n".join(path.read_text(encoding="utf-8") for path in updater_dir.glob("*.java"))
+release_client = (updater_dir / "GitHubReleaseClient.java").read_text(encoding="utf-8")
+updater_core = (updater_dir / "UpdaterCore.java").read_text(encoding="utf-8")
+publisher_config = (updater_dir / "UpdaterPublisherConfig.java").read_text(encoding="utf-8")
+downloader = (updater_dir / "GitHubApkDownloader.java").read_text(encoding="utf-8")
+saf_saver = (updater_dir / "SafApkSaver.java").read_text(encoding="utf-8")
+release_test = (root / "tools/GitHubTransportSmoke.java").read_text(encoding="utf-8")
+assert 'https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest' in release_client, "updater endpoint must remain fixed"
+assert release_client.count("https://") == 1, "release metadata client must not add other service endpoints"
+assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
+assert 'create("githubSideload")' in build and 'create("play")' in build, "explicit sideload and Play product flavors are required"
+assert '"UPDATER_ENABLED", "true"' in build and '"UPDATER_ENABLED", "false"' in build, "only sideload may include the updater"
+assert "UPDATER_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher updater gate and signer pin must remain fail-closed"
+assert "BuildConfig.UPDATER_ENABLED" in publisher_config and "!BuildConfig.DEBUG" in publisher_config, "updater must be release-only and sideload-only"
+assert "UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)" in activity, "publisher configuration must gate even release-metadata network checks"
+assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new GitHubReleaseClient()"), "network policy must run before release-client construction"
+assert "setInstanceFollowRedirects(false)" in downloader and "isAllowedAssetRedirectUrl" in downloader, "APK redirects must be manually validated"
+assert "StrictJsonParser.parse(json)" in release_client and "MAX_RESPONSE_BYTES" in release_client, "release JSON must use the bounded strict parser"
+assert "connectionFactory.open" in release_client and "connectionFactory.open" in downloader, "HTTP transports must remain fixture-testable"
+for marker in ("parseRelease(fixture", "oversized metadata body", "untrusted APK redirect", "truncated body", "duplicate JSON keys", "productionUpdaterAcceptsExactly100MiBAndRejectsOneByteOver", "promotedCandidateIsRecoveredAndRevalidatedAfterRestart", "pickerSaveTransactionSurvivesRecreationBeforeResult", "safSaveFinalizesAfterIndependentReadBack", "interruptedSafCopyLeavesClearlyMarkedPartialDocument", "interruptedSafCopyIoFailureCleansOnlyCreatedDocument", "safFinalizationCollisionPreservesUnrelatedDocument"):
+    assert marker in release_test, f"missing updater transport/parser fixture: {marker}"
+assert ".daymark-incomplete-" in saf_saver, "SAF staging names must make incomplete copies conspicuous"
+assert saf_saver.index("renameTo(incompleteName)") < saf_saver.index("destination.openForWrite()") < saf_saver.index("destination.openForRead()") < saf_saver.index("renameTo(finalName)"), \
+    "SAF destinations must be staged before writing, independently read back, then finalized"
+assert "DocumentsContract.renameDocument" in activity and "openOutputStream(documentUri, \"w\")" in activity \
+    and "openInputStream(documentUri)" in activity, \
+    "Android SAF operations must remain scoped to the picker-created URI"
+assert "outState.putSerializable(PENDING_SAVE_STATE_KEY, pendingSaveTransaction)" in activity \
+    and "savedInstanceState.getSerializable(PENDING_SAVE_STATE_KEY)" in activity, \
+    "an Activity recreation while the picker is open must restore its pending transaction"
+assert "revalidatePendingSaveTransaction(transaction" in activity and "UpdaterCore.verifyDownloadedArtifact" in activity, \
+    "a restored picker callback must revalidate the app-private verified source before copying"
+assert "cleanStalePickerResult(data.getData())" in activity \
+    and "DocumentsContract.renameDocument(getContentResolver(), cleanupUri, orphanName)" in activity \
+    and "DocumentsContract.deleteDocument(getContentResolver(), cleanupUri)" in activity, \
+    "stale picker cleanup must mark and delete only the exact URI returned by ACTION_CREATE_DOCUMENT"
+assert "Files.write(verifiedTemp.toPath(), APK)" not in release_test, \
+    "restart recovery coverage must not fabricate a digest-addressed verified artifact"
+assert "android.permission.REQUEST_INSTALL_PACKAGES" not in (root / "app/src/githubSideload/AndroidManifest.xml").read_text(encoding="utf-8"), "REQUEST_INSTALL_PACKAGES must remain absent"
+assert not any("PackageInstaller" in path.read_text(encoding="utf-8") for path in main.rglob("*.java")), "PackageInstaller handoff must not ship in main source"
+assert not list(updater_dir.glob("*PackageInstaller*.java")), "PackageInstaller adapter/status source must be absent"
+assert "canRequestPackageInstalls()" not in activity and "ACTION_MANAGE_UNKNOWN_APP_SOURCES" not in activity, "no install-source Settings flow is enabled"
+assert '"Download and verify"' in activity and '"Cancel"' in activity and "downloadAndVerify" in activity, "download requires explicit consent and stops after verification"
+assert "VerificationStatus.VERIFIED" in activity and "APK verified — not installed" in activity, "successful verification must not imply installation"
+assert '"Wi-Fi only (recommended)"' in activity and '"Allow mobile data"' in activity, "download requires a clear network choice with Wi-Fi as default"
+assert "NETWORK_POLICY" in updater_core and "isWifiConnected" in downloader, "Wi-Fi-only choice must be enforced before and during transfer"
+assert "ACTION_CREATE_DOCUMENT" in activity and "open the saved copy yourself from Files" in activity, "verified APK must be saved for user-directed manual opening"
+recovery_store = (updater_dir / "UpdaterRecoveryStore.java").read_text(encoding="utf-8")
+assert "updaterRecoveryStore.recordPending(release)" in activity and "UpdaterCore.verifyDownloadedArtifact" in activity, "restart recovery must persist expectations before download and revalidate before offering"
+assert "removeAfterUserChoice(release)" in activity and "verifiedApk.delete()" not in activity, "verified cache APKs must not be implicitly deleted"
+assert "clearIfNoVerifiedArtifact" in recovery_store and "verifiedArtifactFileName" in recovery_store, "recovery record cleanup must preserve any promoted artifact"
+assert downloader.count("getNoBackupFilesDir()") == 2 and "getCacheDir()" not in downloader, "updater staging and cleanup must avoid evictable cache storage"
+assert "TaskLogic" not in updater_sources and "EncryptedTaskStore" not in updater_sources, "updater must not depend on or upload task/history data"
+assert updater_core.index("if (!consent.accept(release))") < updater_core.index("temporaryApk = downloader.download(release)"), "download must occur only after explicit consent"
+assert "uri.getPort() == -1 || uri.getPort() == 443" in updater_core, "release asset URLs must reject non-default HTTPS ports"
+assert "github.com:444" in (root / "tools/UpdaterSmoke.java").read_text(encoding="utf-8"), "unusual asset port regression is required"
+assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
+
+print("PASS V1 source policy: main and Play manifests are permission-free; GitHub sideload has only INTERNET and ACCESS_NETWORK_STATE; no install permission/handoff, background polling, runtime dependencies, or optional binaries")
+print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
+print("PASS permission/updater policy: release-only sideload gates, exact publisher verification, explicit install-choice boundary, Play permission isolation, task data isolated")
 print("PASS V1 source policy: no permissions/network, background components or runtime dependencies; only the non-exported grant-only attachment provider; no optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
