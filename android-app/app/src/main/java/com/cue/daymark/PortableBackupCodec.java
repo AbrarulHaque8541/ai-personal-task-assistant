@@ -132,7 +132,11 @@ final class PortableBackupCodec {
                                CancellationCheck cancellation) throws IOException {
         requireKey(recoveryKey);
         if (destination == null || payloads == null || random == null) throw new IOException("The backup could not be prepared.");
-        if (!TaskLogic.isValidTaskList(tasks) || tasks.size() > MAX_TASKS) {
+        if (tasks == null || tasks.size() > MAX_TASKS) {
+            throw new IOException("Saved tasks contain unsupported or unsafe fields and cannot be exported.");
+        }
+        int attachmentCount = countAttachmentDescriptors(tasks);
+        if (!TaskLogic.isValidTaskList(tasks)) {
             throw new IOException("Saved tasks contain unsupported or unsafe fields and cannot be exported.");
         }
         List<TaskRecord> taskRecords = new ArrayList<>(tasks.size());
@@ -157,7 +161,7 @@ final class PortableBackupCodec {
                         uniqueToken(random, tokens), taskToken));
             }
         }
-        if (attachmentRecords.size() > AttachmentLogic.MAX_TOTAL_COUNT) throw new IOException("The backup contains too many attachments.");
+        if (attachmentRecords.size() != attachmentCount) throw new IOException("The backup attachment count changed during export.");
         int recordCount = 1 + attachmentRecords.size();
         byte[] backupId = randomNonZero(random, BACKUP_ID_BYTES);
         byte[] manifestToken = uniqueToken(random, tokens);
@@ -333,6 +337,7 @@ final class PortableBackupCodec {
 
     static Manifest decodeManifest(byte[] plaintext, byte[] manifestRecordToken,
                                    int recordCount, String backupId) throws IOException {
+        preflightManifestAttachmentCount(plaintext);
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
         if (in.readInt() != MANIFEST_MAGIC) throw new IOException("The task manifest format is not recognized.");
         int taskCount = in.readInt();
@@ -394,7 +399,7 @@ final class PortableBackupCodec {
             tasks.add(task);
         }
         if (in.read() != -1) throw new IOException("The task manifest contains trailing data.");
-        if (attachments.size() > AttachmentLogic.MAX_TOTAL_COUNT || attachments.size() + 1 != recordCount) {
+        if (attachments.size() + 1 != recordCount) {
             throw new IOException("The manifest does not describe the complete archive record set.");
         }
         for (PortableTask task : tasks) {
@@ -406,6 +411,77 @@ final class PortableBackupCodec {
             throw new IOException("The task manifest failed task-field validation.");
         }
         return new Manifest(backupId, tasks, attachments);
+    }
+
+    /** Count descriptor slots without decoding tokens/strings or constructing per-record models. */
+    private static void preflightManifestAttachmentCount(byte[] plaintext) throws IOException {
+        if (plaintext == null || plaintext.length > MAX_MANIFEST_BYTES) {
+            throw new IOException("The task manifest is missing or oversized.");
+        }
+        DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
+        if (in.readInt() != MANIFEST_MAGIC) throw new IOException("The task manifest format is not recognized.");
+        int taskCount = in.readInt();
+        if (taskCount < 0 || taskCount > MAX_TASKS) throw new IOException("The task manifest has an invalid task count.");
+        int totalAttachments = 0;
+        for (int taskIndex = 0; taskIndex < taskCount; taskIndex++) {
+            skipManifestBytes(in, TOKEN_BYTES);
+            skipManifestString(in, 640);
+            int dueFlag = in.readUnsignedByte();
+            if (dueFlag > 1) throw new IOException("The manifest due-date flag is invalid.");
+            if (dueFlag == 1) skipManifestString(in, 40);
+            skipManifestBytes(in, 2); // priority and completion flags; fully validated in the decoding pass.
+            skipManifestString(in, 256);
+            skipManifestString(in, 256);
+            int attachmentCount = in.readUnsignedByte();
+            if (attachmentCount > AttachmentLogic.MAX_PER_TASK) {
+                throw new IOException("The manifest exceeds the per-task attachment limit.");
+            }
+            if (totalAttachments > AttachmentLogic.MAX_TOTAL_COUNT - attachmentCount) {
+                throw new IOException("The manifest contains too many attachments.");
+            }
+            totalAttachments += attachmentCount;
+            for (int attachmentIndex = 0; attachmentIndex < attachmentCount; attachmentIndex++) {
+                skipManifestBytes(in, TOKEN_BYTES + 8L);
+                skipManifestString(in, AttachmentLogic.MAX_NAME_CHARS * 4);
+                skipManifestString(in, 516);
+            }
+        }
+        if (in.read() != -1) throw new IOException("The task manifest contains trailing data.");
+    }
+
+    private static void skipManifestString(DataInputStream in, int maxBytes) throws IOException {
+        int byteCount = in.readInt();
+        if (byteCount < 0 || byteCount > maxBytes) {
+            throw new IOException("The task manifest contains an oversized string.");
+        }
+        skipManifestBytes(in, byteCount);
+    }
+
+    private static void skipManifestBytes(DataInputStream in, long byteCount) throws IOException {
+        long remaining = byteCount;
+        while (remaining > 0) {
+            int skipped = in.skipBytes((int) Math.min(remaining, 8192));
+            if (skipped > 0) {
+                remaining -= skipped;
+            } else if (in.read() == -1) {
+                throw new IOException("The task manifest is truncated.");
+            } else {
+                remaining--;
+            }
+        }
+    }
+
+    private static int countAttachmentDescriptors(List<Task> tasks) throws IOException {
+        int total = 0;
+        for (Task task : tasks) {
+            if (task == null || task.attachments == null) continue;
+            int taskCount = task.attachments.size();
+            if (taskCount > AttachmentLogic.MAX_TOTAL_COUNT - total) {
+                throw new IOException("The backup contains too many attachments.");
+            }
+            total += taskCount;
+        }
+        return total;
     }
 
     /* Task validation without exposing portable identifiers; temporary safe IDs are discarded. */

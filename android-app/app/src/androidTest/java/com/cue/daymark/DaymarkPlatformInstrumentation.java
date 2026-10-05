@@ -33,7 +33,9 @@ import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.crypto.SecretKey;
@@ -51,6 +53,7 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
         try {
             importLegacySnapshotRoundTripAndRollback();
             attachmentProviderPipeAndAndroidCrypto();
+            portableImportUriJournalSurvivesPreKeyProcessDeath();
             portableBackupRekeysAndReconcilesProcessDeath();
             result.putString("result", "passed");
             result.putInt("assertions", assertions);
@@ -128,6 +131,36 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
                     "authentication failure blocks later task saves");
             check(Arrays.equals(tamperedCiphertext, readFile(snapshotFile)),
                     "blocked save preserves the exact damaged snapshot bytes");
+        } finally {
+            deleteTree(root);
+        }
+    }
+
+    private void portableImportUriJournalSurvivesPreKeyProcessDeath() throws Exception {
+        File root = makeTestDirectory("portable-uri-journal");
+        String selected = "content://documents.example/document/pre-key.dmbackup";
+        String unrelated = "content://documents.example/document/unrelated";
+        Set<String> grants = new HashSet<>(Arrays.asList(selected, unrelated));
+        File journalFile = new File(root, "active-import-uri.bin");
+        try {
+            PortableBackupManager.ActiveImportUriJournal beforeDeath =
+                    new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
+            PortableImportGrantRecovery.recordTakenGrantOrRelease(beforeDeath, selected, exactUri -> {
+                if (!grants.remove(exactUri)) throw new IOException("selected URI grant was not held");
+            });
+            check(selected.equals(beforeDeath.read()) && grants.contains(selected),
+                    "real AtomicFile journal persists the selected URI before recovery-key entry");
+
+            PortableBackupManager.ActiveImportUriJournal afterRestart =
+                    new PortableBackupManager.ActiveImportUriJournal(new AtomicFile(journalFile));
+            PortableImportGrantRecovery.recoverAfterProcessDeath(afterRestart,
+                    () -> check(grants.contains(selected), "startup reconciles before releasing the pre-key URI grant"),
+                    exactUri -> {
+                        check(selected.equals(exactUri), "startup releases only the URI persisted in AtomicFile");
+                        grants.remove(exactUri);
+                    });
+            check(afterRestart.read() == null && !grants.contains(selected) && grants.contains(unrelated),
+                    "pre-key restart clears the real journal and preserves unrelated URI grants");
         } finally {
             deleteTree(root);
         }

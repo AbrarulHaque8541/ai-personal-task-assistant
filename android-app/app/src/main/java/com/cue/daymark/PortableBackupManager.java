@@ -122,10 +122,11 @@ final class PortableBackupManager {
         clearPending(state);
     }
 
-    /** Record only the URI actively being restored, durably before opening its provider stream. */
+    /** Durably record only the selected archive URI immediately after its read grant is taken. */
     void recordActivePortableImportUri(Uri uri) throws IOException {
         if (uri == null) throw new IOException("The selected backup could not be opened.");
-        PortableImportGrantRecovery.recordBeforeWork(activeImportUriJournal, uri.toString());
+        PortableImportGrantRecovery.recordTakenGrantOrRelease(activeImportUriJournal,
+                uri.toString(), this::releaseExactPortableReadGrant);
     }
 
     /** Startup recovery reconciles the import transaction before releasing its exact abandoned read grant. */
@@ -141,6 +142,21 @@ final class PortableBackupManager {
         if (expectedUri == null) throw new IOException("The active portable-import URI is missing.");
         PortableImportGrantRecovery.finishAfterWork(activeImportUriJournal, expectedUri.toString(),
                 () -> reconcile(loadedTasks, attachments), this::releaseExactPortableReadGrant);
+    }
+
+    /** Cancellation/recreation cleanup reconciles first and releases only a matching still-journaled URI. */
+    void finishPortableImportSelection(Uri expectedUri, List<Task> loadedTasks,
+                                       AndroidAttachmentStore attachments) throws IOException {
+        if (expectedUri == null) throw new IOException("The selected portable-import URI is missing.");
+        String activeUri = activeImportUriJournal.read();
+        if (activeUri == null) {
+            reconcile(loadedTasks, attachments);
+            return;
+        }
+        if (!expectedUri.toString().equals(activeUri)) {
+            throw new IOException("The selected portable-import URI does not match the active recovery journal.");
+        }
+        finishActivePortableImportUri(expectedUri, loadedTasks, attachments);
     }
 
     List<Task> restore(InputStream source, byte[] recoveryKey, EncryptedTaskStore tasks,
@@ -352,7 +368,7 @@ final class PortableBackupManager {
         }
     }
 
-    private static final class ActiveImportUriJournal implements PortableImportGrantRecovery.JournalStore {
+    static final class ActiveImportUriJournal implements PortableImportGrantRecovery.JournalStore {
         private static final int MAX_ENCODED_URI_BYTES = PortableImportGrantRecovery.MAX_URI_CHARS * 4;
         private final AtomicFile atomic;
 

@@ -41,6 +41,24 @@ final class PortableImportGrantRecovery {
         }
     }
 
+    /** A just-taken SAF grant must not outlive a failed attempt to journal that exact URI. */
+    static void recordTakenGrantOrRelease(JournalStore journal, String uri,
+                                          ReadGrantReleaser grants) throws IOException {
+        requireJournal(journal);
+        requireContentUri(uri);
+        if (grants == null) throw new IOException("Portable-import grant cleanup is unavailable.");
+        try {
+            recordBeforeWork(journal, uri);
+        } catch (IOException journalFailure) {
+            try {
+                grants.releaseReadGrant(uri);
+            } catch (IOException releaseFailure) {
+                journalFailure.addSuppressed(releaseFailure);
+            }
+            throw journalFailure;
+        }
+    }
+
     static void activityRestoreWorkerStarted() {
         synchronized (ACTIVITY_RESTORE_GATE) {
             activeActivityRestoreWorkers++;

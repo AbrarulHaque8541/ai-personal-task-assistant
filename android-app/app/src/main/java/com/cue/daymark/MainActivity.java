@@ -98,6 +98,7 @@ public final class MainActivity extends Activity {
     private Uri pendingPortableImportUri;
     private Uri activePortableImportUri;
     private boolean pendingPortableImportNeedsRepick;
+    private boolean portableImportCleanupActive;
     private final Object attachmentCancelLock = new Object();
     private volatile boolean attachmentCancelRequested;
     private boolean attachmentCanCancel;
@@ -1867,6 +1868,14 @@ public final class MainActivity extends Activity {
     }
 
     private void choosePortableImport() {
+        if (portableRestoreWorkerActive || portableImportCleanupActive || activePortableImportUri != null) {
+            showToast("A backup restore is already being finished. Try again after it completes.");
+            return;
+        }
+        if (pendingPortableImportUri != null) {
+            showPortableImportKeyDialog();
+            return;
+        }
         if (!canEdit()) {
             showToast("Encrypted storage must be ready before restoring a backup.");
             return;
@@ -1884,6 +1893,15 @@ public final class MainActivity extends Activity {
     }
 
     private boolean retainPortableImportUri(Uri uri, int resultFlags) {
+        if (portableRestoreWorkerActive || portableImportCleanupActive || activePortableImportUri != null) {
+            showToast("A backup restore is already being finished. Try again after it completes.");
+            return false;
+        }
+        if (pendingPortableImportUri != null) {
+            if (pendingPortableImportUri.equals(uri) && hasPersistedPortableReadGrant(uri)) return true;
+            showToast("Finish or cancel the selected backup before choosing another one.");
+            return false;
+        }
         int readFlag = resultFlags & Intent.FLAG_GRANT_READ_URI_PERMISSION;
         if (uri == null || !android.content.ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())
                 || readFlag == 0 || (resultFlags & Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) == 0) {
@@ -1901,7 +1919,13 @@ public final class MainActivity extends Activity {
             showToast("Android could not keep access to that backup. Choose it again to restore.");
             return false;
         }
-        if (pendingPortableImportUri != null) discardPendingPortableImport();
+        try {
+            portableBackupManager.recordActivePortableImportUri(uri);
+        } catch (IOException journalFailure) {
+            // The manager immediately releases only this URI if its durable journal write fails.
+            showToast("The restore could not be prepared safely. Reopen Daymark before trying again.");
+            return false;
+        }
         pendingPortableImportUri = uri;
         return true;
     }
@@ -1932,7 +1956,37 @@ public final class MainActivity extends Activity {
         Uri selected = pendingPortableImportUri;
         if (selected == null || (expected != null && !expected.equals(selected))) return;
         pendingPortableImportUri = null;
-        releasePersistablePortableReadGrant(selected);
+        reconcileAndReleasePortableImportSelection(selected);
+    }
+
+    private void reconcileAndReleasePortableImportSelection(Uri selected) {
+        if (selected == null) return;
+        portableImportCleanupActive = true;
+        try {
+            storageExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    synchronized (AndroidAttachmentStore.transactionLock()) {
+                        List<Task> latest = taskStore.load();
+                        portableBackupManager.finishPortableImportSelection(selected, latest, attachmentStore);
+                    }
+                } catch (Exception cleanupFailure) {
+                    failure = cleanupFailure;
+                }
+                Exception result = failure;
+                mainHandler.post(() -> {
+                    if (result == null) {
+                        portableImportCleanupActive = false;
+                    } else if (!isFinishing() && !isDestroyed()) {
+                        showToast("Temporary backup access could not be safely released. Reopen Daymark to recover it.");
+                    }
+                });
+            });
+        } catch (RuntimeException schedulingFailure) {
+            if (!isFinishing() && !isDestroyed()) {
+                showToast("Temporary backup access could not be safely released. Reopen Daymark to recover it.");
+            }
+        }
     }
 
     private void releasePersistablePortableReadGrant(Uri uri) {
@@ -1948,7 +2002,7 @@ public final class MainActivity extends Activity {
         Uri selected = pendingPortableImportUri;
         if (selected == null) return;
         if (!hasPersistedPortableReadGrant(selected)) {
-            discardPendingPortableImport();
+            pendingPortableImportUri = null;
             showToast("Access to the selected backup was not retained. Choose it again to restore.");
             return;
         }
@@ -2001,16 +2055,8 @@ public final class MainActivity extends Activity {
     private void beginPortableRestore(Uri selected, byte[] recoveryKey) {
         if (!canEdit()) {
             PortableBackupCodec.clear(recoveryKey);
-            releasePersistablePortableReadGrant(selected);
+            reconcileAndReleasePortableImportSelection(selected);
             showToast("Encrypted storage is not ready for restore.");
-            return;
-        }
-        try {
-            portableBackupManager.recordActivePortableImportUri(selected);
-        } catch (IOException journalFailure) {
-            PortableBackupCodec.clear(recoveryKey);
-            releasePersistablePortableReadGrant(selected);
-            showToast("The restore could not be started safely. Reopen Daymark before trying again.");
             return;
         }
         activePortableImportUri = selected;
@@ -2114,6 +2160,8 @@ public final class MainActivity extends Activity {
             portableRestoreWorkerActive = false;
             PortableImportGrantRecovery.activityRestoreWorkerFinished();
             PortableBackupCodec.clear(recoveryKey);
+            activePortableImportUri = null;
+            reconcileAndReleasePortableImportSelection(selected);
             pendingRecoveryKey = null;
             showToast("The restore did not start. Reopen Daymark to recover its temporary document access.");
         }

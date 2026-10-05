@@ -35,6 +35,7 @@ public final class PortableBackupSmoke {
         rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation();
         rejectsManifestTaskAndAttachmentBounds();
         acceptsOneHundredAttachmentsAndRejectsOneHundredOne();
+        rejectsOneHundredFirstDescriptorBeforeProcessingIt();
         enforcesActualStreamedArchiveAndAttachmentLimits();
         writesAndReadsLargestValidArchiveWithoutHeapBuffering();
         coversImportUriActivityAndProcessDeathLifecycle();
@@ -274,11 +275,38 @@ public final class PortableBackupSmoke {
         deleteTree(root);
 
         List<Task> oversizedTasks = tasksWithAttachmentCount(AttachmentLogic.MAX_TOTAL_COUNT + 1);
-        expectIOException(() -> PortableBackupCodec.writeArchive(OutputStream.nullOutputStream(), key,
-                oversizedTasks, (task, attachment) -> InputStream.nullInputStream(),
-                new SecureRandom(), () -> false),
-                "101 attachments are rejected despite valid task grouping and five-per-task limits");
+        Task firstOversizedTask = oversizedTasks.get(0);
+        List<AttachmentRef> invalidDescriptors = new ArrayList<>(firstOversizedTask.attachments);
+        AttachmentRef firstDescriptor = invalidDescriptors.get(0);
+        invalidDescriptors.set(0, new AttachmentRef("not-a-valid-id", firstDescriptor.displayName,
+                firstDescriptor.mimeType, firstDescriptor.sizeBytes));
+        oversizedTasks.set(0, firstOversizedTask.withAttachments(invalidDescriptors));
+        AtomicInteger payloadOpens = new AtomicInteger();
+        expectIOExceptionContaining(() -> PortableBackupCodec.writeArchive(OutputStream.nullOutputStream(), key,
+                        oversizedTasks, (task, attachment) -> {
+                            payloadOpens.incrementAndGet();
+                            return InputStream.nullInputStream();
+                        }, new SecureRandom(), () -> false),
+                "too many attachments",
+                "101 attachment slots are rejected before invalid descriptor metadata is traversed");
+        check(payloadOpens.get() == 0, "oversized attachment count is rejected before any payload is opened");
         PortableBackupCodec.clear(key);
+    }
+
+    private static void rejectsOneHundredFirstDescriptorBeforeProcessingIt() throws Exception {
+        byte[] manifestToken = token(1000000);
+        long[][] counts = new long[21][];
+        for (int taskIndex = 0; taskIndex < 20; taskIndex++) counts[taskIndex] = new long[5];
+        counts[20] = new long[] { 0 };
+        byte[] complete = manifestWithAttachmentSizes(counts);
+        int finalDescriptorBytes = 16 + 8 + 4 + "payload.bin".getBytes(StandardCharsets.UTF_8).length
+                + 4 + "application/octet-stream".getBytes(StandardCharsets.UTF_8).length;
+        byte[] missingOneHundredFirstDescriptor = Arrays.copyOf(complete, complete.length - finalDescriptorBytes);
+        expectIOExceptionContaining(() -> PortableBackupCodec.decodeManifest(
+                        missingOneHundredFirstDescriptor, manifestToken, AttachmentLogic.MAX_TOTAL_COUNT + 2,
+                        "00000000000000000000000000000000"),
+                "too many attachments",
+                "the aggregate-count preflight rejects the 101st slot before attempting to read its descriptor bytes");
     }
 
     private static void enforcesActualStreamedArchiveAndAttachmentLimits() throws Exception {
@@ -413,8 +441,8 @@ public final class PortableBackupSmoke {
         InMemoryUriJournal journal = new InMemoryUriJournal();
         Set<String> readGrants = new HashSet<>(Arrays.asList(selected, unrelated));
         Set<String> writeGrants = new HashSet<>(Collections.singletonList(selected));
-        PortableImportGrantRecovery.recordBeforeWork(journal, selected);
-        check(selected.equals(journal.value), "the active URI is durably journaled before restore work");
+        PortableImportGrantRecovery.recordTakenGrantOrRelease(journal, selected, readGrants::remove);
+        check(selected.equals(journal.value), "the exact selected URI is journaled immediately after grant acquisition, before any key prompt");
         AtomicBoolean reconciled = new AtomicBoolean();
         PortableImportGrantRecovery.recoverAfterProcessDeath(journal, () -> {
             check(readGrants.contains(selected), "transaction recovery runs before any URI grant is released");
@@ -425,9 +453,43 @@ public final class PortableBackupSmoke {
             readGrants.remove(exactUri);
         });
         check(journal.value == null && !readGrants.contains(selected),
-                "process-death recovery clears the journal after releasing the abandoned read grant");
+                "simulated process death in the pre-key window clears the journal after releasing the abandoned read grant");
         check(readGrants.contains(unrelated) && writeGrants.contains(selected),
                 "unrelated grants and the same URI's unrelated write permission are not revoked");
+
+        String failedWriteUri = "content://documents.example/document/journal-failure.dmbackup";
+        Set<String> failedWriteGrants = new HashSet<>(Arrays.asList(failedWriteUri, unrelated));
+        PortableImportGrantRecovery.JournalStore failedJournal = new PortableImportGrantRecovery.JournalStore() {
+            @Override public String read() { return null; }
+            @Override public void write(String uri) throws IOException { throw new IOException("simulated durable write failure"); }
+            @Override public void clear() { }
+        };
+        expectIOException(() -> PortableImportGrantRecovery.recordTakenGrantOrRelease(
+                        failedJournal, failedWriteUri, failedWriteGrants::remove),
+                "a failed journal write is reported after immediate exact-grant cleanup");
+        check(!failedWriteGrants.contains(failedWriteUri) && failedWriteGrants.contains(unrelated),
+                "journal-write failure releases only the grant just acquired for the selected archive");
+
+        String cancelledUri = "content://documents.example/document/cancelled.dmbackup";
+        InMemoryUriJournal cancelledJournal = new InMemoryUriJournal();
+        Set<String> cancelledGrants = new HashSet<>(Arrays.asList(cancelledUri, unrelated));
+        PortableImportGrantRecovery.recordTakenGrantOrRelease(cancelledJournal, cancelledUri, cancelledGrants::remove);
+        expectIOException(() -> PortableImportGrantRecovery.finishAfterWork(cancelledJournal, cancelledUri,
+                        () -> { throw new IOException("simulated unresolved restore transaction"); }, cancelledGrants::remove),
+                "cancel/failure cleanup retains the journal and grant until storage reconciliation succeeds");
+        check(cancelledUri.equals(cancelledJournal.value) && cancelledGrants.contains(cancelledUri),
+                "failed cancellation reconciliation cannot clear or revoke the selected URI");
+        AtomicBoolean cancelReconciled = new AtomicBoolean();
+        PortableImportGrantRecovery.finishAfterWork(cancelledJournal, cancelledUri, () -> {
+            cancelReconciled.set(true);
+        }, exactUri -> {
+            check(cancelReconciled.get() && cancelledUri.equals(exactUri),
+                    "successful cancel cleanup reconciles before releasing the exact URI");
+            cancelledGrants.remove(exactUri);
+        });
+        check(cancelledJournal.value == null && !cancelledGrants.contains(cancelledUri)
+                        && cancelledGrants.contains(unrelated),
+                "successful cleanup clears only the completed selection and preserves unrelated grants");
 
         String retryUri = "content://documents.example/document/retry.dmbackup";
         InMemoryUriJournal retryJournal = new InMemoryUriJournal();
