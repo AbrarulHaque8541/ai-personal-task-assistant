@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -18,9 +19,13 @@ import java.util.concurrent.Executors;
 public final class ReminderReceiver extends BroadcastReceiver {
     static final String ACTION_FIRE = "com.cue.daymark.action.REMINDER_FIRE";
     static final String ACTION_FALLBACK = "com.cue.daymark.action.REMINDER_FALLBACK";
+    static final String ACTION_RETRY = "com.cue.daymark.action.REMINDER_RETRY";
+    static final String ACTION_CLEANUP = "com.cue.daymark.action.REMINDER_CLEANUP";
     static final String ACTION_SNOOZE = "com.cue.daymark.action.REMINDER_SNOOZE";
     static final String ACTION_CANCEL = "com.cue.daymark.action.REMINDER_CANCEL";
     static final String EXTRA_TASK_ID = "com.cue.daymark.extra.TASK_ID";
+    static final String EXTRA_VERSION = "com.cue.daymark.extra.REMINDER_VERSION";
+    static final String EXTRA_TOMBSTONE_REVISION = "com.cue.daymark.extra.TOMBSTONE_REVISION";
     private static final String ACTION_EXACT_PERMISSION_CHANGED =
             "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
@@ -31,79 +36,143 @@ public final class ReminderReceiver extends BroadcastReceiver {
         Context appContext = context.getApplicationContext();
         String action = intent.getAction();
         String taskId = intent.getStringExtra(EXTRA_TASK_ID);
+        long version = intent.getLongExtra(EXTRA_VERSION, -1L);
+        long tombstoneRevision = intent.getLongExtra(EXTRA_TOMBSTONE_REVISION, -1L);
         PendingResult result = goAsync();
         EXECUTOR.execute(() -> {
             try {
-                handle(appContext, action, taskId);
+                synchronized (ReminderDeliveryLock.LOCK) {
+                    handle(appContext, action, taskId, version, tombstoneRevision);
+                }
             } catch (Exception ignored) {
-                // Encrypted storage failures are fail-closed; pending state remains recoverable on a later restart.
+                // Encrypted state and repeating recovery alarms remain authoritative after transient failures.
             } finally {
                 result.finish();
             }
         });
     }
 
-    private void handle(Context context, String action, String taskId) throws Exception {
+    private void handle(Context context, String action, String taskId,
+                        long version, long tombstoneRevision) throws Exception {
         EncryptedReminderStore store = new EncryptedReminderStore(context);
-        if (ACTION_FIRE.equals(action) || ACTION_FALLBACK.equals(action)) {
-            if (taskId == null) return;
-            deliverIfCurrent(context, store, taskId);
+        if (ACTION_FIRE.equals(action) || ACTION_FALLBACK.equals(action) || ACTION_RETRY.equals(action)) {
+            if (taskId != null && version > 0) deliverIfCurrent(context, store, taskId, version);
         } else if (ACTION_SNOOZE.equals(action)) {
-            if (taskId == null) return;
-            Reminder current = store.find(taskId);
-            Task task = findTask(context, taskId);
-            if (!ReminderLogic.belongsToOpenTask(current, task)) {
-                store.remove(taskId);
-                ReminderScheduler.cancel(context, taskId);
-                ReminderScheduler.cancelNotification(context, taskId);
-                return;
-            }
-            Reminder next = store.snooze(taskId, System.currentTimeMillis());
-            ReminderScheduler.cancelNotification(context, taskId);
-            if (next != null) ReminderScheduler.schedule(context, next);
+            if (taskId != null && version > 0) snoozeIfCurrent(context, store, taskId, version);
         } else if (ACTION_CANCEL.equals(action)) {
-            if (taskId == null) return;
-            store.remove(taskId);
-            ReminderScheduler.cancel(context, taskId);
-            ReminderScheduler.cancelNotification(context, taskId);
+            if (taskId != null && version > 0) {
+                boolean cancelled = cancelReminder(context, store, taskId, version);
+                if (!cancelled) cleanStaleGeneration(context, store, taskId, version);
+            }
+        } else if (ACTION_CLEANUP.equals(action)) {
+            if (taskId != null && version > 0 && tombstoneRevision > version) {
+                ReminderTombstone expected = new ReminderTombstone(taskId, version, tombstoneRevision);
+                ReminderTombstone stored = store.findTombstone(taskId, version);
+                if (stored != null && stored.revision == tombstoneRevision) {
+                    cleanTombstone(context, store, stored);
+                } else {
+                    // No tombstone means the pre-armed cleanup alarm fired before cancellation committed.
+                    ReminderScheduler.cancelTombstoneCleanup(context, expected);
+                }
+            }
         } else if (isSystemRescheduleAction(action)) {
             reconcileAndReschedule(context, store);
         }
     }
 
-    private void deliverIfCurrent(Context context, EncryptedReminderStore store, String taskId) throws Exception {
+    /** Called under the process-wide lock; retry alarm remains armed until durable delivered commit. */
+    private void deliverIfCurrent(Context context, EncryptedReminderStore store,
+                                  String taskId, long expectedVersion) throws Exception {
         Reminder current = store.find(taskId);
-        if (current == null || current.delivered) return;
+        if (!ReminderLogic.isCurrentGeneration(current, expectedVersion)) {
+            cleanStaleGeneration(context, store, taskId, expectedVersion);
+            if (current != null && !current.delivered) {
+                if (current.deliveryPending) postPendingNotification(context, store, taskId, current.version);
+                else ReminderScheduler.schedule(context, current);
+            }
+            return;
+        }
+        if (current.delivered) {
+            ReminderScheduler.cancel(context, taskId, current.version);
+            return;
+        }
         Task task = findTask(context, taskId);
         if (!ReminderLogic.shouldDeliverForTask(current, task)) {
-            store.remove(taskId);
-            ReminderScheduler.cancel(context, taskId);
-            ReminderScheduler.cancelNotification(context, taskId);
+            cancelReminder(context, store, taskId, current.version);
             return;
         }
         if (!task.title.equals(current.taskTitle)) {
-            store.updateTaskTitle(taskId, task.title);
+            store.updateTaskTitle(taskId, current.version, task.title);
             current = current.withTitle(task.title);
         }
         if (current.deliveryPending) {
-            ReminderScheduler.cancel(context, taskId);
-            postPendingNotification(context, store, taskId);
+            postPendingNotification(context, store, taskId, expectedVersion);
             return;
         }
         if (current.triggerAtMillis > System.currentTimeMillis()) {
             ReminderScheduler.schedule(context, current);
             return;
         }
-        if (!ReminderScheduler.notificationsEnabled(context)) {
-            ReminderScheduler.cancel(context, taskId);
+        if (!ReminderScheduler.notificationsEnabled(context)) return;
+
+        Reminder pending = store.markDeliveryPending(taskId, expectedVersion);
+        if (pending == null) {
+            Reminder latest = store.find(taskId);
+            if (!ReminderLogic.isCurrentGeneration(latest, expectedVersion)) {
+                cleanStaleGeneration(context, store, taskId, expectedVersion);
+            } else if (latest != null && latest.delivered) {
+                ReminderScheduler.cancel(context, taskId, expectedVersion);
+            }
             return;
         }
+        // Do not cancel any alarm before posting; the persistent repeating retry is the crash-safe wakeup.
+        postPendingNotification(context, store, taskId, expectedVersion);
+    }
 
-        // Commit a retryable state before posting. A process death here leaves a record startup can reconcile.
-        Reminder pending = store.markDeliveryPending(taskId);
-        if (pending == null) return;
-        ReminderScheduler.cancel(context, taskId);
-        postPendingNotification(context, store, taskId);
+    private void snoozeIfCurrent(Context context, EncryptedReminderStore store,
+                                 String taskId, long expectedVersion) throws Exception {
+        Reminder current = store.find(taskId);
+        if (!ReminderLogic.isCurrentGeneration(current, expectedVersion) || !current.delivered) {
+            cleanStaleGeneration(context, store, taskId, expectedVersion);
+            return;
+        }
+        Task task = findTask(context, taskId);
+        if (!ReminderLogic.belongsToOpenTask(current, task)) {
+            cancelReminder(context, store, taskId, current.version);
+            return;
+        }
+        ReminderTombstone cleanup = store.plannedCancellation(taskId, expectedVersion);
+        long nextVersion = store.nextVersionForSnooze(taskId, expectedVersion);
+        if (cleanup == null || nextVersion <= 0) return;
+        if (!ReminderScheduler.scheduleTombstoneCleanup(context, cleanup)) {
+            return;
+        }
+        long snoozeAtMillis = System.currentTimeMillis();
+        Reminder candidate = ReminderLogic.snooze(current, snoozeAtMillis).withVersion(nextVersion);
+        ReminderLogic.SchedulePlan plan = ReminderScheduler.schedule(context, candidate);
+        if (plan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
+            ReminderScheduler.cancelTombstoneCleanup(context, cleanup);
+            return;
+        }
+        Reminder next;
+        try {
+            next = store.snooze(taskId, expectedVersion, snoozeAtMillis);
+        } catch (Exception failure) {
+            Reminder latest = store.find(taskId);
+            if (latest == null || latest.version != nextVersion) {
+                ReminderScheduler.cancel(context, taskId, nextVersion);
+                ReminderScheduler.cancelTombstoneCleanup(context, cleanup);
+                throw failure;
+            }
+            next = latest;
+        }
+        if (next == null || next.version != nextVersion) {
+            ReminderScheduler.cancel(context, taskId, nextVersion);
+            ReminderScheduler.cancelTombstoneCleanup(context, cleanup);
+            return;
+        }
+        // The new retry was armed before the old generation was retired.
+        reconcileTombstones(context, store);
     }
 
     private boolean isSystemRescheduleAction(String action) {
@@ -116,12 +185,14 @@ public final class ReminderReceiver extends BroadcastReceiver {
     }
 
     private void reconcileAndReschedule(Context context, EncryptedReminderStore store) throws Exception {
+        reconcileTombstones(context, store);
         List<Reminder> reminders = store.rebaseForCurrentTimezone();
         List<Task> tasks;
         try {
             tasks = new EncryptedTaskStore(context).load();
         } catch (Exception exception) {
-            for (Reminder reminder : reminders) ReminderScheduler.cancel(context, reminder.taskId);
+            // Keep/re-arm reminders: a task-store read failure is not a cancellation request.
+            ReminderScheduler.rescheduleAll(context, reminders);
             throw exception;
         }
         Map<String, Task> tasksById = new HashMap<>();
@@ -130,9 +201,7 @@ public final class ReminderReceiver extends BroadcastReceiver {
         for (Reminder reminder : reminders) {
             Task task = tasksById.get(reminder.taskId);
             if (!ReminderLogic.belongsToOpenTask(reminder, task)) {
-                store.remove(reminder.taskId);
-                ReminderScheduler.cancel(context, reminder.taskId);
-                ReminderScheduler.cancelNotification(context, reminder.taskId);
+                cancelReminder(context, store, reminder.taskId, reminder.version);
             } else {
                 Reminder current = reminder;
                 if (!task.title.equals(reminder.taskTitle)) {
@@ -146,49 +215,142 @@ public final class ReminderReceiver extends BroadcastReceiver {
         ReminderScheduler.rescheduleAll(context, active);
     }
 
-    /** Retry durable pending posts after app start or when notification permission is restored. */
+    /** Retry durable pending posts and finish durable cancellation cleanup at app start/resume. */
     static List<Reminder> reconcilePendingNotifications(Context context, EncryptedReminderStore store,
                                                         List<Reminder> reminders) throws Exception {
         if (context == null || store == null || reminders == null) return reminders;
-        ReminderReceiver receiver = new ReminderReceiver();
-        List<Reminder> currentRecords = new ArrayList<>();
-        for (Reminder reminder : reminders) {
-            if (ReminderLogic.deliveryRecoveryAction(reminder)
-                    == ReminderLogic.DeliveryRecoveryAction.POST_NOTIFICATION) {
-                try {
-                    receiver.postPendingNotification(context.getApplicationContext(), store, reminder.taskId);
-                } catch (Exception ignored) {
-                    // Keep deliveryPending durable; the next app/system reschedule can retry it.
+        synchronized (ReminderDeliveryLock.LOCK) {
+            Context appContext = context.getApplicationContext();
+            reconcileTombstones(appContext, store);
+            for (Reminder reminder : reminders) {
+                if (reminder != null) ReminderScheduler.cancelLegacyNotification(appContext, reminder.taskId);
+            }
+            ReminderReceiver receiver = new ReminderReceiver();
+            for (Reminder reminder : reminders) {
+                Reminder current = store.find(reminder.taskId);
+                if (current == null) continue;
+                if (current.deliveryPending && ReminderScheduler.notificationsEnabled(appContext)) {
+                    try {
+                        receiver.postPendingNotification(appContext, store, current.taskId, current.version);
+                    } catch (Exception ignored) {
+                        // Leave pending state and its repeating retry alarm intact.
+                    }
+                } else if (current.delivered) {
+                    ReminderScheduler.cancel(appContext, current.taskId, current.version);
                 }
             }
-            Reminder current = store.find(reminder.taskId);
-            if (current != null) currentRecords.add(current);
+            List<Reminder> currentRecords = new ArrayList<>();
+            for (Reminder reminder : reminders) {
+                Reminder current = store.find(reminder.taskId);
+                if (current != null) currentRecords.add(current);
+            }
+            return currentRecords;
         }
-        return currentRecords;
     }
 
     private void postPendingNotification(Context context, EncryptedReminderStore store,
-                                         String taskId) throws Exception {
+                                         String taskId, long expectedVersion) throws Exception {
         Reminder pending = store.find(taskId);
-        if (pending == null || pending.delivered || !pending.deliveryPending) return;
+        if (!ReminderLogic.isCurrentGeneration(pending, expectedVersion)) {
+            cleanStaleGeneration(context, store, taskId, expectedVersion);
+            return;
+        }
+        if (pending.delivered) {
+            ReminderScheduler.cancel(context, taskId, expectedVersion);
+            return;
+        }
+        if (!pending.deliveryPending) return;
         Task task = findTask(context, taskId);
         if (!ReminderLogic.shouldDeliverForTask(pending, task)) {
-            store.remove(taskId);
-            ReminderScheduler.cancel(context, taskId);
-            ReminderScheduler.cancelNotification(context, taskId);
+            cancelReminder(context, store, taskId, expectedVersion);
             return;
         }
         if (!task.title.equals(pending.taskTitle)) {
-            store.updateTaskTitle(taskId, task.title);
+            store.updateTaskTitle(taskId, expectedVersion, task.title);
             pending = pending.withTitle(task.title);
         }
         if (!ReminderScheduler.notificationsEnabled(context)) return;
-        ReminderScheduler.cancel(context, taskId);
         if (!postNotification(context, pending)) return;
 
-        // The notification is now accepted by Android. If this write fails, startup re-posts the same tag/ID.
-        Reminder delivered = store.markDelivered(taskId);
-        if (delivered == null) ReminderScheduler.cancelNotification(context, taskId);
+        // Notify uses the same tag/ID on retries. Persist completion only after Android accepts the post.
+        Reminder delivered = store.markDelivered(taskId, expectedVersion);
+        if (delivered != null) {
+            ReminderScheduler.cancel(context, taskId, expectedVersion);
+            return;
+        }
+        Reminder latest = store.find(taskId);
+        ReminderTombstone tombstone = store.findTombstone(taskId, expectedVersion);
+        if (ReminderLogic.tombstoneMatches(tombstone, taskId, expectedVersion)) {
+            ensureCleanupThenFinish(context, store, tombstone);
+        } else if (latest != null && latest.version == expectedVersion && latest.delivered) {
+            // A second idempotent path already committed this same post. Keep its stable notification.
+            ReminderScheduler.cancel(context, taskId, expectedVersion);
+        }
+        // A stale receiver never cancels a newer generation's notification.
+    }
+
+    static void reconcileTombstones(Context context, EncryptedReminderStore store) throws Exception {
+        for (ReminderTombstone tombstone : store.loadTombstones()) {
+            ensureCleanupThenFinish(context, store, tombstone);
+        }
+    }
+
+    private static void ensureCleanupThenFinish(Context context, EncryptedReminderStore store,
+                                                ReminderTombstone tombstone) throws Exception {
+        if (!ReminderScheduler.scheduleTombstoneCleanup(context, tombstone)) return;
+        cleanTombstone(context, store, tombstone);
+    }
+
+    private static void cleanTombstone(Context context, EncryptedReminderStore store,
+                                       ReminderTombstone tombstone) throws Exception {
+        // Version-specific identity: old cleanup cannot cancel a replacement reminder's notification.
+        ReminderScheduler.cancel(context, tombstone.taskId, tombstone.cancelledVersion);
+        ReminderScheduler.cancelNotification(context, tombstone.taskId, tombstone.cancelledVersion);
+        store.removeTombstone(tombstone);
+        ReminderScheduler.cancelTombstoneCleanup(context, tombstone);
+    }
+
+    /** Persist cancellation before alarm/notification removal; repeating cleanup survives a process stop. */
+    static boolean cancelReminder(Context context, EncryptedReminderStore store,
+                                  String taskId, long expectedVersion) throws Exception {
+        synchronized (ReminderDeliveryLock.LOCK) {
+            Reminder current = store.find(taskId);
+            if (current == null || (expectedVersion > 0 && current.version != expectedVersion)) return false;
+            ReminderTombstone planned = store.plannedCancellation(taskId, current.version);
+            if (planned == null) return false;
+            if (!ReminderScheduler.scheduleTombstoneCleanup(context, planned)) {
+                throw new IOException("A safe cancellation retry could not be scheduled; the reminder was left unchanged.");
+            }
+            ReminderTombstone tombstone = store.cancel(taskId, current.version);
+            if (tombstone == null) {
+                ReminderScheduler.cancelTombstoneCleanup(context, planned);
+                return false;
+            }
+            if (tombstone.revision != planned.revision) {
+                ReminderScheduler.cancelTombstoneCleanup(context, planned);
+                if (!ReminderScheduler.scheduleTombstoneCleanup(context, tombstone)) {
+                    throw new IOException("Reminder cancellation committed, but its exact cleanup retry could not be armed.");
+                }
+            }
+            try {
+                cleanTombstone(context, store, tombstone);
+            } catch (Exception failure) {
+                // The repeating cleanup remains scheduled; never erase the tombstone on a partial cancel.
+                throw failure;
+            }
+            return true;
+        }
+    }
+
+    private static void cleanStaleGeneration(Context context, EncryptedReminderStore store,
+                                             String taskId, long version) throws Exception {
+        ReminderTombstone tombstone = store.findTombstone(taskId, version);
+        if (ReminderLogic.tombstoneMatches(tombstone, taskId, version)) {
+            ensureCleanupThenFinish(context, store, tombstone);
+        } else {
+            // Only remove this generation's obsolete alarms; notification cancellation requires its tombstone.
+            ReminderScheduler.cancel(context, taskId, version);
+        }
     }
 
     private Task findTask(Context context, String taskId) throws Exception {
@@ -217,12 +379,12 @@ public final class ReminderReceiver extends BroadcastReceiver {
                 .setContentIntent(contentIntent)
                 .addAction(new Notification.Action.Builder(android.R.drawable.ic_lock_idle_alarm,
                         "Snooze 10 min", ReminderScheduler.actionPendingIntent(context, ACTION_SNOOZE,
-                        reminder.taskId)).build())
+                        reminder.taskId, reminder.version)).build())
                 .addAction(new Notification.Action.Builder(android.R.drawable.ic_menu_close_clear_cancel,
                         "Cancel reminder", ReminderScheduler.actionPendingIntent(context, ACTION_CANCEL,
-                        reminder.taskId)).build());
-        manager.notify(ReminderScheduler.notificationTag(reminder.taskId),
-                ReminderScheduler.notificationId(reminder.taskId), builder.build());
+                        reminder.taskId, reminder.version)).build());
+        manager.notify(ReminderScheduler.notificationTag(reminder.taskId, reminder.version),
+                ReminderScheduler.notificationId(reminder.taskId, reminder.version), builder.build());
         return true;
     }
 }

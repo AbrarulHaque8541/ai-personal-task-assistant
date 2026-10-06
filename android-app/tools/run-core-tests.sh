@@ -7,6 +7,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Reminder.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/ReminderTombstone.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/ReminderDeliveryLock.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/ReminderLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserAddress.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \

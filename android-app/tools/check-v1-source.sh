@@ -67,7 +67,10 @@ assert "shouldOfferExactAccess(Build.VERSION.SDK_INT" in activity, "exact access
 assert "ReminderScheduler.canScheduleExactAlarms(this)" in activity, "exact-alarm access must be checked"
 assert "lastKnownNotificationAccess" in activity, "notification settings changes must be rechecked on resume"
 assert "dueReminderNeedsRearm" in activity, "overdue reminders must be recovered after a missed notification-permission transition"
-assert "if (persisted)" in activity and "reminderStore.put(previous)" in activity, "a failed replacement must restore the previous encrypted reminder"
+save_flow = activity.split("private ReminderSaveResult persistReminderWithRecovery", 1)[1].split("private void showExactAlarmAccessPrompt", 1)[0]
+assert "synchronized (ReminderDeliveryLock.LOCK)" in save_flow, "replacement and delivery must serialize on the shared reminder lock"
+assert save_flow.index("scheduleTombstoneCleanup(appContext, cleanup)") < save_flow.index("ReminderScheduler.schedule(appContext, candidate)") < save_flow.index("reminderStore.put(candidate)"), "arm old-generation cleanup and new-generation retry before persisting a replacement"
+assert "ReminderReceiver.reconcileTombstones(appContext, reminderStore)" in save_flow, "committed replacements must reconcile their persisted cancellation journal"
 for forbidden in ("ActivityResultContracts.RequestPermission", "registerForActivityResult"):
     assert forbidden not in activity, f"unexpected runtime-permission framework dependency: {forbidden}"
 
@@ -80,12 +83,15 @@ for expected in ("MODE_LOCAL_DATE_TIME", "MODE_TIMER", "soundUri", "triggerAtMil
     assert expected in reminder, f"reminder record must include validated {expected} state"
 for expected in ("resolveLocalDateTime", "absoluteEpochMillis", "afterTimezoneChange", "shouldRestoreAfterReboot", "deliveryRecoveryAction", "beginDelivery", "completeDelivery", "revocationFallbackAtMillis", "snooze", "removeForTask", "MIN_IDLE_ALARM_INTERVAL_MILLIS", "needsInexactRevocationFallback"):
     assert expected in reminder_logic, f"missing testable reminder rule: {expected}"
-for expected in ("AES/GCM/NoPadding", "AndroidKeyStore", "updateAAD(MAGIC)", "reminders.enc", "synchronized (FILE_LOCK)", "markDeliveryPending", "markDelivered", "migrateLegacyReminder", "document.put(\"version\", 2)"):
+for expected in ("AES/GCM/NoPadding", "AndroidKeyStore", "updateAAD(MAGIC)", "reminders.enc", "synchronized (FILE_LOCK)", "markDeliveryPending", "markDelivered", "migrateLegacyReminder", "document.put(\"version\", 3)", "nextGeneration", "schemaVersion < 3"):
     assert expected in reminder_store, f"reminder storage must preserve encryption/serialization protection: {expected}"
-for expected in ("canScheduleExactAlarms()", "setExactAndAllowWhileIdle", "setAndAllowWhileIdle", "fallbackPendingIntent", "manager.cancel(fallback)", "getNotificationChannel(id)", "createNotificationChannel(channel)"):
+for expected in ("canScheduleExactAlarms()", "setExactAndAllowWhileIdle", "setAndAllowWhileIdle", "fallbackPendingIntent", "manager.cancel(fallback)", "getNotificationChannel(id)", "createNotificationChannel(channel)", "cancelLegacyNotification"):
     assert expected in reminder_scheduler, f"missing alarm/channel safety boundary: {expected}"
-assert "if (enabled) schedule(context, reminder)" in reminder_scheduler and "else cancel(context, reminder.taskId)" in reminder_scheduler, "notification revocation must cancel alarms without deleting active reminder data"
+assert "if (enabled && ReminderLogic.shouldRestoreAfterReboot(reminder))" in reminder_scheduler and "else if (!enabled)" in reminder_scheduler and "cancel(context, reminder.taskId, reminder.version)" in reminder_scheduler, "notification revocation must cancel only the matching generation's alarms without deleting active reminder data"
 assert "setSound(sound, attributes)" in reminder_scheduler
+schedule_flow = reminder_scheduler.split("static ReminderLogic.SchedulePlan schedule(", 1)[1].split("static void rescheduleAll", 1)[0]
+assert schedule_flow.index("setInexactRepeating") < schedule_flow.index("setExactAndAllowWhileIdle") and schedule_flow.index("setInexactRepeating") < schedule_flow.index("setAndAllowWhileIdle"), "arm the recurring recovery opportunity before all primary alarm alternatives"
+assert "retryArmed ? ReminderLogic.SchedulePlan.INEXACT_ALLOW_WHILE_IDLE" in schedule_flow, "preserve an accepted retry when a primary alarm API fails"
 assert reminder_scheduler.index("getNotificationChannel(id) != null") < reminder_scheduler.index("createNotificationChannel(channel)"), "existing channel settings must never be rewritten"
 for expected in ("ACTION_BOOT_COMPLETED", "ACTION_TIMEZONE_CHANGED", "ACTION_TIME_CHANGED", "ACTION_FALLBACK", "ACTION_SNOOZE", "ACTION_CANCEL", "markDeliveryPending", "markDelivered", "reconcilePendingNotifications"):
     assert expected in reminder_receiver or expected in reminder_receiver.replace("Intent.", ""), f"missing receiver action: {expected}"
@@ -93,19 +99,27 @@ assert "goAsync()" in reminder_receiver and "setExact" not in reminder_receiver
 assert "shouldDeliverForTask(pending, task)" in reminder_receiver and "belongsToOpenTask(current, task)" in reminder_receiver, "fire and snooze actions must verify the task is still open"
 assert "reconcileAndReschedule(context, store)" in reminder_receiver, "boot/time/permission restoration must reconcile reminders against current tasks"
 assert "if (task == null || task.completed)" in activity, "startup reconciliation must remove reminders for deleted or completed tasks"
+assert "ReminderReceiver.reconcileTombstones(getApplicationContext(), reminderStore)" in activity, "app start/resume must recover persisted cancellation tombstones"
 assert "saveTasksAsync(() ->" in activity and "cancelReminderAsync(task.id, false)" in activity, "task completion/deletion must cancel reminders only after a successful task save"
 assert "restoreReminderAsync(restore)" in activity, "undo must restore a reminder only after the task save succeeds"
-delivery_flow = reminder_receiver.split("private void deliverIfCurrent", 1)[1].split("private boolean isSystemRescheduleAction", 1)[0]
-assert delivery_flow.index("store.markDeliveryPending(taskId)") < delivery_flow.rindex("postPendingNotification(context, store, taskId)"), "persist retryable pending state before attempting the notification post"
+delivery_flow = reminder_receiver.split("private void deliverIfCurrent", 1)[1].split("private void snoozeIfCurrent", 1)[0]
+assert delivery_flow.index("store.markDeliveryPending(taskId, expectedVersion)") < delivery_flow.rindex("postPendingNotification(context, store, taskId, expectedVersion)"), "persist retryable pending state before attempting the notification post"
 pending_flow = reminder_receiver.split("private void postPendingNotification", 1)[1].split("private Task findTask", 1)[0]
-assert pending_flow.index("if (!postNotification(context, pending)) return;") < pending_flow.index("store.markDelivered(taskId)"), "do not mark delivered until Android accepts a notification post"
-assert "manager.notify(ReminderScheduler.notificationTag(reminder.taskId)" in reminder_receiver, "restart retries must replace the same stable tagged notification"
-assert "manager.cancel(notificationTag(taskId), notificationId(taskId))" in reminder_scheduler, "cancellation must target the stable notification identity"
-assert "reconcilePendingNotifications(getApplicationContext(), reminderStore" in activity, "app start/resume must reconcile durable pending posts"
+assert pending_flow.index("if (!postNotification(context, pending)) return;") < pending_flow.index("store.markDelivered(taskId, expectedVersion)"), "do not mark delivered until Android accepts a notification post"
+assert "manager.notify(ReminderScheduler.notificationTag(reminder.taskId, reminder.version)" in reminder_receiver, "restart retries must replace the same generation-scoped stable notification key"
+assert "manager.cancel(notificationTag(taskId, version), notificationId(taskId, version))" in reminder_scheduler, "cancellation must target only the matching reminder generation's notification identity"
+assert "cancelLegacyNotification(appContext, reminder.taskId)" in reminder_receiver, "migration must retire only the pre-v3 per-task notification key before replay"
+assert "synchronized (ReminderDeliveryLock.LOCK)" in reminder_receiver, "concurrent receivers must serialize version checks and commits"
+cancel_flow = reminder_receiver.split("static boolean cancelReminder", 1)[1].split("private static void cleanStaleGeneration", 1)[0]
+assert cancel_flow.index("store.plannedCancellation") < cancel_flow.index("scheduleTombstoneCleanup") < cancel_flow.index("store.cancel(taskId, current.version)") < cancel_flow.index("cleanTombstone(context, store, tombstone)"), "persist cancellation journal and arm recovery before canceling the old notification"
+assert "ReminderReceiver.reconcilePendingNotifications(" in activity and "getApplicationContext(), reminderStore, loadedReminders" in activity, "app start/resume must reconcile durable pending posts"
 for expected in ("showOverlapOccurrenceChoice", "Time doesn't exist", "will not shift it automatically", "Time zone:", "choiceLabel"):
     assert expected in activity, f"missing explicit DST UX: {expected}"
+assert "MAX_DATE_TIME_DATE" in reminder_logic and "requireSupportedDate" in reminder_logic
+assert "setMaxDate(maximumDateMillis)" in activity and "Date/time reminders are available through December 31, 2100." in activity
+assert "MAX_DATE_TIME_DATE.plusDays(1L)" in activity, "DatePicker upper bound must be derived from the supported ISO date"
 reminder_smoke = (root / "tools/ReminderLogicSmoke.java").read_text(encoding="utf-8")
-for expected in ("dstGapsAreRejectedAndBothOverlapOffsetsMatchTheirPreview", "absoluteReminderBoundsAreEpochMillisBoundsWithoutShortHorizon", "notificationPostingSurvivesEveryCrashWindow", "Long.MAX_VALUE"):
+for expected in ("dstGapsAreRejectedAndBothOverlapOffsetsMatchTheirPreview", "supportedDatePickerRangeIsEnforcedAtAndBeyondItsBoundary", "notificationPostingSurvivesEveryCrashWindow", "replacementCrashWindowsKeepTheOldOrNewGenerationRecoverable", "cancellationRecoveryIsDurableAndGenerationScoped", "concurrentCancelAndRecoveryAreSerialized", "legacyNotificationIdentityIsIsolatedFromNewGenerations", "Long.MAX_VALUE"):
     assert expected in reminder_smoke, f"missing focused reminder regression test: {expected}"
 assert "<uses-permission android:name=\"android.permission.USE_EXACT_ALARM\"" not in (root / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 for blanket in ("android.permission.READ_MEDIA_AUDIO", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WAKE_LOCK", "android.permission.FOREGROUND_SERVICE"):

@@ -136,6 +136,18 @@ public final class MainActivity extends Activity {
     private Runnable suggestionHighlightReset;
     private Palette palette;
 
+    private static final class ReminderSaveResult {
+        final Reminder reminder;
+        final ReminderLogic.SchedulePlan plan;
+        final boolean cleanupPending;
+
+        ReminderSaveResult(Reminder reminder, ReminderLogic.SchedulePlan plan, boolean cleanupPending) {
+            this.reminder = reminder;
+            this.plan = plan;
+            this.cleanupPending = cleanupPending;
+        }
+    }
+
     private LinearLayout root;
     private LinearLayout taskList;
     private LinearLayout suggestionList;
@@ -1103,19 +1115,25 @@ public final class MainActivity extends Activity {
             List<Reminder> loadedReminders = null;
             Exception reminderFailure = null;
             try {
-                loadedReminders = reminderStore.rebaseForCurrentTimezone();
-                if (failure == null) {
-                    loadedReminders = reconcileReminders(loaded, loadedReminders);
-                    loadedReminders = ReminderReceiver.reconcilePendingNotifications(
-                            getApplicationContext(), reminderStore, loadedReminders);
-                    ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
-                } else {
-                    for (Reminder reminder : loadedReminders) {
-                        ReminderScheduler.cancel(getApplicationContext(), reminder.taskId);
+                synchronized (ReminderDeliveryLock.LOCK) {
+                    loadedReminders = reminderStore.rebaseForCurrentTimezone();
+                    ReminderReceiver.reconcileTombstones(getApplicationContext(), reminderStore);
+                    if (failure == null) {
+                        loadedReminders = reconcileReminders(loaded, loadedReminders);
+                        loadedReminders = ReminderReceiver.reconcilePendingNotifications(
+                                getApplicationContext(), reminderStore, loadedReminders);
                     }
+                    // A task-store read failure is not evidence that reminders were canceled.
+                    ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
                 }
             } catch (Exception exception) {
                 reminderFailure = exception;
+                try {
+                    synchronized (ReminderDeliveryLock.LOCK) {
+                        if (loadedReminders == null) loadedReminders = reminderStore.rebaseForCurrentTimezone();
+                        ReminderScheduler.rescheduleAll(getApplicationContext(), loadedReminders);
+                    }
+                } catch (Exception ignored) { }
             }
             List<Task> result = loaded;
             Exception error = failure;
@@ -1154,25 +1172,26 @@ public final class MainActivity extends Activity {
 
     private List<Reminder> reconcileReminders(List<Task> loadedTasks, List<Reminder> storedReminders)
             throws Exception {
-        Map<String, Task> byId = new HashMap<>();
-        for (Task task : loadedTasks) byId.put(task.id, task);
-        List<Reminder> reconciled = new ArrayList<>();
-        for (Reminder reminder : storedReminders) {
-            Task task = byId.get(reminder.taskId);
-            if (task == null || task.completed) {
-                reminderStore.remove(reminder.taskId);
-                ReminderScheduler.cancel(getApplicationContext(), reminder.taskId);
-                ReminderScheduler.cancelNotification(getApplicationContext(), reminder.taskId);
-            } else {
-                Reminder current = reminder;
-                if (!task.title.equals(reminder.taskTitle)) {
-                    reminderStore.updateTaskTitle(task.id, task.title);
-                    current = reminder.withTitle(task.title);
+        synchronized (ReminderDeliveryLock.LOCK) {
+            Map<String, Task> byId = new HashMap<>();
+            for (Task task : loadedTasks) byId.put(task.id, task);
+            List<Reminder> reconciled = new ArrayList<>();
+            for (Reminder reminder : storedReminders) {
+                Task task = byId.get(reminder.taskId);
+                if (task == null || task.completed) {
+                    ReminderReceiver.cancelReminder(getApplicationContext(), reminderStore,
+                            reminder.taskId, reminder.version);
+                } else {
+                    Reminder current = reminder;
+                    if (!task.title.equals(reminder.taskTitle)) {
+                        reminderStore.updateTaskTitle(task.id, reminder.version, task.title);
+                        current = reminder.withTitle(task.title);
+                    }
+                    reconciled.add(current);
                 }
-                reconciled.add(current);
             }
+            return reconciled;
         }
-        return reconciled;
     }
 
     private void refreshAndRescheduleReminders() {
@@ -1181,13 +1200,23 @@ public final class MainActivity extends Activity {
             List<Reminder> loaded = null;
             Exception failure = null;
             try {
-                List<Task> loadedTasks = taskStore.load();
-                loaded = reminderStore.rebaseForCurrentTimezone();
-                loaded = reconcileReminders(loadedTasks, loaded);
-                loaded = ReminderReceiver.reconcilePendingNotifications(getApplicationContext(), reminderStore, loaded);
-                ReminderScheduler.rescheduleAll(getApplicationContext(), loaded);
+                synchronized (ReminderDeliveryLock.LOCK) {
+                    List<Task> loadedTasks = taskStore.load();
+                    loaded = reminderStore.rebaseForCurrentTimezone();
+                    ReminderReceiver.reconcileTombstones(getApplicationContext(), reminderStore);
+                    loaded = reconcileReminders(loadedTasks, loaded);
+                    loaded = ReminderReceiver.reconcilePendingNotifications(
+                            getApplicationContext(), reminderStore, loaded);
+                    ReminderScheduler.rescheduleAll(getApplicationContext(), loaded);
+                }
             } catch (Exception exception) {
                 failure = exception;
+                try {
+                    synchronized (ReminderDeliveryLock.LOCK) {
+                        if (loaded == null) loaded = reminderStore.rebaseForCurrentTimezone();
+                        ReminderScheduler.rescheduleAll(getApplicationContext(), loaded);
+                    }
+                } catch (Exception ignored) { }
             }
             List<Reminder> result = loaded;
             Exception error = failure;
@@ -1878,6 +1907,9 @@ public final class MainActivity extends Activity {
         form.addView(dateControls, bottomMargin(dp(8)));
         TextView zoneLabel = text("Time zone: " + initialZone.getId(), 12, palette.muted, Typeface.NORMAL);
         form.addView(zoneLabel, bottomMargin(dp(8)));
+        TextView dateRangeLabel = text("Date/time reminders are available through December 31, 2100.",
+                12, palette.muted, Typeface.NORMAL);
+        form.addView(dateRangeLabel, bottomMargin(dp(8)));
         Runnable updateDateTimeLabels = () -> {
             LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
             dateButton.setText(DateTimeFormatter.ofPattern("EEE, MMM d, yyyy", Locale.getDefault()).format(value));
@@ -1886,10 +1918,14 @@ public final class MainActivity extends Activity {
         updateDateTimeLabels.run();
         dateButton.setOnClickListener(view -> {
             LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
-            new DatePickerDialog(this, (picker, year, month, day) -> {
+            DatePickerDialog datePicker = new DatePickerDialog(this, (picker, year, month, day) -> {
                 try {
                     LocalDateTime current = LocalDateTime.parse(selectedLocalDateTime[0]);
                     LocalDate chosenDate = LocalDate.of(year, month + 1, 1);
+                    if (chosenDate.isAfter(ReminderLogic.MAX_DATE_TIME_DATE)) {
+                        showInfo("Date out of range", "Date/time reminders are supported through December 31, 2100.");
+                        return;
+                    }
                     int safeDay = Math.min(day, chosenDate.lengthOfMonth());
                     selectedLocalDateTime[0] = chosenDate.withDayOfMonth(safeDay)
                             .atTime(current.toLocalTime()).toString();
@@ -1897,7 +1933,11 @@ public final class MainActivity extends Activity {
                 } catch (DateTimeException exception) {
                     showInfo("Unsupported date", "Choose a calendar date Android can represent.");
                 }
-            }, value.getYear(), value.getMonthValue() - 1, value.getDayOfMonth()).show();
+            }, value.getYear(), value.getMonthValue() - 1, value.getDayOfMonth());
+            long maximumDateMillis = ReminderLogic.MAX_DATE_TIME_DATE.plusDays(1L)
+                    .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() - 1L;
+            datePicker.getDatePicker().setMaxDate(maximumDateMillis);
+            datePicker.show();
         });
         timeButton.setOnClickListener(view -> {
             LocalDateTime value = LocalDateTime.parse(selectedLocalDateTime[0]);
@@ -1952,11 +1992,13 @@ public final class MainActivity extends Activity {
         modeGroup.check(startWithTimer ? timerMode.getId() : dateMode.getId());
         dateControls.setVisibility(startWithTimer ? View.GONE : View.VISIBLE);
         zoneLabel.setVisibility(startWithTimer ? View.GONE : View.VISIBLE);
+        dateRangeLabel.setVisibility(startWithTimer ? View.GONE : View.VISIBLE);
         timerControls.setVisibility(startWithTimer ? View.VISIBLE : View.GONE);
         modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
             boolean timerSelected = checkedId == timerMode.getId();
             dateControls.setVisibility(timerSelected ? View.GONE : View.VISIBLE);
             zoneLabel.setVisibility(timerSelected ? View.GONE : View.VISIBLE);
+            dateRangeLabel.setVisibility(timerSelected ? View.GONE : View.VISIBLE);
             timerControls.setVisibility(timerSelected ? View.VISIBLE : View.GONE);
         });
 
@@ -2080,61 +2122,113 @@ public final class MainActivity extends Activity {
         }
         Context appContext = getApplicationContext();
         storageExecutor.execute(() -> {
-            Reminder previous = null;
-            ReminderLogic.SchedulePlan plan = ReminderLogic.SchedulePlan.NO_SCHEDULE;
+            ReminderSaveResult saved = null;
             Exception failure = null;
-            boolean persisted = false;
-            boolean restorationFailed = false;
             try {
                 if (!ReminderScheduler.notificationsEnabled(appContext)) {
                     throw new IllegalStateException("Notifications are disabled.");
                 }
-                previous = reminderStore.find(reminder.taskId);
-                reminderStore.put(reminder);
-                persisted = true;
-                plan = ReminderScheduler.schedule(appContext, reminder);
-                if (plan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
-                    throw new IllegalStateException("Notifications became unavailable.");
-                }
+                saved = persistReminderWithRecovery(appContext, reminder, false);
             } catch (Exception exception) {
                 failure = exception;
-                if (persisted) {
-                    try {
-                        ReminderScheduler.cancel(appContext, reminder.taskId);
-                        if (previous == null) reminderStore.remove(reminder.taskId);
-                        else {
-                            reminderStore.put(previous);
-                            if (ReminderScheduler.notificationsEnabled(appContext)) {
-                                ReminderScheduler.schedule(appContext, previous);
-                            }
-                        }
-                    } catch (Exception rollbackException) {
-                        restorationFailed = true;
-                    }
-                }
             }
             Exception error = failure;
-            boolean rollbackError = restorationFailed;
-            ReminderLogic.SchedulePlan resultPlan = plan;
+            ReminderSaveResult result = saved;
             mainHandler.post(() -> {
                 if (isFinishing()) return;
                 if (error != null) {
-                    showInfo("Reminder not saved", rollbackError
-                            ? "Daymark could not safely finish saving or restoring reminder state. Do not assume the reminder is scheduled; reopen the app and check its reminder and permission status."
-                            : "Daymark could not save this reminder. Any previous reminder was restored when possible; check notification and exact-alarm status before relying on it.");
+                    showInfo("Reminder not saved",
+                            "Daymark could not safely commit the reminder. Any previous reminder was left intact when possible; reopen the app and check its reminder and permission status before relying on it.");
                     return;
                 }
-                reminders.put(reminder.taskId, reminder);
+                if (result == null) return;
+                reminders.put(result.reminder.taskId, result.reminder);
                 renderTaskList();
-                String message = resultPlan == ReminderLogic.SchedulePlan.EXACT_ALLOW_WHILE_IDLE
+                String message = result.plan == ReminderLogic.SchedulePlan.EXACT_ALLOW_WHILE_IDLE
                         ? "Reminder saved. Android may still delay alarms under power-saving limits."
+                        : result.plan == ReminderLogic.SchedulePlan.NO_SCHEDULE
+                        ? "Reminder saved, but notifications are off; re-enable them in Android Settings and reopen Daymark to re-arm it."
                         : "Reminder saved with inexact timing. Android may deliver it late.";
+                if (result.cleanupPending) message += " Cleanup of the previous reminder is queued for recovery.";
                 captureFeedback.setText(message);
                 showToast(message);
-                if (ReminderLogic.shouldOfferExactAccess(Build.VERSION.SDK_INT,
+                if (result.plan != ReminderLogic.SchedulePlan.NO_SCHEDULE
+                        && ReminderLogic.shouldOfferExactAccess(Build.VERSION.SDK_INT,
                         ReminderScheduler.canScheduleExactAlarms(this))) showExactAlarmAccessPrompt();
             });
         });
+    }
+
+    /** Arms recovery before committing or retiring any reminder generation. */
+    private ReminderSaveResult persistReminderWithRecovery(Context appContext, Reminder reminder,
+                                                           boolean allowNotificationsOff) throws Exception {
+        synchronized (ReminderDeliveryLock.LOCK) {
+            boolean notificationsEnabled = ReminderScheduler.notificationsEnabled(appContext);
+            if (!notificationsEnabled && !allowNotificationsOff) {
+                throw new IllegalStateException("Notifications are disabled.");
+            }
+            Reminder previous = reminderStore.find(reminder.taskId);
+            long nextVersion = reminderStore.nextVersionForPut(reminder.taskId);
+            Reminder candidate = reminder.withVersion(nextVersion);
+            ReminderTombstone cleanup = previous == null ? null
+                    : reminderStore.plannedCancellation(reminder.taskId, previous.version);
+            if (previous != null && cleanup == null) {
+                throw new IllegalStateException("The reminder changed before replacement could begin.");
+            }
+
+            boolean cleanupArmed = false;
+            boolean candidateArmed = false;
+            boolean preserveAlarms = false;
+            boolean committed = false;
+            ReminderLogic.SchedulePlan plan = ReminderLogic.SchedulePlan.NO_SCHEDULE;
+            Reminder saved;
+            try {
+                if (cleanup != null) {
+                    if (!ReminderScheduler.scheduleTombstoneCleanup(appContext, cleanup)) {
+                        throw new IllegalStateException("A safe cancellation recovery alarm could not be armed.");
+                    }
+                    cleanupArmed = true;
+                }
+                if (notificationsEnabled) {
+                    plan = ReminderScheduler.schedule(appContext, candidate);
+                    if (plan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
+                        throw new IllegalStateException("Android could not arm a reminder recovery alarm.");
+                    }
+                    candidateArmed = true;
+                }
+                try {
+                    saved = reminderStore.put(candidate);
+                } catch (Exception persistenceFailure) {
+                    Reminder observed;
+                    try {
+                        observed = reminderStore.find(reminder.taskId);
+                    } catch (Exception verificationFailure) {
+                        persistenceFailure.addSuppressed(verificationFailure);
+                        preserveAlarms = true;
+                        throw persistenceFailure;
+                    }
+                    if (observed == null || observed.version != candidate.version) throw persistenceFailure;
+                    saved = observed;
+                }
+                committed = true;
+                boolean cleanupPending = cleanup != null;
+                if (cleanup != null && cleanupArmed) {
+                    try {
+                        ReminderReceiver.reconcileTombstones(appContext, reminderStore);
+                        cleanupPending = false;
+                    } catch (Exception ignored) {
+                        // The pre-armed cleanup alarm and durable tombstone remain authoritative.
+                    }
+                }
+                return new ReminderSaveResult(saved, plan, cleanupPending);
+            } catch (Exception failure) {
+                if (!committed && !preserveAlarms) {
+                    if (candidateArmed) ReminderScheduler.cancel(appContext, reminder.taskId, candidate.version);
+                    if (cleanupArmed) ReminderScheduler.cancelTombstoneCleanup(appContext, cleanup);
+                }
+                throw failure;
+            }
+        }
     }
 
     private void showExactAlarmAccessPrompt() {
@@ -2166,9 +2260,9 @@ public final class MainActivity extends Activity {
         storageExecutor.execute(() -> {
             Exception failure = null;
             try {
-                reminderStore.remove(taskId);
-                ReminderScheduler.cancel(appContext, taskId);
-                ReminderScheduler.cancelNotification(appContext, taskId);
+                synchronized (ReminderDeliveryLock.LOCK) {
+                    ReminderReceiver.cancelReminder(appContext, reminderStore, taskId, 0L);
+                }
             } catch (Exception exception) {
                 failure = exception;
             }
@@ -2188,14 +2282,20 @@ public final class MainActivity extends Activity {
         Reminder current = reminders.get(task.id);
         if (current == null || current.taskTitle.equals(task.title) || storageExecutor == null) return;
         storageExecutor.execute(() -> {
-            boolean updated = false;
+            Reminder updatedReminder = null;
             try {
-                updated = reminderStore.updateTaskTitle(task.id, task.title);
+                synchronized (ReminderDeliveryLock.LOCK) {
+                    Reminder latest = reminderStore.find(task.id);
+                    if (latest != null && latest.version == current.version
+                            && reminderStore.updateTaskTitle(task.id, current.version, task.title)) {
+                        updatedReminder = latest.withTitle(task.title);
+                    }
+                }
             } catch (Exception ignored) { }
-            boolean result = updated;
+            Reminder result = updatedReminder;
             mainHandler.post(() -> {
-                if (!isFinishing() && result) {
-                    reminders.put(task.id, current.withTitle(task.title));
+                if (!isFinishing() && result != null) {
+                    reminders.put(task.id, result);
                     renderTaskList();
                 }
             });
@@ -2206,41 +2306,27 @@ public final class MainActivity extends Activity {
         if (reminder == null || storageExecutor == null) return;
         Context appContext = getApplicationContext();
         storageExecutor.execute(() -> {
-            ReminderLogic.SchedulePlan plan = ReminderLogic.SchedulePlan.NO_SCHEDULE;
+            ReminderSaveResult saved = null;
             Exception failure = null;
-            boolean persisted = false;
-            boolean rollbackFailed = false;
             try {
-                reminderStore.put(reminder);
-                persisted = true;
-                plan = ReminderScheduler.schedule(appContext, reminder);
+                saved = persistReminderWithRecovery(appContext, reminder, true);
             } catch (Exception exception) {
                 failure = exception;
-                if (persisted) {
-                    try {
-                        ReminderScheduler.cancel(appContext, reminder.taskId);
-                        reminderStore.remove(reminder.taskId);
-                    } catch (Exception rollbackException) {
-                        rollbackFailed = true;
-                    }
-                }
             }
             Exception error = failure;
-            boolean uncertainRollback = rollbackFailed;
-            ReminderLogic.SchedulePlan resultPlan = plan;
+            ReminderSaveResult result = saved;
             mainHandler.post(() -> {
                 if (isFinishing()) return;
                 if (error == null) {
-                    reminders.put(reminder.taskId, reminder);
+                    if (result == null) return;
+                    reminders.put(result.reminder.taskId, result.reminder);
                     renderTaskList();
-                    if (resultPlan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
-                        showToast(ReminderScheduler.notificationsEnabled(this)
-                                ? "Task restored. Its reminder is saved, but Android could not arm it; reopen Daymark to retry."
-                                : "Task restored. The reminder is saved, but notifications are off; reopen Daymark after enabling them to re-arm it.");
+                    if (result.plan == ReminderLogic.SchedulePlan.NO_SCHEDULE) {
+                        showToast("Task restored. The reminder is saved but could not be scheduled while notifications were unavailable; enable notifications and reopen Daymark to re-arm it.");
+                    } else if (result.cleanupPending) {
+                        showToast("Task restored. Its reminder is armed; old notification cleanup is queued for recovery.");
                     }
-                } else showToast(uncertainRollback
-                        ? "Task restored, but reminder state may need review before relying on it."
-                        : "Task restored, but its reminder could not be safely re-armed. Set it again from the task list.");
+                } else showToast("Task restored, but its reminder could not be safely saved or armed. Check it before relying on it.");
             });
         });
     }

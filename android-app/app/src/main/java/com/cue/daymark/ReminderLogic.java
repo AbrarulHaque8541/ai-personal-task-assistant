@@ -3,6 +3,7 @@ package com.cue.daymark;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.DateTimeException;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -18,6 +19,8 @@ final class ReminderLogic {
     static final int MAX_TIMER_MINUTES = 7 * 24 * 60;
     static final int SNOOZE_MINUTES = 10;
     static final long MIN_IDLE_ALARM_INTERVAL_MILLIS = 9L * 60L * 1000L;
+    static final long DELIVERY_RETRY_INTERVAL_MILLIS = 15L * 60L * 1000L;
+    static final LocalDate MAX_DATE_TIME_DATE = LocalDate.of(2100, 12, 31);
 
     enum SchedulePlan {
         NO_SCHEDULE,
@@ -94,6 +97,7 @@ final class ReminderLogic {
         if (localDateTime == null || zoneId == null) {
             throw new IllegalArgumentException("Choose a date, time, and time zone.");
         }
+        requireSupportedDate(localDateTime);
         List<ZoneOffset> offsets = zoneId.getRules().getValidOffsets(localDateTime);
         if (offsets.isEmpty()) return Collections.emptyList();
         if (offsets.size() > 2) {
@@ -108,10 +112,7 @@ final class ReminderLogic {
         return Collections.unmodifiableList(result);
     }
 
-    /**
-     * Resolve only with an explicit offset when an overlap offers two valid occurrences.
-     * A spring-forward gap is rejected; it is never shifted silently.
-     */
+    /** Resolve only with an explicit offset for overlaps; spring-forward gaps are rejected, never shifted. */
     static Reminder atLocalDateTime(String taskId, String taskTitle, LocalDateTime localDateTime,
                                     ZoneId zoneId, ZoneOffset selectedOffset,
                                     long nowMillis, String soundUri) {
@@ -140,6 +141,7 @@ final class ReminderLogic {
     static Reminder fromResolvedDateTime(String taskId, String taskTitle, ResolvedDateTime selected,
                                          long nowMillis, String soundUri) {
         if (selected == null) throw new IllegalArgumentException("Choose a date and time.");
+        requireSupportedDate(selected.localDateTime);
         if (selected.triggerAtMillis <= nowMillis) {
             throw new IllegalArgumentException("Choose a future date and time.");
         }
@@ -151,6 +153,13 @@ final class ReminderLogic {
                 selected.offset.getTotalSeconds(), selected.triggerAtMillis, soundUri, false, false);
         requireValid(reminder);
         return reminder;
+    }
+
+    static void requireSupportedDate(LocalDateTime localDateTime) {
+        if (localDateTime == null) throw new IllegalArgumentException("Choose a supported date and time.");
+        if (localDateTime.toLocalDate().isAfter(MAX_DATE_TIME_DATE)) {
+            throw new IllegalArgumentException("Date/time reminders are supported through December 31, 2100. Choose a date within that range.");
+        }
     }
 
     /** Convert only when the resulting instant fits Android's signed epoch-millisecond alarm value. */
@@ -189,10 +198,7 @@ final class ReminderLogic {
         return reminder;
     }
 
-    /**
-     * Date/time reminders retain their originally selected instant, IANA zone, and UTC offset.
-     * A device-zone change re-arms the same instant; it does not reinterpret the user's choice.
-     */
+    /** Preserve the selected absolute instant, IANA zone, and UTC offset after a device-zone change. */
     static Reminder afterTimezoneChange(Reminder reminder, ZoneId newDeviceZone) {
         if (reminder == null || !reminder.isValid() || newDeviceZone == null) {
             throw new IllegalArgumentException("A valid reminder and time zone are required.");
@@ -222,10 +228,36 @@ final class ReminderLogic {
     }
 
     static Long revocationFallbackAtMillis(long triggerAtMillis) {
-        if (triggerAtMillis <= 0 || triggerAtMillis > Long.MAX_VALUE - MIN_IDLE_ALARM_INTERVAL_MILLIS) {
-            return null;
+        return addMillisOrNull(triggerAtMillis, MIN_IDLE_ALARM_INTERVAL_MILLIS);
+    }
+
+    static Long deliveryRetryAtMillis(long triggerAtMillis) {
+        return addMillisOrNull(triggerAtMillis, DELIVERY_RETRY_INTERVAL_MILLIS);
+    }
+
+    private static Long addMillisOrNull(long value, long interval) {
+        if (value <= 0 || interval <= 0 || value > Long.MAX_VALUE - interval) return null;
+        return value + interval;
+    }
+
+    static boolean retryMustRemainArmed(Reminder reminder) {
+        return reminder != null && reminder.isValid() && !reminder.delivered;
+    }
+
+    static long nextVersion(long currentVersion) {
+        if (currentVersion < 0 || currentVersion == Long.MAX_VALUE) {
+            throw new IllegalArgumentException("Reminder generation is outside the supported range.");
         }
-        return triggerAtMillis + MIN_IDLE_ALARM_INTERVAL_MILLIS;
+        return currentVersion + 1L;
+    }
+
+    static boolean isCurrentGeneration(Reminder reminder, long expectedVersion) {
+        return reminder != null && expectedVersion > 0 && reminder.version == expectedVersion;
+    }
+
+    static boolean tombstoneMatches(ReminderTombstone tombstone, String taskId, long reminderVersion) {
+        return tombstone != null && tombstone.isValid()
+                && tombstone.taskId.equals(taskId) && tombstone.cancelledVersion == reminderVersion;
     }
 
     static long remainingMinutesCeiling(long triggerAtMillis, long nowMillis) {
@@ -267,14 +299,31 @@ final class ReminderLogic {
         return reminder.withTrigger(nextTrigger, Reminder.MODE_TIMER, null, null, null);
     }
 
-    static int notificationId(String taskId) {
+    static int notificationId(String taskId, long version) {
+        if (taskId == null || taskId.trim().isEmpty() || version <= 0) {
+            throw new IllegalArgumentException("A reminder ID and generation are required.");
+        }
+        int value = (taskId + "\u0000" + version).hashCode() & 0x7fffffff;
+        return value == 0 ? 1 : value;
+    }
+
+    static int legacyNotificationId(String taskId) {
         int value = taskId == null ? 1 : taskId.hashCode() & 0x7fffffff;
         return value == 0 ? 1 : value;
     }
 
-    static String notificationTag(String taskId) {
-        if (taskId == null || taskId.trim().isEmpty()) throw new IllegalArgumentException("A task ID is required.");
+    static String legacyNotificationTag(String taskId) {
+        if (taskId == null || taskId.trim().isEmpty()) {
+            throw new IllegalArgumentException("A task ID is required.");
+        }
         return "daymark.reminder:" + taskId;
+    }
+
+    static String notificationTag(String taskId, long version) {
+        if (taskId == null || taskId.trim().isEmpty() || version <= 0) {
+            throw new IllegalArgumentException("A reminder ID and generation are required.");
+        }
+        return "daymark.reminder:" + taskId + ":generation:" + version;
     }
 
     static String notificationChannelId(String soundUri) {

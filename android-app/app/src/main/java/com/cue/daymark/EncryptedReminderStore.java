@@ -35,7 +35,7 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
-/** App-private encrypted reminder records, isolated from the existing task-file schema. */
+/** App-private encrypted reminder records and cancellation journal, isolated from the task-file schema. */
 final class EncryptedReminderStore {
     private static final Object FILE_LOCK = new Object();
     private static final String KEY_ALIAS = "daymark.reminders.aes-gcm.v1";
@@ -44,7 +44,15 @@ final class EncryptedReminderStore {
     private static final int GCM_TAG_BITS = 128;
     private static final int MAX_STORE_BYTES = 2 * 1024 * 1024;
     private static final int MAX_REMINDERS = 1000;
+    private static final int MAX_TOMBSTONES = 4000;
     private final File storeFile;
+
+    private static final class StoreState {
+        final List<Reminder> reminders = new ArrayList<>();
+        final List<ReminderTombstone> tombstones = new ArrayList<>();
+        int schemaVersion = 3;
+        long nextGeneration = 1L;
+    }
 
     EncryptedReminderStore(Context context) {
         storeFile = new File(context.getFilesDir(), "reminders.enc");
@@ -52,126 +60,216 @@ final class EncryptedReminderStore {
 
     List<Reminder> load() throws Exception {
         synchronized (FILE_LOCK) {
-            return loadLocked();
+            return new ArrayList<>(loadLocked().reminders);
         }
     }
 
-    void put(Reminder reminder) throws Exception {
+    List<ReminderTombstone> loadTombstones() throws Exception {
+        synchronized (FILE_LOCK) {
+            return new ArrayList<>(loadLocked().tombstones);
+        }
+    }
+
+    /** Persist a new generation; replacing a reminder also leaves a tombstone for the old notification key. */
+    Reminder put(Reminder reminder) throws Exception {
         if (reminder == null || !reminder.isValid()) throw new IOException("Reminder failed validation.");
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            boolean replaced = false;
-            for (int index = 0; index < reminders.size(); index++) {
-                if (reminders.get(index).taskId.equals(reminder.taskId)) {
-                    reminders.set(index, reminder);
-                    replaced = true;
-                    break;
-                }
+            StoreState state = loadLocked();
+            int existingIndex = indexOf(state.reminders, reminder.taskId);
+            Reminder previous = existingIndex < 0 ? null : state.reminders.get(existingIndex);
+            if (state.nextGeneration <= 0 || state.nextGeneration == Long.MAX_VALUE
+                    || (previous != null && state.nextGeneration >= Long.MAX_VALUE - 1L)) {
+                throw new IOException("Reminder generation is outside the supported range.");
             }
-            if (!replaced) {
-                if (reminders.size() >= MAX_REMINDERS) throw new IOException("Reminder storage is full.");
-                reminders.add(reminder);
+            long expectedVersion = state.nextGeneration + (previous == null ? 0L : 1L);
+            if (reminder.version > 0 && reminder.version != expectedVersion) {
+                throw new IOException("Reminder generation changed before it could be saved.");
             }
-            saveLocked(reminders);
+            if (previous != null) {
+                addTombstone(state, new ReminderTombstone(previous.taskId, previous.version,
+                        allocateGeneration(state)));
+            }
+            Reminder saved = reminder.withVersion(allocateGeneration(state));
+            if (previous == null && state.reminders.size() >= MAX_REMINDERS) {
+                throw new IOException("Reminder storage is full.");
+            }
+            if (existingIndex >= 0) state.reminders.set(existingIndex, saved);
+            else state.reminders.add(saved);
+            saveLocked(state);
+            return saved;
         }
     }
 
     Reminder find(String taskId) throws Exception {
         synchronized (FILE_LOCK) {
-            for (Reminder reminder : loadLocked()) {
-                if (reminder.taskId.equals(taskId)) return reminder;
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            return index < 0 ? null : state.reminders.get(index);
+        }
+    }
+
+    /** Preview used under ReminderDeliveryLock so a new generation's retry is armed before its commit. */
+    long nextVersionForPut(String taskId) throws Exception {
+        synchronized (FILE_LOCK) {
+            StoreState state = loadLocked();
+            int activeIndex = indexOf(state.reminders, taskId);
+            if (state.nextGeneration <= 0 || state.nextGeneration == Long.MAX_VALUE
+                    || (activeIndex >= 0 && state.nextGeneration >= Long.MAX_VALUE - 1L)) {
+                throw new IOException("Reminder generation is outside the supported range.");
             }
-            return null;
+            long next = state.nextGeneration + (activeIndex >= 0 ? 1L : 0L);
+            if (next <= 0 || next == Long.MAX_VALUE) throw new IOException("Reminder generation is outside the supported range.");
+            return next;
         }
     }
 
-    boolean remove(String taskId) throws Exception {
+    ReminderTombstone plannedCancellation(String taskId, long expectedVersion) throws Exception {
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            boolean removed = ReminderLogic.removeForTask(reminders, taskId);
-            if (removed) saveLocked(reminders);
-            return removed;
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return null;
+            Reminder current = state.reminders.get(index);
+            if (expectedVersion > 0 && current.version != expectedVersion) return null;
+            long revision = state.nextGeneration;
+            if (revision <= current.version || revision <= 0 || revision == Long.MAX_VALUE) {
+                throw new IOException("Reminder generation is outside the supported range.");
+            }
+            return new ReminderTombstone(taskId, current.version, revision);
         }
     }
 
-    Reminder markDeliveryPending(String taskId) throws Exception {
+    long nextVersionForSnooze(String taskId, long expectedVersion) throws Exception {
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            for (int index = 0; index < reminders.size(); index++) {
-                Reminder reminder = reminders.get(index);
-                if (reminder.taskId.equals(taskId) && !reminder.delivered) {
-                    if (reminder.deliveryPending) return reminder;
-                    Reminder pending = ReminderLogic.beginDelivery(reminder);
-                    if (pending == null) return null;
-                    reminders.set(index, pending);
-                    saveLocked(reminders);
-                    return pending;
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return -1L;
+            Reminder current = state.reminders.get(index);
+            if (current.version != expectedVersion || !current.delivered) return -1L;
+            if (state.nextGeneration <= 0 || state.nextGeneration >= Long.MAX_VALUE - 1L) {
+                throw new IOException("Reminder generation is outside the supported range.");
+            }
+            return state.nextGeneration + 1L;
+        }
+    }
+
+    ReminderTombstone findTombstone(String taskId, long cancelledVersion) throws Exception {
+        synchronized (FILE_LOCK) {
+            for (ReminderTombstone tombstone : loadLocked().tombstones) {
+                if (tombstone.taskId.equals(taskId) && tombstone.cancelledVersion == cancelledVersion) {
+                    return tombstone;
                 }
             }
             return null;
         }
     }
 
-    Reminder markDelivered(String taskId) throws Exception {
+    /** Write the tombstone before callers cancel alarms or the stable notification key. */
+    ReminderTombstone cancel(String taskId, long expectedVersion) throws Exception {
+        if (taskId == null || taskId.trim().isEmpty()) throw new IOException("Reminder ID is required.");
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            for (int index = 0; index < reminders.size(); index++) {
-                Reminder reminder = reminders.get(index);
-                if (reminder.taskId.equals(taskId) && reminder.deliveryPending && !reminder.delivered) {
-                    Reminder delivered = ReminderLogic.completeDelivery(reminder);
-                    if (delivered == null) return null;
-                    reminders.set(index, delivered);
-                    saveLocked(reminders);
-                    return delivered;
-                }
-            }
-            return null;
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return null;
+            Reminder current = state.reminders.get(index);
+            if (expectedVersion > 0 && current.version != expectedVersion) return null;
+            ReminderTombstone tombstone = new ReminderTombstone(taskId, current.version,
+                    allocateGeneration(state));
+            state.reminders.remove(index);
+            addTombstone(state, tombstone);
+            saveLocked(state);
+            return tombstone;
         }
     }
 
-    Reminder snooze(String taskId, long nowMillis) throws Exception {
+    boolean removeTombstone(ReminderTombstone expected) throws Exception {
+        if (expected == null || !expected.isValid()) return false;
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            for (int index = 0; index < reminders.size(); index++) {
-                Reminder reminder = reminders.get(index);
-                if (reminder.taskId.equals(taskId) && reminder.delivered) {
-                    Reminder next = ReminderLogic.snooze(reminder, nowMillis);
-                    reminders.set(index, next);
-                    saveLocked(reminders);
-                    return next;
-                }
-            }
-            return null;
+            StoreState state = loadLocked();
+            boolean changed = state.tombstones.removeIf(existing -> existing.matches(
+                    expected.taskId, expected.cancelledVersion, expected.revision));
+            if (changed) saveLocked(state);
+            return changed;
+        }
+    }
+
+    Reminder markDeliveryPending(String taskId, long expectedVersion) throws Exception {
+        synchronized (FILE_LOCK) {
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return null;
+            Reminder current = state.reminders.get(index);
+            if (!ReminderLogic.isCurrentGeneration(current, expectedVersion) || current.delivered) return null;
+            if (current.deliveryPending) return current;
+            Reminder pending = ReminderLogic.beginDelivery(current);
+            if (pending == null) return null;
+            state.reminders.set(index, pending);
+            saveLocked(state);
+            return pending;
+        }
+    }
+
+    Reminder markDelivered(String taskId, long expectedVersion) throws Exception {
+        synchronized (FILE_LOCK) {
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return null;
+            Reminder current = state.reminders.get(index);
+            if (!ReminderLogic.isCurrentGeneration(current, expectedVersion)
+                    || !current.deliveryPending || current.delivered) return null;
+            Reminder delivered = ReminderLogic.completeDelivery(current);
+            if (delivered == null) return null;
+            state.reminders.set(index, delivered);
+            saveLocked(state);
+            return delivered;
+        }
+    }
+
+    Reminder snooze(String taskId, long expectedVersion, long nowMillis) throws Exception {
+        synchronized (FILE_LOCK) {
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return null;
+            Reminder current = state.reminders.get(index);
+            if (!ReminderLogic.isCurrentGeneration(current, expectedVersion) || !current.delivered) return null;
+            long revision = allocateGeneration(state);
+            ReminderTombstone tombstone = new ReminderTombstone(taskId, current.version, revision);
+            Reminder next = ReminderLogic.snooze(current, nowMillis).withVersion(allocateGeneration(state));
+            state.reminders.set(index, next);
+            addTombstone(state, tombstone);
+            saveLocked(state);
+            return next;
         }
     }
 
     boolean updateTaskTitle(String taskId, String title) throws Exception {
+        return updateTaskTitle(taskId, 0L, title);
+    }
+
+    boolean updateTaskTitle(String taskId, long expectedVersion, String title) throws Exception {
         if (title == null || title.trim().isEmpty() || title.length() > 160) {
             throw new IOException("Task title failed reminder validation.");
         }
         synchronized (FILE_LOCK) {
-            List<Reminder> reminders = loadLocked();
-            for (int index = 0; index < reminders.size(); index++) {
-                Reminder reminder = reminders.get(index);
-                if (reminder.taskId.equals(taskId)) {
-                    reminders.set(index, reminder.withTitle(title));
-                    saveLocked(reminders);
-                    return true;
-                }
-            }
-            return false;
+            StoreState state = loadLocked();
+            int index = indexOf(state.reminders, taskId);
+            if (index < 0) return false;
+            Reminder current = state.reminders.get(index);
+            if (expectedVersion > 0 && current.version != expectedVersion) return false;
+            state.reminders.set(index, current.withTitle(title));
+            saveLocked(state);
+            return true;
         }
     }
 
     List<Reminder> rebaseForCurrentTimezone() throws Exception {
         synchronized (FILE_LOCK) {
             // Preserve the user's saved instant, zone, and offset; system broadcasts re-arm that same instant.
-            return loadLocked();
+            return new ArrayList<>(loadLocked().reminders);
         }
     }
 
-    private List<Reminder> loadLocked() throws Exception {
-        if (!storeFile.exists()) return new ArrayList<>();
+    private StoreState loadLocked() throws Exception {
+        if (!storeFile.exists()) return new StoreState();
         long length = storeFile.length();
         if (length < MAGIC.length + IV_LENGTH_BYTES + 16 || length > MAX_STORE_BYTES) {
             throw new IOException("Encrypted reminder file has an invalid size.");
@@ -185,11 +283,13 @@ final class EncryptedReminderStore {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
         cipher.updateAAD(MAGIC);
-        return decodeReminders(cipher.doFinal(ciphertext));
+        StoreState state = decodeState(cipher.doFinal(ciphertext));
+        if (state.schemaVersion != 3) saveLocked(state);
+        return state;
     }
 
-    private void saveLocked(List<Reminder> reminders) throws Exception {
-        byte[] plaintext = encodeReminders(reminders);
+    private void saveLocked(StoreState state) throws Exception {
+        byte[] plaintext = encodeState(state);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
         cipher.updateAAD(MAGIC);
@@ -244,12 +344,14 @@ final class EncryptedReminderStore {
         return generator.generateKey();
     }
 
-    private byte[] encodeReminders(List<Reminder> reminders) throws JSONException, IOException {
-        if (reminders.size() > MAX_REMINDERS) throw new IOException("Reminder storage is full.");
-        JSONArray array = new JSONArray();
+    private byte[] encodeState(StoreState state) throws JSONException, IOException {
+        if (state.reminders.size() > MAX_REMINDERS || state.tombstones.size() > MAX_TOMBSTONES) {
+            throw new IOException("Reminder storage is full.");
+        }
+        JSONArray reminders = new JSONArray();
         Set<String> taskIds = new HashSet<>();
-        for (Reminder reminder : reminders) {
-            if (!reminder.isValid() || !taskIds.add(reminder.taskId)) {
+        for (Reminder reminder : state.reminders) {
+            if (!reminder.isValid() || reminder.version <= 0 || !taskIds.add(reminder.taskId)) {
                 throw new JSONException("Refusing to save invalid or duplicate reminders.");
             }
             JSONObject object = new JSONObject();
@@ -263,26 +365,50 @@ final class EncryptedReminderStore {
             object.put("soundUri", reminder.soundUri == null ? JSONObject.NULL : reminder.soundUri);
             object.put("deliveryPending", reminder.deliveryPending);
             object.put("delivered", reminder.delivered);
-            array.put(object);
+            object.put("generation", reminder.version);
+            reminders.put(object);
+        }
+        JSONArray tombstones = new JSONArray();
+        Set<String> tombstoneKeys = new HashSet<>();
+        for (ReminderTombstone tombstone : state.tombstones) {
+            if (!tombstone.isValid() || !tombstoneKeys.add(tombstone.key())) {
+                throw new JSONException("Refusing to save invalid or duplicate reminder tombstones.");
+            }
+            JSONObject object = new JSONObject();
+            object.put("taskId", tombstone.taskId);
+            object.put("cancelledGeneration", tombstone.cancelledVersion);
+            object.put("revision", tombstone.revision);
+            tombstones.put(object);
         }
         JSONObject document = new JSONObject();
-        document.put("version", 2);
-        document.put("reminders", array);
+        document.put("version", 3);
+        document.put("nextGeneration", state.nextGeneration);
+        document.put("reminders", reminders);
+        document.put("tombstones", tombstones);
         return document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    private List<Reminder> decodeReminders(byte[] plaintext) throws Exception {
+    private StoreState decodeState(byte[] plaintext) throws Exception {
         JSONObject document = new JSONObject(new String(plaintext, java.nio.charset.StandardCharsets.UTF_8));
-        int version = document.optInt("version", -1);
-        if (version != 1 && version != 2) throw new IOException("Reminder data schema version is not supported.");
-        JSONArray array = document.optJSONArray("reminders");
-        if (array == null || array.length() > MAX_REMINDERS) throw new IOException("Reminder data is malformed.");
-        List<Reminder> result = new ArrayList<>(array.length());
+        int schemaVersion = document.optInt("version", -1);
+        if (schemaVersion < 1 || schemaVersion > 3) throw new IOException("Reminder data schema version is not supported.");
+        JSONArray reminders = document.optJSONArray("reminders");
+        if (reminders == null || reminders.length() > MAX_REMINDERS) throw new IOException("Reminder data is malformed.");
+        StoreState result = new StoreState();
+        result.schemaVersion = schemaVersion;
+        if (schemaVersion == 3) {
+            Object nextGeneration = document.opt("nextGeneration");
+            if (!(nextGeneration instanceof Number)) {
+                throw new IOException("Reminder generation counter is malformed.");
+            }
+            result.nextGeneration = ((Number) nextGeneration).longValue();
+        }
+        long greatestGeneration = 0L;
         Set<String> taskIds = new HashSet<>();
-        for (int index = 0; index < array.length(); index++) {
-            JSONObject object = array.optJSONObject(index);
+        for (int index = 0; index < reminders.length(); index++) {
+            JSONObject object = reminders.optJSONObject(index);
             if (object == null || !(object.opt("delivered") instanceof Boolean)
-                    || (version == 2 && !(object.opt("deliveryPending") instanceof Boolean))) {
+                    || (schemaVersion >= 2 && !(object.opt("deliveryPending") instanceof Boolean))) {
                 throw new IOException("Reminder record is malformed.");
             }
             Object localValue = object.opt("localDateTime");
@@ -297,8 +423,9 @@ final class EncryptedReminderStore {
                     ? null : String.valueOf(soundValue);
             boolean delivered = (Boolean) object.opt("delivered");
             Reminder reminder;
-            if (version == 1) {
-                reminder = migrateLegacyReminder(taskId, taskTitle, mode, triggerAtMillis, soundUri, delivered);
+            if (schemaVersion == 1) {
+                reminder = migrateLegacyReminder(taskId, taskTitle, mode, triggerAtMillis, soundUri, delivered)
+                        .withVersion(1L);
             } else {
                 Object zoneValue = object.opt("zoneId");
                 Object offsetValue = object.opt("offsetSeconds");
@@ -306,22 +433,74 @@ final class EncryptedReminderStore {
                         ? null : String.valueOf(zoneValue);
                 Integer offsetSeconds = offsetValue instanceof Number
                         ? ((Number) offsetValue).intValue() : null;
+                long generation = schemaVersion >= 3 ? object.optLong("generation", -1L) : 1L;
                 reminder = new Reminder(taskId, taskTitle, mode, localDateTime, zoneId,
                         offsetSeconds, triggerAtMillis, soundUri,
-                        (Boolean) object.opt("deliveryPending"), delivered);
+                        schemaVersion >= 2 && (Boolean) object.opt("deliveryPending"),
+                        delivered, generation);
             }
-            if (!reminder.isValid() || !taskIds.add(reminder.taskId)) {
+            if (!reminder.isValid() || reminder.version <= 0 || !taskIds.add(reminder.taskId)) {
                 throw new IOException("Reminder data failed validation.");
             }
-            result.add(reminder);
+            result.reminders.add(reminder);
+            greatestGeneration = Math.max(greatestGeneration, reminder.version);
         }
-        if (version == 1) saveLocked(result);
+        if (schemaVersion == 3) {
+            JSONArray tombstones = document.optJSONArray("tombstones");
+            if (tombstones == null || tombstones.length() > MAX_TOMBSTONES) {
+                throw new IOException("Reminder cancellation journal is malformed.");
+            }
+            Set<String> tombstoneKeys = new HashSet<>();
+            for (int index = 0; index < tombstones.length(); index++) {
+                JSONObject object = tombstones.optJSONObject(index);
+                if (object == null) throw new IOException("Reminder cancellation record is malformed.");
+                ReminderTombstone tombstone = new ReminderTombstone(
+                        object.optString("taskId", ""),
+                        object.optLong("cancelledGeneration", -1L),
+                        object.optLong("revision", -1L));
+                if (!tombstone.isValid() || !tombstoneKeys.add(tombstone.key())) {
+                    throw new IOException("Reminder cancellation record failed validation.");
+                }
+                result.tombstones.add(tombstone);
+                greatestGeneration = Math.max(greatestGeneration, tombstone.revision);
+            }
+        }
+        if (schemaVersion < 3) {
+            if (greatestGeneration == Long.MAX_VALUE) throw new IOException("Reminder generation is outside the supported range.");
+            result.nextGeneration = greatestGeneration + 1L;
+        } else if (result.nextGeneration <= greatestGeneration || result.nextGeneration <= 0) {
+            throw new IOException("Reminder generation counter is outside the supported range.");
+        }
         return result;
     }
 
+    private int indexOf(List<Reminder> reminders, String taskId) {
+        if (taskId == null) return -1;
+        for (int index = 0; index < reminders.size(); index++) {
+            if (taskId.equals(reminders.get(index).taskId)) return index;
+        }
+        return -1;
+    }
+
+    private void addTombstone(StoreState state, ReminderTombstone tombstone) throws IOException {
+        for (ReminderTombstone existing : state.tombstones) {
+            if (existing.key().equals(tombstone.key())) return;
+        }
+        if (state.tombstones.size() >= MAX_TOMBSTONES) {
+            throw new IOException("Reminder cancellation journal is full; reconcile reminders before changing them.");
+        }
+        state.tombstones.add(tombstone);
+    }
+
+    private long allocateGeneration(StoreState state) throws IOException {
+        if (state.nextGeneration <= 0 || state.nextGeneration == Long.MAX_VALUE) {
+            throw new IOException("Reminder generation is outside the supported range.");
+        }
+        return state.nextGeneration++;
+    }
+
     private Reminder migrateLegacyReminder(String taskId, String taskTitle, String mode,
-                                           long triggerAtMillis,
-                                           String soundUri, boolean delivered) throws IOException {
+                                           long triggerAtMillis, String soundUri, boolean delivered) throws IOException {
         if (Reminder.MODE_TIMER.equals(mode)) {
             return new Reminder(taskId, taskTitle, mode, null, null, null,
                     triggerAtMillis, soundUri, false, delivered);
