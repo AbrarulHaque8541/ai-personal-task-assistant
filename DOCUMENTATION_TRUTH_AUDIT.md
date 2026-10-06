@@ -24,14 +24,16 @@ The ten-feature roadmap, general model/provider integration, fully autonomous wo
 
 ## Repository and release artifacts
 
-The repository tracks two different debug APKs; neither is a production release. Their sizes and SHA-256 digests are:
+**Update (2026-10-07):** the two tracked debug APKs recorded below were removed from the repository tree in a focused `chore(repo): remove stale tracked APK artifacts` cleanup. The repository now tracks no `.apk`, `.aab`, `.rom`, or `.zip` binary; the only remaining tracked binary is `android-app/gradle/wrapper/gradle-wrapper.jar`, which is required Gradle build configuration. The digests are retained here as the historical record of the removed files. No GitHub Release, tag, or release asset was created, edited, or deleted by that cleanup.
 
-- `Daymark-debug-untested.apk` — 45,031 bytes; `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`.
-- `artifacts/Daymark-debug-device-untested-api35.apk` — 51,831 bytes; `e80428836bcac97ea6655cf9d865a7eb7b9d7bbcd7c4f6859c308d056b533724`.
+At the audit snapshot, the repository tracked two different debug APKs; neither is a production release. Their sizes and SHA-256 digests were:
 
-They are distinct binaries, not duplicate byte-for-byte copies. The second artifact's metadata records source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`; it is historical and device-untested. Local Gradle output in the audit workspace also contained Git-ignored debug APKs and unsigned release APKs under `android-app/app/build/outputs`; these were generated build output, not tracked release assets. No temporary `.tmp`/`.temp` files were found. No generated build output or APK was added, removed, or published by this change.
+- `Daymark-debug-untested.apk` — 45,031 bytes; `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71` (removed from the tree).
+- `artifacts/Daymark-debug-device-untested-api35.apk` — 51,831 bytes; `e80428836bcac97ea6655cf9d865a7eb7b9d7bbcd7c4f6859c308d056b533724` (removed from the tree; its provenance note remains at `artifacts/Daymark-debug-device-untested-api35.md`).
 
-The published [v1.0.0 release](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0) has **zero attached assets**. Its release notes link to a mutable `raw/main` artifact and state that the release has no attached asset. That raw pointer remains on the external release page by instruction; the repository README download pointer was removed so users are not directed to the stale debug binary. The release page/tag/assets were not edited.
+They are distinct binaries, not duplicate byte-for-byte copies. The second artifact's metadata records source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`; it is historical and device-untested. Local Gradle output in the audit workspace also contained Git-ignored debug APKs and unsigned release APKs under `android-app/app/build/outputs`; these were generated build output, not tracked release assets. No temporary `.tmp`/`.temp` files were found. At the audit snapshot no generated build output or APK was added, removed, or published by that change.
+
+The published [v1.0.0 release](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0) has **zero attached assets**. Its release notes link to a mutable `raw/main` artifact and state that the release has no attached asset. The release page, tag, and assets were not edited by the audit or by this cleanup; because the tracked `artifacts/` APK was subsequently removed from the repository, that `raw/main` pointer is now dangling. The repository README download pointer was removed so users are not directed to a stale debug binary.
 
 ## Checks reproduced at the audited main SHA
 
