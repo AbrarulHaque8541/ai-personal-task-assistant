@@ -24,6 +24,7 @@ jobs:
       run: |
         sh ./tools/check-v1-source.sh
         sh ./tools/run-storage-recovery-tests.sh
+        sh ./tools/run-updater-picker-routing-tests.sh
     - name: Build and verify debug variants
       run: >-
         ./gradlew assembleDebug

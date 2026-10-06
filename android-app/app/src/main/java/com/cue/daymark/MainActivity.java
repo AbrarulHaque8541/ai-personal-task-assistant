@@ -74,6 +74,7 @@ import com.cue.daymark.updater.GitHubApkDownloader;
 import com.cue.daymark.updater.GitHubReleaseClient;
 import com.cue.daymark.updater.PendingSaveTransaction;
 import com.cue.daymark.updater.SafApkSaver;
+import com.cue.daymark.updater.UpdaterActivityResultRouter;
 import com.cue.daymark.updater.UpdaterCore;
 import com.cue.daymark.updater.UpdaterPublisherConfig;
 import com.cue.daymark.updater.UpdaterRecoveryStore;
@@ -95,7 +96,7 @@ public final class MainActivity extends Activity {
     private static final String HIGH_CONTRAST_KEY = "high_contrast";
     private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
     private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
-    private static final int REQUEST_SAVE_VERIFIED_APK = 7344;
+    private static final int REQUEST_SAVE_VERIFIED_APK = UpdaterActivityResultRouter.REQUEST_CODE;
     private static final String PENDING_SAVE_STATE_KEY = "updater.pending_save_transaction.v1";
     private static final String BROWSER_PREFERENCES = "daymark.browser.local.v1";
     private static final String BROWSER_HISTORY_KEY = "history_urls";
@@ -413,7 +414,9 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_SAVE_VERIFIED_APK) {
+        UpdaterActivityResultRouter.Route updaterRoute = UpdaterActivityResultRouter.route(
+                requestCode, resultCode == RESULT_OK, data != null && data.getData() != null);
+        if (updaterRoute != UpdaterActivityResultRouter.Route.NOT_UPDATER) {
             PendingSaveTransaction transaction = pendingSaveTransaction;
             File verifiedApk = pendingVerifiedApk;
             UpdaterCore.Release release = pendingVerifiedRelease;
@@ -422,13 +425,13 @@ public final class MainActivity extends Activity {
             pendingVerifiedRelease = null;
             if (transaction == null || verifiedApk == null || release == null
                     || !transaction.isValidFor(release)) {
-                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                if (updaterRoute == UpdaterActivityResultRouter.Route.SELECTED) {
                     cleanStalePickerResult(data.getData());
                 }
                 recoverPendingVerifiedUpdate();
                 return;
             }
-            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            if (updaterRoute == UpdaterActivityResultRouter.Route.CANCELLED) {
                 if (!recoverPendingVerifiedUpdate()) {
                     showSaveFailureChoices(release, verifiedApk,
                             "No save location was selected. The verified update remains in app-private storage.");
