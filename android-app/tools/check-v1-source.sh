@@ -254,6 +254,21 @@ assert "Locale.getDefault()" in task_logic, "date formatting should follow the d
 store = (main / "java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
 assert "TaskLogic.isValidTaskList(tasks)" in store, "encrypted writer must reject invalid or duplicate task snapshots"
 assert "TaskLogic.isValidTaskList(result)" in store, "encrypted reader must use the same task-list validation contract"
+callback_gate = (main / "java/com/cue/daymark/ActivityCallbackGate.java").read_text(encoding="utf-8")
+assert "AtomicBoolean" in callback_gate and "if (open.get()) callback.run();" in callback_gate
+destroy = activity.split("protected void onDestroy", 1)[1].split("protected void onSaveInstanceState", 1)[0]
+assert "activityCallbackGate.close();" in destroy, "Activity destruction must close the callback gate"
+assert "private void postActivityCallback(Runnable callback)" in activity
+assert "activityCallbackGate.guard(() ->" in activity, "posted UI callbacks must be guarded"
+load_callback = activity.split("private void loadEncryptedTasks", 1)[1].split("private void saveTasksAsync", 1)[0]
+save_callback = activity.split("private void saveTasksAsync", 1)[1].split("private String storageFailureStatus", 1)[0]
+attachment_callback = activity.split("private void importAttachment", 1)[1].split("private void requestAttachmentCancel", 1)[0]
+remove_callback = activity.split("private void removeAttachment", 1)[1].split("private Task findTask", 1)[0]
+assert "postActivityCallback(() -> {" in load_callback and "postActivityCallback(() -> {" in save_callback
+assert attachment_callback.count("postActivityCallback(() -> {") == 2
+assert "postActivityCallback(() -> {" in remove_callback
+browser_listener = activity.split("new DaymarkWebView.Listener()", 1)[1].split("browserWebView.setBackgroundColor", 1)[0]
+assert browser_listener.count("if (!isActivityCallbackCurrent()) return;") == 6
 
 updater_dir = main / "java/com/cue/daymark/updater"
 updater_sources = "\n".join(path.read_text(encoding="utf-8") for path in updater_dir.glob("*.java"))
@@ -321,6 +336,7 @@ print("PASS V1 source policy: no permissions/network, background components or r
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
 print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")
+print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
 print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
 print("PASS browser policy: Offline by default with persisted opt-in, Daymark page/resource loads blocked while Offline, and a separate tap required for each request")

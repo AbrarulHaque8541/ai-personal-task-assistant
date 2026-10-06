@@ -8,6 +8,7 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/host-stubs/android/content/Context.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/ActivityCallbackGate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotSchema.java" \
@@ -23,12 +24,14 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubReleaseClient.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubApkDownloader.java" \
   "$ROOT/tools/TaskLogicSmoke.java" \
+  "$ROOT/tools/ActivityCallbackGateSmoke.java" \
   "$ROOT/tools/UpdaterSmoke.java" \
   "$ROOT/tools/GitHubTransportSmoke.java" \
   "$ROOT/tools/BrowserAddressSmoke.java" \
   "$ROOT/tools/BrowserNetworkPolicySmoke.java" \
   "$ROOT/tools/BrowserSettingsPolicySmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.ActivityCallbackGateSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.UpdaterSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.GitHubTransportSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserAddressSmoke
