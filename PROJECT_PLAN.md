@@ -35,13 +35,13 @@ The application never forces complexity onto Level 1 users. It grows in **capabi
   - **Attachments (`AttachmentBlobStore.java`, `AttachmentContentProvider.java`):**
     - Task-associated blobs encrypted with Keystore keys and served only via private `ContentProvider`.
   - **Portability (`PortableBackupManager.java`, `PortableBackupCodec.java`):**
-    - Exportable `.daymark-backup` files encrypted with user passphrases (PBKDF2-HMAC-SHA256 with 100,000 iterations + AES-256-GCM).
+    - Exportable `.dmbackup` files encrypted with a one-time generated 32-byte recovery key (HKDF-SHA-256 per-record keys + AES-256-GCM); passphrase-based recovery is deferred.
   - **Update System (`android-app/app/src/main/java/com/cue/daymark/updater/` - PR #12 branch):**
     - GitHub Release client, SHA-256 hash verifier, and Storage Access Framework (`ACTION_CREATE_DOCUMENT`) staging.
   - **Verification Suite (`android-app/tools/`):**
     - 100% offline smoke tests: `check-v1-source.sh`, `run-core-tests.sh`, `run-storage-recovery-tests.sh`, `run-attachment-tests.sh`, `run-portable-backup-tests.sh`.
 
-### 2.2 Web Companion (`src/`):
+### 2.2 Web Companion (repository root):
   - Pure vanilla JavaScript prototype with localStorage and basic web UI. Serves as a reference implementation for desktop/browser environments.
 
 ---
@@ -91,7 +91,7 @@ Every task feature is categorized to prevent core bloat:
 | **Undo Action & Deletion Guard** | **CORE** | Already implemented with snackbar & TalkBack accessibility. |
 | **Encrypted Task Store** | **CORE** | Keystore AES-256-GCM; non-negotiable security foundation. |
 | **Encrypted Attachments** | **CORE** | Already integrated (`AttachmentBlobStore`). |
-| **Portable Passphrase Backup** | **CORE** | Already integrated (`PortableBackupManager`). |
+| **Portable Recovery-Key Backup** | **CORE** | Already integrated (`PortableBackupManager`). |
 | **Subtasks & Checklists** | **POWER USER** | Expandable within task detail view; JSON structure. |
 | **Notes & Markdown Description** | **POWER USER** | Collapsible textarea inside task detail view. |
 | **Recurring Tasks (Cron/Interval)**| **POWER USER** | AlarmManager trigger calculating next occurrence. |
@@ -215,7 +215,7 @@ Before any tool executes, the **Permission Broker** verifies:
 | Feature | Android Feasibility | Technical Approach | Security Risk | APK Impact | Low-End Viable? | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Core Task Management** | 100% Native | Java 21, RecyclerView, AtomicFile | None | 0 MB (Base) | Yes (100%) | **READY** |
-| **Encrypted Storage & Backup**| 100% Native | Keystore AES-256-GCM + PBKDF2 | Low | 0 MB (Base) | Yes (100%) | **READY** |
+| **Encrypted Storage & Backup**| 100% Native | Keystore AES-256-GCM + HKDF-SHA-256 | Low | 0 MB (Base) | Yes (100%) | **READY** |
 | **In-App HTTPS Browser** | 100% Native | Android WebView + NetworkSecurityConfig | Medium (SSRF/XSS) | +150 KB | Yes | **PROTOTYPE (PR #13)**|
 | **Release-Gated Updater** | 100% Native | GitHub API + SAF + SHA-256 Verifier | Low | +80 KB | Yes | **PROTOTYPE (PR #12)**|
 | **Search Engine Provider** | 100% Native | REST API over HTTPS (DuckDuckGo, Brave) | Low | +20 KB | Yes | **READY** |

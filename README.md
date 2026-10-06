@@ -44,7 +44,7 @@ The shared and Play manifests declare no permissions; the GitHub sideload flavor
 
 ### 3. Encrypted Task Attachments & Portable Backups
 - Encrypted file attachments stored locally via `AttachmentBlobStore`.
-- Portable encrypted backup files (`.daymark-backup`) protected by user passphrase (PBKDF2 + AES-GCM).
+- Portable encrypted backup files (`.dmbackup`) protected by a one-time generated 32-byte recovery key (HKDF-SHA-256 per-record keys + AES-256-GCM).
 
 ### 4. Release-Gated In-App Updater
 - Checks GitHub Releases securely via HTTPS.
@@ -58,26 +58,33 @@ The shared and Play manifests declare no permissions; the GitHub sideload flavor
 
 ```text
 ai-personal-task-assistant/
-├── .github/                     # Issue templates & community standards
+├── .github/                     # CI workflows, issue templates & community standards
 │   ├── ISSUE_TEMPLATE/
 │   │   ├── bug_report.md
 │   │   └── feature_request.md
+│   ├── workflows/
 │   └── pull_request_template.md
 ├── android-app/                 # Native Android application (Java, API 26-35)
 │   ├── app/src/main/java/com/cue/daymark/
 │   │   ├── EncryptedTaskStore.java       # Atomic AES-256-GCM storage
 │   │   ├── EncryptedBlobStore.java       # Raw payload encryption
 │   │   ├── AttachmentBlobStore.java      # Task attachment storage
-│   │   ├── PortableBackupManager.java    # User-passphrase encrypted backups
+│   │   ├── PortableBackupManager.java    # Recovery-key encrypted backups
 │   │   ├── updater/                      # Release client, SHA-256 verifier, SAF saver
 │   │   └── MainActivity.java             # Main user interface & lifecycle
 │   ├── tools/                           # Offline smoke test suites & verification scripts
 │   ├── ANDROID_DESIGN.md                # System design & threat model
 │   └── STORAGE_RECOVERY.md              # Recovery & migration guarantees
-├── src/                         # Web prototype companion
+├── index.html                   # Web prototype companion (repo root)
+├── app.js                       # Web prototype UI logic
+├── task-logic.js                # Shared task/filter/suggestion logic
+├── styles.css                   # Web prototype styling
+├── tests/                       # Node.js tests for the web prototype (npm test)
+├── wrangler.jsonc               # Cloudflare Workers static-asset deployment config
 ├── CONTRIBUTING.md              # Development & contribution guidelines
 ├── CODE_OF_CONDUCT.md           # Community code of conduct
 ├── SECURITY.md                  # Vulnerability reporting & security policy
+├── LICENSE                      # MIT license
 └── README.md                    # Project documentation
 ```
 
