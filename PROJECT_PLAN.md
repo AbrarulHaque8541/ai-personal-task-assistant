@@ -1,267 +1,140 @@
-# Daymark: Master Architecture & Product Evolution Roadmap
+# Daymark Project Plan
 
-> **Document Status:** Authoritative Master Plan & Technical Specification  
-> **Repository:** `AbrarulHaque8541/ai-personal-task-assistant`  
-> **Baseline Commit:** `40108bfb` (API 35 Debug, v1.0.0)  
-> **Philosophy:** *Simple on the surface. Powerful underneath. Nothing unnecessary installed by default.*
+Daymark should remain a fast, simple, privacy-first task app that works offline, while letting interested users reveal more capability through task-specific workspaces. The ordinary task flow must not require users to learn about AI, models, plugins, terminals, or Android internals. Advanced tools should be optional, visible, modular where the distribution channel permits, and bounded by user-approved scopes.
 
----
+**Status snapshot.** Live GitHub status below was checked on 2026-10-06 at approximately 02:40 IST; repository states can change after that check.
 
-## 1. Vision
+## Current app and live repository status
 
-Daymark is an **AI-native personal task system** engineered as an evolutionary ladder across three user tiers:
-1. **Level 1 — Simple User:** A minimalist, lightweight, distraction-free task & reminder app. Installs in seconds (<5 MB base APK), starts immediately, stores everything encrypted on-device, and requires zero technical knowledge.
-2. **Level 2 — Power User:** Tasks expand into dynamic workspaces featuring deep scheduling, subtasks, notes, timers, research tools, and local document attachments.
-3. **Level 3 — Developer / AI Agent User:** Tasks become isolated, reproducible agent execution environments where AI models operate tools, navigate web information, inspect code, run terminal scripts, and automate workflows inside strict Android security sandboxes.
+The public repository’s `main` branch was at `ba3cb9010ba01f09ed79a42b54fdb7e582d8fc6e` when checked. Current source describes a native Android task app with a simple path and a power path. The task model contains a title, date-only due date, priority, completion state, timestamps, and attachment references; task logic provides deterministic search/filter/sort and suggestions. The source labels suggestions as a demo and says no AI service is connected. The [task model](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/android-app/app/src/main/java/com/cue/daymark/Task.java), [task logic](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/android-app/app/src/main/java/com/cue/daymark/TaskLogic.java), and [README](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/README.md) support these current-app facts.
 
-The application never forces complexity onto Level 1 users. It grows in **capability on demand**, not in base APK bloat.
+The main source includes app-local encrypted task storage backed by Android Keystore and authenticated encryption, plus storage-recovery code from merged PR #9, attachment code from #10, portable-backup code from #11, and updater/browser source from merged PRs #12/#13. This confirms source presence, not successful behavior on every device or a production release. The updater is currently configured fail-closed and unavailable; the browser is online-off by default and still requires device/network validation. The public README describes the linked APK as a debug build for API 26–35 that is device-untested and not a signed production release; the published `v1.0.0` release has no binary asset and predates #12/#13. The backup-format wording in the README is not consistent with the merged PR #11 description, so this plan calls it an **encrypted portable backup** without asserting a particular key-derivation flow. Real-device, document-provider, browser, and device-to-device recovery remain unverified.
 
----
+The common [Android manifest](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/android-app/app/src/main/AndroidManifest.xml) declares the normal `INTERNET` permission and no other permission. The `play` flavor manifest adds no permission but does not remove the common one; the offline Gradle task `:app:processPlayDebugMainManifest` confirmed that the merged Play-debug manifest retains `INTERNET` and has no `ACCESS_NETWORK_STATE`. This conflicts with the [root README](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/README.md), [Android README](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/android-app/README.md), and [PR #12 description](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/12), which say only the GitHub-sideload flavor declares network permissions. The [source-check script](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/android-app/tools/check-v1-source.sh) passes its raw-manifest assertions but prints that the main and Play manifests are permission-free; it checks the input manifests separately and does not validate the merged Play variant. Reconcile those documentation and check-summary claims. `INTERNET` is a normal manifest permission, not a runtime prompt, and its presence alone does not prove a request occurs; online actions should remain user-initiated and disclosed.
 
-## 2. Current State Audit
+| Reference | Live status and exact head/base at check | What can safely be said |
+|---|---|---|
+| [`main`](https://github.com/AbrarulHaque8541/ai-personal-task-assistant) | `ba3cb9010ba01f09ed79a42b54fdb7e582d8fc6e` | Current public branch head at time checked; latest commit adds Android CI workflow configuration. |
+| [PR #9](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/9) | **Merged into `main`**; head `da79855799b8be5ef5b56538d0f160d55fffd93f`; base `main` at `e8bc9f97fb7aac28cf16c5a69569f8ee2b170904`; merge commit `13d97ddd2197eb84cf3eba5df3ee7a9bb7a1bca8` | Reliability/storage-recovery work is in the current mainline. |
+| [PR #10](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/10) | **Merged into the #9 branch**; head `629da70ad80892a22a15009d734036c978b58531`; base #9 head `da79855799b8be5ef5b56538d0f160d55fffd93f`; merge commit `43244f6972520b5362818f5faf556f5a56ae8e42` | Attachment work is in the current mainline through the merged stack. |
+| [PR #11](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/11) | **Merged into the #10 branch**; head `3dba24abe65f82f68ce899ae4f467ddc1fe0059e`; base #10 head `629da70ad80892a22a15009d734036c978b58531`; merge commit `9e21c7d9c8ee9415a7e04ff1f49a2170167e83f0` | Portable-backup work is in the current mainline through the merged stack. |
+| [PR #12](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/12) | **Closed, merged into `main`**; head `c025235308604d84e19ff31076902994301f04f4`; base `main` at `e8bc9f97fb7aac28cf16c5a69569f8ee2b170904`; merge commit `bbf1c86e2cf5ccf5594a03688dfbdf1b51fb9023` | Updater source is present, but the publisher gate disables it: `UPDATER_ENABLED` is `false` and the signer hash is empty. The flow saves a verified APK through the document picker; it does not launch installation. |
+| [PR #13](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/13) | **Closed, merged into `main`**; head `3160852204ba7a46bc8081951d21a6e097e3792a`; base `main` at `e8bc9f97fb7aac28cf16c5a69569f8ee2b170904`; merge commit `7e2334f9e1ba9c934e51454749bf4465a3181df7` | HTTPS-only WebView source is present. Online starts off; device, traffic, storage, and accessibility behavior remain unverified. |
+| [PR #15](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/15) | **Open**; head `b41d0f5eb40775e3405f69b8badf99b2fe25f08f`; base `feat/android-in-app-browser` at PR #13 head `3160852204ba7a46bc8081951d21a6e097e3792a`; GitHub reported **CLEAN** | Suggestion-card navigation is a current-gap usability fix, not one of the ten slate additions. The branch also contains PR #17’s stack-only merge; neither is in `main`. |
+| [PR #17](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/17) | **Closed as merged into PR #15’s feature branch, not `main`**; head `048ba1c3c6cbf7b14b4ce16d316e44bfa094465e`; base `feat/android-actionable-suggestions` at `d80f407611f60ebd821b7d5b9fb7a74e6d62d10f`; merge commit `b41d0f5eb40775e3405f69b8badf99b2fe25f08f` | Reminder work is in the open #15 stack, not current `main`; issue #16 remains open for device validation. |
+| [Issue #14](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/14) | **Closed** | Closure records recovery work in `main`; it does not demonstrate real document-provider or process-death recovery on devices. |
+| [Issue #16](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/16) | **Open** | Tracks real-device reminder validation after exact-alarm access changes, including Doze and duplicate-delivery behavior. |
 
-### 2.1 Repository Architecture & Codebase Inspection
-- **Android App (`android-app/`):**
-  - **Framework / Language:** Native Java 21, Android Gradle Plugin 8.8.2, Target SDK 35, Min SDK 26 (Android 8.0 Oreo).
-  - **Single-Activity Architecture:** `MainActivity.java` orchestrates layout inflation, task list views, filters, and modals.
-  - **Current Task Model (`TaskLogic.java`):**
-    - Fields: `id` (UUID), `title` (max 160 chars), `priority` (`low` | `medium` | `high`), `dueDate` (`YYYY-MM-DD` ISO-8601), `completed` (boolean), `createdAt` (ISO-8601 Instant), `updatedAt` (ISO-8601 Instant), `attachments` (List of `AttachmentRef`).
-    - Validation: Strict boundary checks; duplicate IDs rejected; snapshot serialization validated before/after decoding.
-  - **Storage & Security Engine (`EncryptedTaskStore.java` & `EncryptedBlobStore.java`):**
-    - Hardware-backed Android Keystore with AES-256-GCM authenticated encryption (`daymark.task-store.aes-gcm.v1`).
-    - Fail-safe `AtomicFile` semantics: Staged writing with automatic `.bak` fallback. Stale/corrupt ciphertext fails closed without wiping existing records.
-    - Zero plaintext storage on flash (`tasks.enc`).
-    - Device transfer exclusion: `tasks.enc`, `.bak`, `.new`, and `.tmp` excluded from Android Auto Backup / Cloud transfer via `full_backup_content.xml` and `data_extraction_rules.xml`.
-  - **Attachments (`AttachmentBlobStore.java`, `AttachmentContentProvider.java`):**
-    - Task-associated blobs encrypted with Keystore keys and served only via private `ContentProvider`.
-  - **Portability (`PortableBackupManager.java`, `PortableBackupCodec.java`):**
-    - Exportable `.daymark-backup` files encrypted with user passphrases (PBKDF2-HMAC-SHA256 with 100,000 iterations + AES-256-GCM).
-  - **Update System (`android-app/app/src/main/java/com/cue/daymark/updater/` - PR #12 branch):**
-    - GitHub Release client, SHA-256 hash verifier, and Storage Access Framework (`ACTION_CREATE_DOCUMENT`) staging.
-  - **Verification Suite (`android-app/tools/`):**
-    - 100% offline smoke tests: `check-v1-source.sh`, `run-core-tests.sh`, `run-storage-recovery-tests.sh`, `run-attachment-tests.sh`, `run-portable-backup-tests.sh`.
+PRs #9–#13 are present in the current `main` line (with #10/#11 merged through the #9 stack); #12/#13 are now directly merged into `main`. PR #17 is merged only into the still-open PR #15 feature branch, so reminder code is not in `main`. No ten-feature slate is tracked in the current public `main` tree, and this plan does not establish its authoritative location or current acceptance criteria. PR #15 remains a current-gap fix, not one of those additions.
 
-### 2.2 Web Companion (`src/`):
-  - Pure vanilla JavaScript prototype with localStorage and basic web UI. Serves as a reference implementation for desktop/browser environments.
+**Evidence labels are deliberately separate from capability status.** “Source confirmed” means the fact is present in the checked public `main` source or README; it does not mean device behavior or release quality is proven. “Claimed by PR, not independently rerun” means the PR description reports checks or implementation that were not rerun for this plan. “Untested on device” means no real-device/emulator confirmation is established by the cited status. In this review, the documented source/JDK checks and storage-recovery checks passed, as did the offline Play-debug manifest merge. No full APK build, installation, emulator, or real-device test was run; the source-check script’s permission-summary limitation is noted above.
 
----
+## Product direction and architecture
 
-## 3. Architecture Overview
+Keep the core task experience small and local. Let a task expand into a workspace only when the user chooses. Preserve the current minimal UI with progressive disclosure rather than putting agent controls on the default home screen.
 
-Daymark's system architecture enforces clean separation between the ultra-light core, the progressive UI layer, the dynamic capability manager, and the isolated agent sandbox:
+Use a stable, provider-neutral capability interface between the task/workspace layer and optional tools. Each capability should declare its purpose, typed input/output schema, version, permissions, data scope, online/offline needs, risk, resource limits, cancellation behavior, and license/terms. A broker—not model-generated tool code—checks that a request is within the current task’s granted scope. Keep model, search, and tool adapters replaceable; do not hard-wire task storage or UI to one vendor.
 
-```text
-+-----------------------------------------------------------------------------------+
-|                                  DAYMARK CORE                                     |
-|  +-------------------+  +-------------------------+  +-------------------------+  |
-|  | Task System (V1)  |  | Keystore Security Model |  | Minimal Material UI     |  |
-|  +-------------------+  +-------------------------+  +-------------------------+  |
-+-----------------------------------------------------------------------------------+
-                                         |
-                                         v
-+-----------------------------------------------------------------------------------+
-|                        DYNAMIC CAPABILITY MANAGER (DCM)                           |
-|       [Module Downloader]   [Integrity Verifier]   [Resource Profiler]            |
-|       [Dynamic Feature Loader / DEX ClassLoader / Assets On-Demand]               |
-+-----------------------------------------------------------------------------------+
-                                         |
-         +-------------------------------+-------------------------------+
-         |                               |                               |
-         v                               v                               v
-+------------------+           +------------------+            +--------------------+
-| OPTIONAL MODULES |           |  PERMISSION      |            |  AGENT RUNTIME     |
-| - Web Browser    |           |  BROKER          |            |  - Context Engine  |
-| - Terminal/Shell | <-------  |  - Task Scoping  |  <-------  |  - Tool Dispatch   |
-| - Model Runner   |           |  - User Consent  |            |  - Virtual FS      |
-| - Dev Tools      |           |  - Revocation    |            |  - Visualizer      |
-+------------------+           +------------------+            +--------------------+
-```
+The core tasks, local search, filters, and existing data access must work without a network connection. Optional web search, browsing, or a user-selected hosted model may need the network and must say so before use. **No feature requires cloud fallback.** A local model that is unavailable, too large, or out of memory should report that limitation; it must not silently send the prompt to a cloud provider.
 
----
+## Capability map and feasibility matrix
 
-## 4. Capability Map & Feature Classification
+| Capability | Status | Evidence status | Feasible scope and boundary |
+|---|---|---|---|
+| Core tasks: title, date-only due date, priority, completion, search/filter/sort, deterministic suggestions | **Current** | **Source confirmed** | Keep fast and offline. Do not describe the existing demo suggestions as AI. The current task model does not establish time-of-day, timezone, recurrence, notes, or subtasks. |
+| Encrypted local task storage, attachments, portable backup | **Current** | **Source confirmed** in `main` via current source/merged PRs; **untested on device** for this review | Preserve atomic recovery, encrypted app-private data, explicit file selection, migration safety, and user-controlled portable restore. Avoid absolute “zero data loss” promises. |
+| Suggestion-card actions/navigation | **In flight** | **Claimed by PR #15, not independently rerun; untested on device** | Read-only navigation to an existing task, with accessible focus/scroll behavior. Keep distinct from future additions; the ten-feature slate is not tracked in public `main`. |
+| Offline timed reminders | **In flight in open PR #15 stack** | **PR #17 merged into #15’s branch; reported source/compile checks not independently rerun; untested on device** | Reminders are not in `main`. Review the current #15 head and close the device-validation gates in issue #16 before describing delivery as reliable. Permission, Doze, reboot, time-zone, and revocation behavior remains unverified. |
+| Release updater | **Source present; fail-closed and currently disabled** | **Main-source inspection; no network/update or device-flow verification** | [`UpdaterPublisherConfig`](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/android-app/app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java) sets `UPDATER_ENABLED` false and has no pinned publisher signer, so the update check is unavailable. The implemented user-facing handoff is verified APK save to a selected document, not app-launched installation. Issue #14 is closed, but real provider/process-death recovery remains unverified. |
+| HTTPS-only in-app browser and web search | **Source present; device/network behavior unverified** | **Main-source inspection; no WebView runtime testing** | Online browsing starts off; a disclosure and separate Go action are required. Top-level navigation is HTTPS-only; an offline switch blocks Daymark’s page/resource loads, not all platform network activity. Origin-only history is stored in app-private preferences but is not encrypted. |
+| Near-term task additions | **Future work** | **No ten-feature slate tracked in public `main`** | This plan does not establish the canonical queue or its acceptance criteria; confirm an authoritative project source before planning implementation. |
+| User-approved file workspace | **Later feasible** | **Not implemented as an agent workspace in main** | Begin with app-private task/workspace files and Android’s user-selected document access, not arbitrary filesystem access. |
+| Local model manager and on-device inference | **Research required** | **No implementation observed in main** | Evaluate runtime compatibility, model license, download size, RAM/storage, CPU/GPU/NPU support, thermal/battery cost, startup latency, and deletion before selecting a model. Never auto-download a large model. |
+| Hosted model/provider adapters | **Research required** | **No model API connected in current source** | First-party adapter boundary only after provider terms, privacy, retention, region, price/rate limits, and data disclosure are reviewed. Hosted use is explicit and optional; no cloud fallback. |
+| Computer vision, OCR, speech, camera/microphone features | **Research required** | **No implementation observed in main** | Prefer user-selected images/files and on-device processing when practical. Request microphone/camera or media access only for a user-invoked feature. Android's general `SpeechRecognizer` implementation is likely to stream audio to remote servers; on-device recognition availability varies by device/service. Keep typing as a first-class alternative and clearly disclose any audio leaving the device before recording or sending it. See the [SpeechRecognizer API](https://developer.android.com/reference/android/speech/SpeechRecognizer). |
+| Downloadable language/model/data assets | **Later feasible** | **Architecture proposal only** | Treat weights and content as data, not remotely injected application code. Show size, license/source, compatibility, integrity, storage use, and removal/update behavior; require a user choice. |
+| Play dynamic feature delivery | **Android-limited** | **Official platform constraint** | Play Feature Delivery separates feature modules inside an Android App Bundle and delivers them through Google Play. It is not a module downloader for a GitHub-sideloaded APK. Do not remotely inject executable modules into the GitHub APK. Google Play’s [Device and Network Abuse policy](https://support.google.com/googleplay/android-developer/answer/16559646?hl=en) also restricts downloading executable code outside Play, subject to its stated interpreter/VM distinctions. |
+| General plugin system | **Android-limited** | **Architecture proposal only** | Prefer vetted, in-process capabilities shipped in the app, or Play-delivered modules where the app is actually distributed as an eligible AAB. A “plugin” label does not grant arbitrary code execution or Android API access. |
+| General-purpose terminal and coding environment | **Research required** | **No implementation observed in main** | A userspace runtime is not a Linux host, root shell, or kernel-isolated container. Bound filesystem, process, CPU, memory, battery, and network access; do not promise arbitrary package installation or full builds on low-end phones. |
+| Single-agent task workspace, permission broker, visible activity, cancellation, rollback | **Later feasible** | **Architecture proposal only** | Start with one task-scoped agent and a small stable tool contract. Require visible actions, least-privilege scopes, cancellable foreground work, preview/snapshot for mutations, and user approval for sensitive or external effects. |
+| Memory, diagnostics, and device adaptation | **Later feasible** | **Architecture proposal only** | Keep task/session/workspace memory separate and user-resettable. Bound resource use; collect only needed device capability signals; redact logs and make diagnostic export opt-in. |
+| Session recording and multi-agent coordination | **Deferred** | **No implementation observed in main** | Reconsider only after single-agent isolation, deletion, consent, audit redaction, and resource limits have been validated. Do not record screens by default. |
+| Arbitrary Android app cloning/virtualized app containers | **Deferred** | **No implementation observed in main** | Do not promise unrestricted app cloning. If useful, research a narrower web-app or task-workspace alternative under Android and Play constraints. |
 
-Every task feature is categorized to prevent core bloat:
+## Task evolution and near-term scope
 
-| Feature | Category | Rationale / Placement |
-| :--- | :--- | :--- |
-| **Title, Priority, Date, Status** | **CORE** | Basic task essentials; always in base APK. |
-| **Time & Timezone Support** | **CORE** | Exact alarm scheduling; essential for reminders. |
-| **Reminders & Notifications** | **CORE** | NotificationManager + AlarmManager integration. |
-| **Undo Action & Deletion Guard** | **CORE** | Already implemented with snackbar & TalkBack accessibility. |
-| **Encrypted Task Store** | **CORE** | Keystore AES-256-GCM; non-negotiable security foundation. |
-| **Encrypted Attachments** | **CORE** | Already integrated (`AttachmentBlobStore`). |
-| **Portable Passphrase Backup** | **CORE** | Already integrated (`PortableBackupManager`). |
-| **Subtasks & Checklists** | **POWER USER** | Expandable within task detail view; JSON structure. |
-| **Notes & Markdown Description** | **POWER USER** | Collapsible textarea inside task detail view. |
-| **Recurring Tasks (Cron/Interval)**| **POWER USER** | AlarmManager trigger calculating next occurrence. |
-| **Tags & Category Hierarchy** | **POWER USER** | Tag pill filters on main list. |
-| **Countdowns & Work Timers** | **POWER USER** | Built-in stopwatch/Pomodoro linked to task. |
-| **Task Search & Advanced Filters**| **POWER USER** | Fast on-device in-memory index over cached tasks. |
-| **Task Templates & Duplication** | **POWER USER** | Stored template records for repetitive workflows. |
-| **Task Archive & History** | **POWER USER** | Cold storage partition to keep active list instant. |
-| **Search Engine Abstraction** | **OPTIONAL MODULE** | Pluggable DuckDuckGo, Brave, Google, Bing providers. |
-| **In-App HTTPS Browser** | **OPTIONAL MODULE** | Isolated WebView environment with DOM extraction. |
-| **On-Device LLM (GGUF / NPU)** | **OPTIONAL MODULE** | llama.cpp / ExecuTorch runtime; downloaded on demand. |
-| **Terminal & Scripting (Python)** | **OPTIONAL MODULE** | PRoot / Userspace sandbox; developer mode only. |
-| **Action Recording & Timeline** | **DEVELOPER** | Frame-buffered UI recorder and structured action logs. |
-| **Autonomous Multi-Agent Planner**| **DEVELOPER** | Tool-calling state machine orchestrating subtasks. |
-| **Unrestricted Android App Cloning**| **NOT FEASIBLE**| Violates Android security model; replaced with Sandboxed Web Apps. |
+Extend the task model through small, versioned, reversible migrations, preserving existing IDs, encrypted storage, backups, and undo behavior. The ten-feature slate referenced in earlier planning is not tracked in current public `main`; this document does not establish its location, status, or acceptance criteria. Confirm the authoritative project queue before treating additions as in flight. Keep the simple add/edit/complete flow prominent, and make richer fields discoverable only when the user expands a task.
 
----
+For every task-data migration, test old snapshot reading, interrupted writes, backup export/import, missing or invalid fields, undo/delete interactions, and recovery after process death. Avoid silently rewriting an existing task when a template changes, a recurrence advances, or a task is restored.
 
-## 5. Modular / Download-On-Demand Architecture
+## Local-first data, security, and permissions
 
-### 5.1 Base APK Footprint Target
-- **Target Size:** `< 5 MB`.
-- **Zero Native Binaries in Base:** No `.so` libraries for LLMs, Python, or Chromium bundled by default.
+Keep task content in app-controlled storage and encrypted at rest. Android Keystore key material is designed to remain non-exportable; treat it as device-scoped rather than as a portable backup key. For device migration, use a separate authenticated encrypted export/recovery flow that can be decrypted with user-held recovery material and re-encrypted under the destination device’s key. Test missing-key, damaged-archive, interrupted-import, and duplicate-import cases. See Android’s [Keystore guidance](https://developer.android.com/privacy-and-security/keystore), [app-specific storage guidance](https://developer.android.com/training/data-storage/app-specific), and [backup security recommendations](https://developer.android.com/privacy-and-security/risks/backup-best-practices).
 
-### 5.2 Dynamic Delivery Mechanisms
-1. **Play Feature Delivery (For Google Play builds):** Dynamic feature modules (`.aar` split APKs) requested via `SplitInstallManager`.
-2. **GitHub Sideload Delivery (For Direct APK builds):**
-   - Pure-asset & DEX package loader: Downloads cryptographic module archives (`.dpm` - Daymark Package Module).
-   - Verification: Each module package is signed by Daymark's release key; SHA-256 checksum verified before mounting.
-   - Dynamic Code Loading: Optional code loaded via Android `DexClassLoader` into app-private code cache directory (`code_cache/`).
-   - Clean Uninstall: One-tap deletion of module directory (`/data/user/0/com.cue.daymark/modules/<module_id>`) instantly frees storage with zero residual state.
+Use Android’s narrow system pickers/intents for user-selected files and calendar handoff. Keep app-private workspace files separate from task records and external documents. A permission broker should record the capability, purpose, requesting task/tool, granted scope, lifetime, revocation path, and data exposed. Explain permission requests in context and ask only when the user invokes a feature that needs them.
 
----
+Do not seek root, hidden APIs, privilege escalation, permission bypasses, or an AccessibilityService as a general agent-control channel. Google Play’s [AccessibilityService policy](https://support.google.com/googleplay/android-developer/answer/10964491?hl=en) prohibits autonomous initiation, planning, and execution through the Accessibility API outside its dedicated accessibility-tool exception. Use accessible controls in Daymark itself and explicit Android APIs/intents for allowed handoffs. Background work must respect Android process, Doze, and battery limits; no permanent invisible agent loop or broad battery-optimization exemption is part of the design.
 
-## 6. Model Manager Architecture
+## Reminder-specific Android constraints
 
-### 6.1 Hardware Capability Profiling
-Before recommending any local model, Daymark profiles the host hardware:
-- **Available RAM:** Evaluated via `ActivityManager.MemoryInfo`.
-- **Chipset / ISA:** Detected via `android.os.Build.SUPPORTED_ABIS` (arm64-v8a required for local inference).
-- **SoC & Accelerator Support:** Checks for NNAPI / Qualcomm QNN / MediaTek NeuroPilot availability.
-- **Battery & Thermal State:** Throttles inference if device temperature exceeds 42°C or battery is < 20% without AC power.
+The reminder implementation from PR #17 is merged into the open PR #15 feature stack, not current `main`. Any reminder design must disclose platform limits:
 
-### 6.2 Model Tiers
-- **Tier 1 (Low-End: 3 GB - 4 GB RAM):**
-  - Recommendation: Remote API / Cloud Assistant (OpenAI, Anthropic, OpenRouter, local Ollama via Wi-Fi) OR micro quantized models (e.g. Qwen2.5-0.5B-Instruct Q4_K_M ~350 MB).
-- **Tier 2 (Mid-Range: 6 GB - 8 GB RAM):**
-  - Recommendation: 1.5B to 3B models (e.g. Llama-3.2-1B / 3B Q4_K_M ~800 MB - 1.8 GB RAM footprint).
-- **Tier 3 (High-End: 12 GB+ RAM, Snapdragon 8 Gen 2/3):**
-  - Recommendation: 7B to 8B models (e.g. Qwen2.5-7B-Instruct Q4_K_M or Gemma-2-9B).
+- Android 13 (API 33) and later requires the `POST_NOTIFICATIONS` runtime permission for ordinary notifications. Ask in context when the user creates a reminder; if permission is denied or later revoked, state that no notification can be shown. See [notification runtime permission](https://developer.android.com/develop/ui/views/notifications/notification-permission).
+- Prefer inexact alarms when exact timing is not essential. Exact scheduling is special access through `SCHEDULE_EXACT_ALARM` on relevant versions; request it only when the user explicitly chooses a precise reminder and explain that access can be denied/revoked. Do not assume `USE_EXACT_ALARM` is available to a general task app. See [exact-alarm access](https://developer.android.com/about/versions/14/changes/schedule-exact-alarms) and [alarm scheduling](https://developer.android.com/develop/background-work/services/alarms).
+- Alarms do not survive shutdown by default. Persist reminder intent and, only while reminders exist, reconstruct eligible alarms after boot and on wall-clock/time-zone changes. Android documents `BOOT_COMPLETED`, `TIME_SET`, and `TIMEZONE_CHANGED` cases in its [broadcast guidance](https://developer.android.com/develop/background-work/background-tasks/broadcasts/broadcast-exceptions).
+- Calendar-style reminders need a defined local-time and timezone policy. Daylight-saving transitions can make a local time nonexistent (a gap) or ambiguous (an overlap with two offsets); choose and test a clear policy rather than silently guessing. Relative timers should use elapsed-time semantics where appropriate. See the [Java `ZoneRules` reference](https://docs.oracle.com/javase/8/docs/api/java/time/zone/ZoneRules.html).
+- Doze defers ordinary alarms and background activity; even allow-while-idle alarm calls are constrained. Inexact notification timing can be late, so never promise exact delivery on every device. See [Doze and App Standby](https://developer.android.com/training/monitoring-device-state/doze-standby).
 
----
+PR #17 is closed as merged into the still-open PR #15 branch, not into `main`. Its description reports source checks and an API 35 Java compile-only check, but no Gradle build/APK or device/emulator testing. Issue #16 remains open for exact-access revocation, Doze, reboot, wall-clock/time-zone changes, and duplicate-delivery behavior. Treat reported checks as claims, not independent verification in this plan.
 
-## 7. Small Model to Agent Abstraction
+## Browser, models, providers, and terms
 
-A 1B-3B model cannot handle complex Android system APIs. Daymark bridges this via a **Universal Agent Tool Schema**:
+The merged WebView source should remain inside Daymark’s own controlled browser. Permit HTTPS only; do not add a JavaScript-to-native bridge for untrusted content, form automation, background page loads, or control of the user’s other browser. Online browsing starts off; enabling it requires a disclosure, and the user must separately tap Go or a site shortcut before page/search traffic begins. Clearly distinguish “Daymark page/resource loads are blocked” from “the device makes no network requests.” Chromium’s [Android WebView Safe Browsing implementation note](https://chromium.googlesource.com/chromium/src.git/+/refs/heads/main/android_webview/browser/safe_browsing/README.md) documents version-dependent checks: before WebView M126, V4 uses a periodically updated local blocklist and, on a local prefix match, requests matching full hashes; from M126, V5 real-time checks send a partial URL hash through a proxy, when that path is available and enabled. The full-URL real-time lookup mechanism is not currently supported in Android WebView. These checks are navigation-related; do not assume a URL blocked by Daymark’s Offline-mode policy necessarily triggers one. The live-check path depends on WebView version, device implementation, and user/system settings; it has not been measured for Daymark, so do not promise zero network traffic. WebView usage statistics and crash reports are separate: Android says diagnostics depend on user settings/consent and do not include URLs. See [WebView management](https://developer.android.com/develop/ui/views/layout/webapps/managing-webview) and [WebView reporting privacy](https://developer.android.com/develop/ui/views/layout/webapps/webview-privacy). Keep Safe Browsing on by default unless a deliberate, user-visible choice and security review justify otherwise.
 
-```json
-{
-  "name": "agent.search",
-  "description": "Search the web for real-time information",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "query": {"type": "string", "description": "Search keywords"}
-    },
-    "required": ["query"]
-  },
-  "risk_level": "low"
-}
-```
+Browser history contains at most 50 HTTPS origins in app-private preferences; it is not encrypted and does not retain page paths, queries, fragments, credentials, or titles. Clearing browser data clears Daymark’s history and WebView-managed site data, not other apps’ browser/autofill data or remote site/provider logs. A query or requested URL and ordinary connection metadata go to its selected destination; pages may contact their own or third-party endpoints.
 
-The model interacts strictly through simple, predictable JSON tool calls:
-- `agent.search(query)`
-- `agent.browser.open(url)`
-- `agent.browser.extract_text()`
-- `agent.files.read(path)`
-- `agent.files.write(path, content)`
-- `agent.tasks.create(title, due_date)`
-- `agent.terminal.exec(command)`
+A future Model Manager should show model identity, license, source, capabilities, context limits, download size, approximate storage/RAM demand, and removal/update controls before download. A provider adapter must show whether a request leaves the device, what content is sent, relevant provider terms/retention, and cost or rate limits before the user opts in. Never imply local and hosted models have identical privacy or costs; never fall back to a hosted provider without a separate user choice. Review third-party SDK terms, code, and license compatibility before adopting them.
 
----
+## Agent workspace, approvals, audit, and recovery
 
-## 8. Agent Computer Environment & Virtual Filesystem
+Keep each workspace scoped to a task and expose a structured capability list rather than arbitrary device control. Every tool should have a typed contract, permission declaration, risk tier, resource/time limits, cancellation behavior, and bounded output. A model proposes tool calls; application code validates parameters and permission scope before execution.
 
-The agent never interacts with raw Android filesystem paths (`/sdcard/`, `/data/data/...`). Instead, it operates inside a virtual root:
+Use proportionate approvals: local read/search can normally proceed within the task scope; creating or editing workspace files should be previewable and recoverable; deleting data, exporting/sharing it, accessing sensitive device resources, installing software, or causing an external/irreversible effect requires explicit approval at the point of action. Keep a visible activity timeline with the current action and target. Redact secrets and task text from diagnostic logs by default. Provide pause/cancel for long work and undo/snapshot/rollback for changes the app controls. Clearly state that rollback cannot undo an external effect already completed.
 
-```text
-/workspace/              <-- Root of virtual environment
-  ├── tasks/<task_id>/   <-- Isolated task workspace
-  │   ├── notes.md
-  │   ├── downloads/
-  │   └── outputs/
-  ├── scratch/           <-- Ephemeral workspace discarded on reset
-  └── tools/             <-- Read-only scripts and binaries
-```
+Use task, workspace, and session memory as separate stores with user-visible inspection, deletion, and reset. Recording should be opt-in, narrowly scoped, and redact sensitive content; defer it until retention and access controls are designed. Multi-agent coordination should wait until per-task capability grants and shared-workspace boundaries are tested.
 
-All virtual paths map to app-private internal storage (`context.getFilesDir() + "/agent_workspace/"`). Access to real external user storage requires explicit Android Storage Access Framework (SAF) URI authorization.
+## Release and verification gates
 
----
+Separate these evidence levels in every release note and handoff:
 
-## 9. Security Boundary & Permission Broker
+1. Source inspection or source-contract tests.
+2. Host/JDK tests.
+3. Compile-only checks, with the exact API level and toolchain stated.
+4. Gradle build/APK assembly and artifact/signature verification.
+5. Emulator tests.
+6. Real-device testing across relevant Android versions and at least representative vendor power-management behavior.
 
-### 9.1 Three-Layer Security Boundary
-1. **Android OS Boundary:** Linux UID isolation, SELinux policies, Android permissions. Daymark never seeks root or privilege escalation.
-2. **Daymark Security Boundary:** Keystore hardware encryption, AtomicFile consistency, private ContentProvider.
-3. **Agent Workspace Boundary:** Sandboxed process, restricted virtual filesystem, network policy filter (blocking localhost/private subnets to prevent SSRF).
+A passing source script is not a Gradle build; an API 35 compile-only report is not an API 36 build; neither is proof of device behavior. The current public README describes the linked artifact as device-untested, and that artifact predates the updater/browser merges. PR descriptions and source do not establish device behavior. This review did not run a full Gradle build, assemble or install an APK, or test an emulator or real device.
 
-### 9.2 Permission Broker Schema
-Before any tool executes, the **Permission Broker** verifies:
-- Requesting Task ID and Agent ID.
-- Tool Risk Level:
-  - **LOW (Automatic if permitted):** Search, read internal workspace files, timer.
-  - **MEDIUM (User prompt on first use):** Network requests, download module, create new tasks.
-  - **HIGH (Explicit confirmation required every time):** Delete files, export external data, execute shell commands, install modules.
+Google Play’s current target requirement says that, from 2026-08-31, new apps and updates submitted to Google Play must target Android 16 (API 36) or higher for ordinary mobile apps; this is a **conditional Play-submission requirement**, not a blanket requirement for local review or a GitHub-sideload APK. See [Google Play’s target API requirement](https://developer.android.com/google/play/requirements/target-sdk). The repository README currently describes API 26–35, and no API 36 build evidence is established for current `main`. Do not describe API 36 support without a verified build and device test. If Play submission becomes a goal, plan a separately reviewed API 36 migration and test gate before submission.
 
----
+Before any production release, verify signing/release provenance, backup restore and upgrade migration, permissions and revocation, file-provider recovery, offline behavior, low-storage/resource limits, accessibility, and device behavior. Keep debug artifacts clearly labeled and do not call a build production-ready without the relevant signing, release, and device evidence.
 
-## 10. Technical Feasibility Matrix
+## Staged roadmap
 
-| Feature | Android Feasibility | Technical Approach | Security Risk | APK Impact | Low-End Viable? | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Core Task Management** | 100% Native | Java 21, RecyclerView, AtomicFile | None | 0 MB (Base) | Yes (100%) | **READY** |
-| **Encrypted Storage & Backup**| 100% Native | Keystore AES-256-GCM + PBKDF2 | Low | 0 MB (Base) | Yes (100%) | **READY** |
-| **In-App HTTPS Browser** | 100% Native | Android WebView + NetworkSecurityConfig | Medium (SSRF/XSS) | +150 KB | Yes | **PROTOTYPE (PR #13)**|
-| **Release-Gated Updater** | 100% Native | GitHub API + SAF + SHA-256 Verifier | Low | +80 KB | Yes | **PROTOTYPE (PR #12)**|
-| **Search Engine Provider** | 100% Native | REST API over HTTPS (DuckDuckGo, Brave) | Low | +20 KB | Yes | **READY** |
-| **On-Device LLM Inference** | Fully Feasible | llama.cpp via JNI (arm64-v8a) as on-demand module | Low (Local) | 0 MB (Base) / ~30 MB module | High-end only (RAM bound)| **RESEARCH REQUIRED** |
-| **Remote LLM Connector** | 100% Native | OkHttp client to OpenAI/Anthropic/Ollama | Low | +15 KB | Yes | **READY** |
-| **Terminal / Shell Sandbox** | Feasible via PRoot | Termux-style userspace PRoot engine | High | 0 MB (Base) / ~40 MB module | 4 GB+ RAM only | **RESEARCH REQUIRED** |
-| **Visual Agent Workspace** | 100% Native | Split-screen View / Floating Overlay | Low | +100 KB | Yes | **READY** |
-| **Arbitrary Android App Cloning**| **IMPOSSIBLE** | Violates Android UID & signature boundary | Critical | N/A | No | **NOT FEASIBLE** |
-| **Sandboxed Web Apps (PWA)** | 100% Native | Isolated WebView with custom ServiceWorker | Medium | +80 KB | Yes | **FEASIBLE ALTERNATIVE**|
+1. **Protect the current core.** Reconcile README claims with current source and release artifacts; preserve task data, encryption, undo, backup, and the minimal UI. Recheck live issue/PR status before each implementation change.
+2. **Verify merged network-facing features.** The updater and WebView from PRs #12/#13 are in `main`; confirm the fail-closed updater gate, signer configuration, HTTPS/network controls, Safe Browsing disclosures, history handling, and device behavior before enabling or promoting them. Issue #14 is closed, but real provider/process-death recovery still needs validation. Separately review the open PR #15 stack; its reminder code from #17 is not in `main`. Keep suggestion navigation as a current-gap fix, and close issue #16 with device evidence before describing reminders as reliable.
+3. **Reconcile the near-term feature queue.** Identify its authoritative source and acceptance criteria before implementation; the ten-feature slate is not tracked in current public `main`. Keep each migration reversible and offline-first.
+4. **Design the agent foundation.** Define the task-scoped workspace, capability schemas, permission broker, local audit trail, cancellation, and rollback before connecting a model.
+5. **Research optional runtimes.** Evaluate model weights, browser, OCR/speech, user-space terminal, coding tools, and any plugin mechanism against device budgets, policy, license, and maintenance cost before committing to a delivery design.
+6. **Defer high-risk breadth.** Do not start arbitrary app containers, unrestricted multi-agent control, persistent background autonomy, or screen recording until the narrower single-agent workspace is proven safe and useful.
 
----
+## Deferred capabilities
 
-## 11. Multi-Phase Implementation Roadmap
+Defer arbitrary Android app cloning, unrestricted cross-app automation, root-like control, remote executable plugin/module injection, silent model downloads, cloud fallback, background autonomous agents, default screen recording, and broad multi-agent access. These are not necessary to make the local task core useful and carry platform, privacy, resource, or maintenance costs that are not justified by the current evidence.
 
-### Phase 1: Core Consolidation & Safe Update (Current Milestone)
-- Stabilize base application at commit `40108bfb`.
-- Merge PR #12 (In-App Updater with Wi-Fi/Mobile data toggle, release notes, and SHA-256 integrity check) and resolve Issue #14 (SAF incomplete file cleanup).
-- Merge PR #13 (Isolated HTTPS In-App Browser).
+## AI handoff rules
 
-### Phase 2: Power-User Task Expansion (Non-Destructive)
-- Introduce collapsible task workspace cards: Subtasks, markdown notes, tags, countdown timer.
-- Add `AlarmManager` exact reminder triggers with snooze and reschedule options.
-- Maintain 100% backward compatibility with existing `tasks.enc` schema through additive versioning.
+A future contributor or AI agent should read this plan and the [README](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/README.md), then recheck the live `main` SHA, relevant open issues/PRs, current source, and release artifacts before proposing work. Verify every assumption against the checked-out implementation; do not duplicate merged or in-flight work. Never expose secrets, private chat/audit history, personal emails, or unrelated local workspace details in public documentation.
 
-### Phase 3: Modular Architecture & Dynamic Package Loader
-- Build the `DynamicCapabilityManager` (DCM) infrastructure.
-- Implement Search Engine Abstraction (DuckDuckGo, Brave, Google).
-- Create on-demand downloadable language packs (Urdu, Hindi, Arabic, etc.).
-
-### Phase 4: Local Model Manager & Agent Runtime
-- Implement Hardware Profiler (RAM/SoC benchmark).
-- Integrate Remote Agent Gateway (Ollama, OpenRouter, Anthropic) as lightweight default.
-- Build JNI wrapper for on-demand `llama.cpp` module for qualifying high-RAM devices.
-- Deliver the Visual Agent Workspace (live operation monitor).
-
-### Phase 5: Developer Tools & Userspace Terminal
-- Provide optional downloadable PRoot/terminal module for power users.
-- Add session recording, action replay timeline, and workspace snapshot/rollback.
-
----
-
-## 12. AI Handoff & Governance Guidelines
-
-Any AI agent or human contributor working on Daymark must strictly abide by these rules:
-1. **Zero Data Loss Rule:** Never alter `EncryptedTaskStore` or `AttachmentBlobStore` without running regression tests against legacy ciphertext.
-2. **Never Bypass Android Security:** Do not attempt private API reflection, hidden permission bypasses, or root exploits.
-3. **Minimal Base Rule:** The base APK must never exceed 5 MB. All heavy runtimes must remain downloadable modules.
-4. **Offline Test Verification:** Every PR must pass all offline test scripts under `android-app/tools/` before submission.
-5. **No Fake Claims:** Never claim physical device testing unless executed on a real target device.
+Preserve user data and the minimal core; use small, reversible, modular changes with tests. Make a recoverable snapshot before risky mutations. Do not bypass Android security or claim an API/device test that was not performed on that API/device. Report source checks, host tests, API-level compile/build results, APK/release status, and device tests as separate evidence. Keep user approvals, permission scopes, provider/network choices, and cancellation explicit. Recheck exact branch and PR heads because public status may have changed since this draft was written.
