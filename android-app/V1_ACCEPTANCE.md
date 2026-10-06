@@ -48,7 +48,7 @@ Android's [dynamic code loading security guidance](https://developer.android.com
 ## Automated checks reproduced on `main` baseline `66476cb49a6caa9a43b65db39912ee397b6e6857`
 
 - [x] `npm test` from the repository root: **8 passed, 0 failed**.
-- [x] From `android-app/`, `sh tools/check-v1-source.sh`: passed 55 core, 70 updater-policy, 120 parser/transport, 35 attachment, and 307 portable-backup assertions, plus source-policy, schema, accessibility, and contrast checks. The script's printed permission summary is inaccurate: it calls main/Play permission-free, although both merged manifests contain `INTERNET`.
+- [x] From `android-app/`, `sh tools/check-v1-source.sh`: passed 55 core, 70 updater-policy, 120 parser/transport, 35 attachment, and 307 portable-backup assertions, plus source-policy, schema, accessibility, and contrast checks. The script and check-merged-manifests.py verify that main declares `INTERNET` for the in-app browser, Play inherits it without extra permissions, and sideload adds `ACCESS_NETWORK_STATE`.
 - [x] From `android-app/`, `sh tools/run-storage-recovery-tests.sh`: 45 encrypted-storage assertions and 27 storage-failure UI/source checks passed.
 - [x] From `android-app/`, `sh tools/run-attachment-tests.sh`: 35 assertions passed; `sh tools/run-portable-backup-tests.sh`: 307 assertions passed.
 - [x] `./gradlew --offline --no-daemon --console=plain :app:processGithubSideloadDebugMainManifest :app:processPlayDebugMainManifest`: `BUILD SUCCESSFUL`. The merged Play debug manifest contains only `INTERNET`; sideload debug contains `INTERNET` and `ACCESS_NETWORK_STATE`.
