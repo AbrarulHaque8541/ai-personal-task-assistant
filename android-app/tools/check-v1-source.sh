@@ -7,6 +7,7 @@ sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
+python3 ./tools/check-merged-manifests.py "$ROOT"
 python3 - "$ROOT" <<'PY'
 import pathlib
 import re
@@ -345,7 +346,7 @@ assert "uri.getPort() == -1 || uri.getPort() == 443" in updater_core, "release a
 assert "github.com:444" in (root / "tools/UpdaterSmoke.java").read_text(encoding="utf-8"), "unusual asset port regression is required"
 assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
 
-print("PASS V1 source policy: main and Play manifests are permission-free; GitHub sideload has only INTERNET and ACCESS_NETWORK_STATE; no install permission/handoff, background polling, runtime dependencies, or optional binaries")
+print("PASS V1 source policy: main declares INTERNET for browser; Play inherits INTERNET without extra permissions; GitHub sideload adds ACCESS_NETWORK_STATE; no install permission/handoff, background polling, runtime dependencies, or optional binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission/updater policy: release-only sideload gates, exact publisher verification, explicit install-choice boundary, Play permission isolation, task data isolated")
 print("PASS V1 source policy: no permissions/network, background components or runtime dependencies; only the non-exported grant-only attachment provider; no optional media/model binaries")
