@@ -276,9 +276,69 @@ jobs:
             echo "size_bytes=$actual_size" >> "$GITHUB_OUTPUT"
           }
 
+      - name: Preflight existing same-tag APK asset
+        id: preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.payload.outputs.tag }}
+          APK_NAME: ${{ steps.payload.outputs.apk_name }}
+          EXPECTED_SHA256: ${{ steps.payload.outputs.sha256 }}
+          EXPECTED_SIZE: ${{ steps.payload.outputs.size_bytes }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$RUNNER_TEMP/daymark-release-preflight.json"
+          error_log="$RUNNER_TEMP/daymark-release-preflight.err"
+          release_exists=false
+          existing_asset=false
+
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$error_log"; then
+            release_exists=true
+            asset="$(jq -c --arg name "$APK_NAME" '[(.assets // [])[] | select(.name == $name)] | .[0] // empty' "$release_json")"
+            if [[ -n "$asset" ]]; then
+              existing_asset=true
+              asset_size="$(jq -r '.size // empty' <<< "$asset")"
+              asset_state="$(jq -r '.state // empty' <<< "$asset")"
+              [[ "$asset_state" == "uploaded" ]] || {
+                echo "Existing APK asset is not fully uploaded (state: $asset_state); refusing to mutate the release" >&2
+                exit 1
+              }
+
+              download_dir="$RUNNER_TEMP/existing-release-assets"
+              mkdir -p "$download_dir"
+              gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME" --dir "$download_dir"
+              existing_apk="$download_dir/$APK_NAME"
+              test -s "$existing_apk"
+              downloaded_size="$(stat -c '%s' "$existing_apk")"
+              downloaded_sha="$(sha256sum "$existing_apk" | awk '{print $1}')"
+              [[ "$asset_size" == "$EXPECTED_SIZE" && "$downloaded_size" == "$EXPECTED_SIZE" ]] || {
+                echo "Existing APK asset size does not match the verified payload; refusing to mutate the release. Use a new tag." >&2
+                exit 1
+              }
+              [[ "$downloaded_sha" == "$EXPECTED_SHA256" ]] || {
+                echo "Existing APK asset SHA-256 does not match the verified payload; refusing to mutate the release. Use a new tag." >&2
+                exit 1
+              }
+              echo "Existing same-tag APK asset is byte-identical to the verified payload; it will not be overwritten."
+            fi
+          elif grep -Fq 'HTTP 404' "$error_log"; then
+            release_exists=false
+          else
+            cat "$error_log" >&2
+            echo "Could not read same-tag release metadata; refusing to mutate the release." >&2
+            exit 1
+          fi
+
+          {
+            echo "release_exists=$release_exists" >> "$GITHUB_OUTPUT"
+            echo "existing_asset=$existing_asset" >> "$GITHUB_OUTPUT"
+          }
+
       - name: Create or update the prerelease and attach the APK
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_EXISTS: ${{ steps.preflight.outputs.release_exists }}
+          EXISTING_ASSET: ${{ steps.preflight.outputs.existing_asset }}
         shell: bash
         run: |
           set -euo pipefail
@@ -286,11 +346,19 @@ jobs:
           title='${{ steps.payload.outputs.title }}'
           apk='${{ steps.payload.outputs.apk_path }}'
           notes='${{ steps.payload.outputs.notes_path }}'
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" "$apk" --clobber --repo "$GITHUB_REPOSITORY"
+          if [[ "$RELEASE_EXISTS" == "true" ]]; then
+            if [[ "$EXISTING_ASSET" == "false" ]]; then
+              gh release upload "$tag" "$apk" --repo "$GITHUB_REPOSITORY"
+            elif [[ "$EXISTING_ASSET" != "true" ]]; then
+              echo "Invalid preflight result; refusing to mutate the release." >&2
+              exit 1
+            fi
             gh release edit "$tag" --title "$title" --notes-file "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
-          else
+          elif [[ "$RELEASE_EXISTS" == "false" && "$EXISTING_ASSET" == "false" ]]; then
             gh release create "$tag" "$apk" --title "$title" --notes-file "$notes" --prerelease --verify-tag --repo "$GITHUB_REPOSITORY"
+          else
+            echo "Invalid preflight result; refusing to mutate the release." >&2
+            exit 1
           fi
 
       - name: Verify uploaded Release asset and browser download
