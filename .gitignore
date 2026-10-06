@@ -4,3 +4,9 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+
+# Never track built Android binaries in the source tree. Verified release
+# binaries are attached to GitHub Releases by .github/workflows/android-release-assets.yml.
+*.apk
+*.aab
+*.rom

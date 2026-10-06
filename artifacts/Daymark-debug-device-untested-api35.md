@@ -1,6 +1,8 @@
-# Daymark API 35 debug APK — device-untested
+# Daymark API 35 debug APK — device-untested (binary removed from the repository)
 
-**Historical artifact notice:** this APK was built from source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`, not current `main`. It is retained as repository history only; do not treat it as a current or production download. The `v1.0.0` GitHub Release has no attached APK asset.
+**Removed (2026-10-07):** the APK binary this note described was deleted from the tracked tree in the `chore(repo): remove stale tracked APK artifacts` cleanup. This file is retained as the historical provenance record only: the digest below identifies the removed binary and cannot download anything. No GitHub Release or tag was created, edited, or deleted. To obtain a build for device testing, use the [Android device-test release workflow](../.github/workflows/android-release-assets.yml), which attaches a verified APK asset to the release when a `v*-device-test.*` tag is pushed; the release page — not the repository tree — is the only supported download location.
+
+**Historical artifact notice:** this APK was built from source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`, not current `main`. It is retained as repository history only; do not treat it as a current or production download. The `v1.0.0` GitHub Release has no attached APK asset, and the `v1.0.0-device-test.1` prerelease currently has no attached asset either.
 
 **Status: debug / device-untested.** This is a locally built debug APK for testing, not a release artifact.
 
