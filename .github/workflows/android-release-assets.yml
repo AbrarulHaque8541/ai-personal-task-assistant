@@ -129,7 +129,7 @@ jobs:
           badging="$RUNNER_TEMP/daymark-apk-badging.txt"
           "$aapt" dump badging "$source_apk" > "$badging"
           package_line="$(grep '^package: ' "$badging")"
-          app_id="$(sed -n "s/.*name='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          app_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
           version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$package_line")"
           version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")"
           min_sdk="$(sed -n "s/^sdkVersion:[[:space:]]*'\([^']*\)'.*/\1/p" "$badging")"
