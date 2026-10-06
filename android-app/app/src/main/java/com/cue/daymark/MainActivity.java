@@ -111,6 +111,7 @@ public final class MainActivity extends Activity {
     private final List<Button> filterButtons = new ArrayList<>();
     private final List<View> powerOnlyViews = new ArrayList<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ActivityCallbackGate activityCallbackGate = new ActivityCallbackGate();
 
     private ExecutorService storageExecutor;
     private ExecutorService updaterExecutor;
@@ -339,8 +340,20 @@ public final class MainActivity extends Activity {
         super.onPause();
     }
 
+    private boolean isActivityCallbackCurrent() {
+        return activityCallbackGate.isOpen() && !isFinishing() && !isDestroyed();
+    }
+
+    private void postActivityCallback(Runnable callback) {
+        mainHandler.post(activityCallbackGate.guard(() -> {
+            if (!isActivityCallbackCurrent()) return;
+            callback.run();
+        }));
+    }
+
     @Override
     protected void onDestroy() {
+        activityCallbackGate.close();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         portableCancelRequested = true;
         if (!portableRestoreWorkerActive) {
@@ -973,11 +986,13 @@ public final class MainActivity extends Activity {
         browserWebView = new DaymarkWebView(this, browserNetworkPolicy,
                 browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
             @Override public void onPageStarted(String url) {
+                if (!isActivityCallbackCurrent()) return;
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 syncBrowserButtons();
             }
 
             @Override public void onPageFinished(String url) {
+                if (!isActivityCallbackCurrent()) return;
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
                     String current = browserPreferences.getString(BROWSER_HISTORY_KEY, "");
@@ -989,33 +1004,37 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onNavigationBlocked(String url) {
+                if (!isActivityCallbackCurrent()) return;
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
 
             @Override public void onOfflineNavigationBlocked() {
-                mainHandler.post(MainActivity.this::showBrowserOfflineStatus);
+                postActivityCallback(MainActivity.this::showBrowserOfflineStatus);
             }
 
             @Override public void onHttpNavigationBlocked(String url, boolean redirect) {
                 String message = redirect
                         ? "An HTTP redirect/downgrade was blocked. No insecure page was opened."
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
-                mainHandler.post(() -> {
+                postActivityCallback(() -> {
                     browserStatus.setText(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
                     showToast("Insecure HTTP navigation blocked. Use HTTPS instead.");
                 });
             }
 
             @Override public void onLoadError() {
+                if (!isActivityCallbackCurrent()) return;
                 browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
             }
 
             @Override public void onDownloadRequested() {
+                if (!isActivityCallbackCurrent()) return;
                 showToast("Downloads are not supported in this lightweight browser.");
             }
 
             @Override public void onRendererGone() {
+                if (!isActivityCallbackCurrent()) return;
                 discardBrowserWebView(false);
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
                 browserStatus.setText("The page stopped unexpectedly. Return to browser home and try again.");
@@ -1114,7 +1133,7 @@ public final class MainActivity extends Activity {
         browserStatus.setText("Clearing Daymark site history and local site data...");
         cookies.removeAllCookies(removed -> {
             cookies.flush();
-            if (!isFinishing()) {
+            if (isActivityCallbackCurrent()) {
                 browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
                 showToast("Local site history and site data cleared.");
             }
@@ -1321,8 +1340,7 @@ public final class MainActivity extends Activity {
             List<Task> result = loaded;
             Exception error = failure;
             boolean selectionPreserved = portableSelectionPreserved;
-            mainHandler.post(() -> {
-                if (isFinishing() || isDestroyed()) return;
+            postActivityCallback(() -> {
                 storageLoading = false;
                 if (error == null) {
                     tasks.clear();
@@ -1385,8 +1403,7 @@ public final class MainActivity extends Activity {
                 failure = exception;
             }
             Exception error = failure;
-            mainHandler.post(() -> {
-                if (isFinishing()) return;
+            postActivityCallback(() -> {
                 if (error == null) {
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(snapshot);
@@ -2043,8 +2060,7 @@ public final class MainActivity extends Activity {
                         if (attachmentCancelRequested) throw new AttachmentBlobStore.CancelledException();
                         attachmentCanCancel = false;
                     }
-                    mainHandler.post(() -> {
-                        if (isFinishing()) return;
+                    postActivityCallback(() -> {
                         storageStatus.setText("Saving attachment metadata…");
                         if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
                     });
@@ -2070,8 +2086,7 @@ public final class MainActivity extends Activity {
             Exception error = failure;
             boolean saveOutcomeAmbiguous = saveAttempted && error != null;
             boolean cleanupPending = cleanupDeferred;
-            mainHandler.post(() -> {
-                if (isFinishing()) return;
+            postActivityCallback(() -> {
                 attachmentBusy = false;
                 if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
                 if (error == null && saved != null) {
@@ -2175,8 +2190,7 @@ public final class MainActivity extends Activity {
             }
             Exception error = failure;
             boolean payloadDeleted = deleted;
-            mainHandler.post(() -> {
-                if (isFinishing()) return;
+            postActivityCallback(() -> {
                 attachmentBusy = false;
                 if (error == null) {
                     tasks.clear();
@@ -2845,10 +2859,10 @@ public final class MainActivity extends Activity {
                     failure = cleanupFailure;
                 }
                 Exception result = failure;
-                mainHandler.post(() -> {
+                postActivityCallback(() -> {
                     if (result == null) {
                         portableImportCleanupActive = false;
-                    } else if (!isFinishing() && !isDestroyed()) {
+                    } else {
                         showToast("Temporary backup access could not be safely released. Reopen Daymark to recover it.");
                     }
                 });
@@ -2995,13 +3009,12 @@ public final class MainActivity extends Activity {
                 }
             List<Task> result = restored;
             Exception error = failure;
-            mainHandler.post(() -> {
+            postActivityCallback(() -> {
                 if (activePortableImportUri == selected
                         && selectedOperation.operationToken.equals(activePortableImportOperationToken)) {
                     activePortableImportUri = null;
                     activePortableImportOperationToken = null;
                 }
-                if (isFinishing() || isDestroyed()) return;
                 PortableBackupCodec.clear(pendingRecoveryKey);
                 pendingRecoveryKey = null;
                 pendingPortableImportUri = null;
@@ -3561,7 +3574,7 @@ public final class MainActivity extends Activity {
             pendingVerifiedApk = null;
             pendingVerifiedRelease = null;
             pendingSaveTransaction = null;
-            mainHandler.post(() -> showSaveFailureChoices(release, verifiedApk,
+            postActivityCallback(() -> showSaveFailureChoices(release, verifiedApk,
                     "Android's file picker could not be opened. The verified update remains in app-private storage."));
         }
     }
