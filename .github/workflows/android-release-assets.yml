@@ -1,0 +1,344 @@
+name: Android device-test release assets
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags:
+      - 'v*-device-test.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-device-test-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-verify:
+    name: Build and verify device-test APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the event ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Verify exact tag commit is on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          [[ "$checked_out_sha" == "$GITHUB_SHA" ]] || {
+            echo "Checked-out commit $checked_out_sha does not match event SHA $GITHUB_SHA" >&2
+            exit 1
+          }
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+            git tag --points-at HEAD | grep -Fx "$tag" >/dev/null || {
+              echo "The checked-out commit is not the exact pushed tag $tag" >&2
+              exit 1
+            }
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+              echo "Release tag $tag does not point to a commit on main" >&2
+              exit 1
+            }
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-device-test\.[0-9]+$ ]] || {
+              echo "Unexpected device-test tag format: $tag" >&2
+              exit 1
+            }
+          fi
+
+      - name: Run web and Android host/source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          cd android-app
+          sh ./tools/run-core-tests.sh
+          sh ./tools/run-updater-picker-routing-tests.sh
+          sh ./tools/run-attachment-tests.sh
+          sh ./tools/run-storage-recovery-tests.sh
+          sh ./tools/run-portable-backup-tests.sh
+          sh ./tools/check-v1-source.sh
+          python3 ./tools/check-accessibility-contrast.py
+          python3 ./tools/check-attachment-source.py "$PWD"
+          python3 ./tools/check-backup-rules.py
+          python3 ./tools/check-portable-archive-bounds.py
+          python3 ./tools/check-schema-v1-fixture.py "$PWD"
+          python3 ./tools/check-storage-failure-ui.py
+          python3 ./tools/check-task-template-source.py "$PWD"
+
+      - name: Clean Android build
+        working-directory: android-app
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon clean
+
+      - name: Build and check both Android flavors
+        working-directory: android-app
+        run: >-
+          ./gradlew --no-daemon --continue
+          assembleGithubSideloadDebug
+          assemblePlayDebug
+          lintGithubSideloadDebug
+          lintPlayDebug
+          testGithubSideloadDebugUnitTest
+          testPlayDebugUnitTest
+          compileGithubSideloadDebugAndroidTestJavaWithJavac
+          compilePlayDebugAndroidTestJavaWithJavac
+
+      - name: Verify merged manifests
+        working-directory: android-app
+        run: python3 ./tools/check-merged-manifests.py "$PWD"
+
+      - name: Verify APK and prepare release payload
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          test -s "$source_apk"
+          unzip -t "$source_apk"
+
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]] || {
+            echo "Android SDK build-tools not found (ANDROID_HOME/ANDROID_SDK_ROOT)" >&2
+            exit 1
+          }
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          [[ -x "$aapt" && -x "$apksigner" ]] || {
+            echo "aapt or apksigner is missing from the installed Android build-tools" >&2
+            exit 1
+          }
+          "$apksigner" verify --verbose "$source_apk"
+          badging="$RUNNER_TEMP/daymark-apk-badging.txt"
+          "$aapt" dump badging "$source_apk" > "$badging"
+          package_line="$(grep '^package: ' "$badging")"
+          app_id="$(sed -n "s/.*name='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          min_sdk="$(sed -n "s/^sdkVersion:[[:space:]]*'\([^']*\)'.*/\1/p" "$badging")"
+          target_sdk="$(sed -n "s/^targetSdkVersion:[[:space:]]*'\([^']*\)'.*/\1/p" "$badging")"
+          [[ "$app_id" == "com.cue.daymark" ]] || { echo "Unexpected application ID: $app_id" >&2; exit 1; }
+          [[ "$min_sdk" == "26" ]] || { echo "Unexpected min SDK: $min_sdk" >&2; exit 1; }
+          [[ "$target_sdk" == "35" ]] || { echo "Unexpected target SDK: $target_sdk" >&2; exit 1; }
+          [[ -n "$version_name" && -n "$version_code" ]] || { echo "APK version metadata is missing" >&2; exit 1; }
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+            [[ "$tag" == "v${version_name}-device-test."* ]] || {
+              echo "Tag $tag does not match APK version $version_name" >&2
+              exit 1
+            }
+            test_number="${tag##*.}"
+            release_title="Daymark v${version_name} (Device Test ${test_number})"
+          else
+            tag="pr-${GITHUB_SHA:0:12}"
+            release_title="Daymark CI validation"
+          fi
+
+          apk_name="Daymark-device-test-${tag}.apk"
+          mkdir -p release-payload
+          cp "$source_apk" "release-payload/$apk_name"
+          apk_size="$(stat -c '%s' "release-payload/$apk_name")"
+          [[ "$apk_size" -gt 0 ]] || { echo "Built APK is empty" >&2; exit 1; }
+          apk_sha256="$(sha256sum "release-payload/$apk_name" | awk '{print $1}')"
+          build_commit="$(git rev-parse HEAD)"
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            previous_tag="$(git tag --merged "$build_commit" --sort=-v:refname --list 'v*-device-test.*' | grep -Fxv "$tag" | head -n 1 || true)"
+            if [[ -n "$previous_tag" ]]; then
+              included="$(git log --first-parent --format='- %s (%h)' "$previous_tag..$build_commit")"
+            else
+              included="$(git log -n 10 --first-parent --format='- %s (%h)' "$build_commit")"
+            fi
+            if [[ -z "$included" ]]; then
+              included='- No first-parent commits since the previous device-test tag.'
+            fi
+            {
+              printf '%s\n\n' '### Included'
+              printf 'Changes since device-test tag `%s` (first-parent commit history):\n' "${previous_tag:-no previous device-test tag}"
+              printf '%s\n\n' "$included"
+              printf '%s\n\n' '### Testing'
+              printf '%s\n' '- `npm test`: PASS.'
+              printf '%s\n' '- Android host/source regression and policy checks: PASS (see this workflow run for the exact commands).'
+              printf '%s\n' '- Gradle debug assembly, both-flavor lint/unit tasks, Android test-source compilation, and merged-manifest checks: PASS.'
+              printf '%s\n\n' '### Device testing'
+              printf '%s\n\n' 'Physical-device/emulator installation is not performed by GitHub Actions; device testing remains pending.'
+              printf '%s\n\n' '### Signing'
+              printf '%s\n\n' 'DEBUG/device-test signed by the Android Gradle debug signing configuration. The APK signature was verified; this is not production signing.'
+              printf '%s\n\n' '### Known limitations'
+              printf '%s\n\n' 'This APK is not production-signed or Play Store ready. No physical device installation is claimed.'
+              printf 'APK: `%s`\n' "$apk_name"
+              printf 'SHA-256: `%s`\n' "$apk_sha256"
+              printf 'Build commit: `%s`\n' "$build_commit"
+              printf 'Application ID: `%s`\n' "$app_id"
+              printf 'Version: `%s` (version code `%s`)\n' "$version_name" "$version_code"
+              printf 'Min SDK: `%s`\n' "$min_sdk"
+              printf 'Target SDK: `%s`\n' "$target_sdk"
+            } > release-payload/release-notes.md
+          fi
+
+          jq -n \
+            --arg tag "$tag" \
+            --arg title "$release_title" \
+            --arg apk_filename "$apk_name" \
+            --arg sha256 "$apk_sha256" \
+            --arg commit "$build_commit" \
+            --arg application_id "$app_id" \
+            --arg version "$version_name" \
+            --arg version_code "$version_code" \
+            --arg min_sdk "$min_sdk" \
+            --arg target_sdk "$target_sdk" \
+            --argjson size_bytes "$apk_size" \
+            '{tag:$tag,title:$title,apk_filename:$apk_filename,sha256:$sha256,commit:$commit,application_id:$application_id,version:$version,version_code:$version_code,min_sdk:$min_sdk,target_sdk:$target_sdk,size_bytes:$size_bytes}' \
+            > release-payload/release-metadata.json
+
+          {
+            printf '### APK verification\n\n'
+            printf -- '- File: `%s` (%s bytes)\n' "$apk_name" "$apk_size"
+            printf -- '- SHA-256: `%s`\n' "$apk_sha256"
+            printf -- '- Application ID: `%s`; version `%s` (code `%s`)\n' "$app_id" "$version_name" "$version_code"
+            printf -- '- Min SDK: `%s`; target SDK: `%s`\n' "$min_sdk" "$target_sdk"
+            printf -- '- Archive and APK signature verification: PASS\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pass verified payload to the release job
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-test-release-payload-${{ github.run_id }}
+          path: release-payload/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish-release:
+    name: Publish and verify GitHub Release APK asset
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build-and-verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified workflow payload
+        uses: actions/download-artifact@v4
+        with:
+          name: device-test-release-payload-${{ github.run_id }}
+          path: release-payload
+
+      - name: Verify payload before publishing
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          metadata=release-payload/release-metadata.json
+          test -s "$metadata"
+          tag="$(jq -r '.tag' "$metadata")"
+          title="$(jq -r '.title' "$metadata")"
+          apk_name="$(jq -r '.apk_filename' "$metadata")"
+          expected_sha="$(jq -r '.sha256' "$metadata")"
+          expected_size="$(jq -r '.size_bytes' "$metadata")"
+          expected_commit="$(jq -r '.commit' "$metadata")"
+          [[ "$tag" == "$GITHUB_REF_NAME" ]] || { echo "Payload tag does not match event ref" >&2; exit 1; }
+          [[ "$expected_commit" == "$GITHUB_SHA" ]] || { echo "Payload commit does not match tag commit" >&2; exit 1; }
+          apk="release-payload/$apk_name"
+          notes=release-payload/release-notes.md
+          test -s "$apk"
+          test -s "$notes"
+          actual_size="$(stat -c '%s' "$apk")"
+          actual_sha="$(sha256sum "$apk" | awk '{print $1}')"
+          [[ "$actual_size" == "$expected_size" ]] || { echo "Payload APK size mismatch" >&2; exit 1; }
+          [[ "$actual_sha" == "$expected_sha" ]] || { echo "Payload APK SHA-256 mismatch" >&2; exit 1; }
+          {
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "title=$title" >> "$GITHUB_OUTPUT"
+            echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+            echo "apk_path=$apk" >> "$GITHUB_OUTPUT"
+            echo "notes_path=$notes" >> "$GITHUB_OUTPUT"
+            echo "sha256=$actual_sha" >> "$GITHUB_OUTPUT"
+            echo "size_bytes=$actual_size" >> "$GITHUB_OUTPUT"
+          }
+
+      - name: Create or update the prerelease and attach the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ steps.payload.outputs.tag }}'
+          title='${{ steps.payload.outputs.title }}'
+          apk='${{ steps.payload.outputs.apk_path }}'
+          notes='${{ steps.payload.outputs.notes_path }}'
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --title "$title" --notes-file "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" "$apk" --title "$title" --notes-file "$notes" --prerelease --verify-tag --repo "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Verify uploaded Release asset and browser download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.payload.outputs.tag }}
+          APK_NAME: ${{ steps.payload.outputs.apk_name }}
+          APK_PATH: ${{ steps.payload.outputs.apk_path }}
+          EXPECTED_SHA256: ${{ steps.payload.outputs.sha256 }}
+          EXPECTED_SIZE: ${{ steps.payload.outputs.size_bytes }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json="$RUNNER_TEMP/daymark-release.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+          jq -e --arg tag "$TAG" '.tag_name == $tag and .prerelease == true and (.assets | length >= 1)' "$release_json" >/dev/null || {
+            echo "FAIL: Release missing, wrong tag/prerelease, or has zero assets" >&2
+            exit 1
+          }
+          asset="$(jq -c --arg name "$APK_NAME" '[.assets[] | select(.name == $name)] | .[0] // empty' "$release_json")"
+          [[ -n "$asset" ]] || { echo "FAIL: expected APK release asset $APK_NAME is missing" >&2; exit 1; }
+          asset_size="$(jq -r '.size' <<< "$asset")"
+          content_type="$(jq -r '.content_type // empty' <<< "$asset")"
+          state="$(jq -r '.state // empty' <<< "$asset")"
+          download_url="$(jq -r '.browser_download_url // empty' <<< "$asset")"
+          release_url="$(jq -r '.html_url // empty' "$release_json")"
+          [[ "$asset_size" =~ ^[0-9]+$ ]] && (( asset_size > 0 )) || { echo "FAIL: release asset size is zero or invalid" >&2; exit 1; }
+          [[ "$asset_size" == "$EXPECTED_SIZE" ]] || { echo "FAIL: uploaded asset size differs from the verified APK" >&2; exit 1; }
+          [[ -n "$content_type" ]] || { echo "FAIL: GitHub API did not report an asset content_type" >&2; exit 1; }
+          [[ "$state" == "uploaded" ]] || { echo "FAIL: GitHub asset state is '$state', expected 'uploaded'" >&2; exit 1; }
+          [[ "$download_url" == "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/"* ]] || {
+            echo "FAIL: no real GitHub Release browser download URL" >&2
+            exit 1
+          }
+          downloaded="$RUNNER_TEMP/$APK_NAME"
+          curl --fail --location --retry 3 --silent --show-error "$download_url" --output "$downloaded"
+          downloaded_size="$(stat -c '%s' "$downloaded")"
+          downloaded_sha="$(sha256sum "$downloaded" | awk '{print $1}')"
+          [[ "$downloaded_size" == "$EXPECTED_SIZE" ]] || { echo "FAIL: downloaded asset size mismatch" >&2; exit 1; }
+          [[ "$downloaded_sha" == "$EXPECTED_SHA256" ]] || { echo "FAIL: downloaded asset SHA-256 mismatch" >&2; exit 1; }
+          {
+            echo '### GitHub Release asset verification'
+            echo
+            echo "- Release: [$TAG]($release_url)"
+            echo "- Asset: [$APK_NAME]($download_url)"
+            echo "- Size: $asset_size bytes"
+            echo "- Content type: $content_type"
+            echo "- API state: $state"
+            echo "- Downloaded SHA-256: $downloaded_sha"
+            echo '- Release API and browser download verification: PASS'
+          } >> "$GITHUB_STEP_SUMMARY"
