@@ -24,7 +24,11 @@ saved_state = main.split("protected void onSaveInstanceState", 1)[1].split(
     "protected void onActivityResult", 1)[0]
 assert "pendingPickedAttachmentUri" not in saved_state, "attachment provider URIs must remain transient"
 assert "READ_EXTERNAL_STORAGE" not in main and "READ_MEDIA_" not in main
-declared_permissions = set(i.get(android + "name") for i in manifest.findall("uses-permission"))
+permission_nodes = [
+    node for node in manifest
+    if node.tag == "uses-permission" or node.tag.startswith("uses-permission-sdk-")
+]
+declared_permissions = set(i.get(android + "name") for i in permission_nodes)
 allowed_permissions = {
     "android.permission.INTERNET",
     "android.permission.POST_NOTIFICATIONS",
