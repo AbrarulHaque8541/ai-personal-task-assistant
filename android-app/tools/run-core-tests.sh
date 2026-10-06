@@ -4,12 +4,15 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD_DIR=$(mktemp -d "daymark-core-tests.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 python3 "$ROOT/tools/check-backup-rules.py"
+python3 "$ROOT/tools/check-task-template-source.py" "$ROOT"
 javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/host-stubs/android/content/Context.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplate.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplateLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotSchema.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserAddress.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \

@@ -12,8 +12,12 @@ final class TaskSnapshotSchema {
         return value instanceof Number && ((Number) value).doubleValue() == 2.0d;
     }
 
+    static boolean isVersionThree(Object value) {
+        return value instanceof Number && ((Number) value).doubleValue() == 3.0d;
+    }
+
     static boolean isSupportedVersion(Object value) {
-        return isVersionOne(value) || isVersionTwo(value);
+        return isVersionOne(value) || isVersionTwo(value) || isVersionThree(value);
     }
 
     static String requireString(Object value) {

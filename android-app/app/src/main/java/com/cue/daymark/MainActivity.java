@@ -105,6 +105,7 @@ public final class MainActivity extends Activity {
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
+    private final List<TaskTemplate> taskTemplates = new ArrayList<>();
     private final List<String> filterKeys = Arrays.asList(
             TaskLogic.FILTER_ALL, TaskLogic.FILTER_TODAY,
             TaskLogic.FILTER_UPCOMING, TaskLogic.FILTER_COMPLETED);
@@ -704,9 +705,19 @@ public final class MainActivity extends Activity {
         addTaskButton.setOnClickListener(view -> addQuickTask());
         taskActions.addView(addTaskButton, bottomMargin(dp(5)));
 
+        LinearLayout secondaryTaskActions = new LinearLayout(this);
+        secondaryTaskActions.setOrientation(LinearLayout.HORIZONTAL);
         addDetailsButton = compactButton("Add with a date or priority", false);
         addDetailsButton.setOnClickListener(view -> showTaskEditor(null, quickCaptureInput.getText().toString()));
-        taskActions.addView(addDetailsButton, bottomMargin(dp(5)));
+        secondaryTaskActions.addView(addDetailsButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        Button templatesButton = compactButton("Task templates", false);
+        templatesButton.setContentDescription("View, reuse, or create encrypted on-device task templates. Choosing one opens an editable task; it is not created until you confirm Create task.");
+        templatesButton.setOnClickListener(view -> showTaskTemplatesDialog());
+        LinearLayout.LayoutParams templatesParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+        templatesParams.leftMargin = dp(6);
+        secondaryTaskActions.addView(templatesButton, templatesParams);
+        taskActions.addView(secondaryTaskActions, bottomMargin(dp(5)));
         captureFeedback = text(powerMode
                         ? "Power path adds search, filters, and ranked demo suggestions. It uses the same tasks."
                         : "New tasks start with no due date and medium priority. You can change both later.",
@@ -1303,12 +1314,14 @@ public final class MainActivity extends Activity {
         PortableImportGrantRecovery.Selection restoredSelection = pendingPortableImportSelection();
         storageExecutor.execute(() -> {
             List<Task> loaded = null;
+            List<TaskTemplate> loadedTemplates = null;
             Exception failure = null;
             boolean portableSelectionPreserved = false;
             try {
                 PortableImportGrantRecovery.awaitNoActivityRestoreWorker();
                 synchronized (AndroidAttachmentStore.transactionLock()) {
                     loaded = taskStore.load();
+                    loadedTemplates = taskStore.loadTemplates();
                     portableSelectionPreserved = portableBackupManager.reconcileStartupImportUri(
                             loaded, attachmentStore, restoredSelection);
                     try { attachmentStore.cleanupOrphans(attachmentIds(loaded)); }
@@ -1319,6 +1332,7 @@ public final class MainActivity extends Activity {
                 failure = exception;
             }
             List<Task> result = loaded;
+            List<TaskTemplate> templateResult = loadedTemplates;
             Exception error = failure;
             boolean selectionPreserved = portableSelectionPreserved;
             mainHandler.post(() -> {
@@ -1327,6 +1341,8 @@ public final class MainActivity extends Activity {
                 if (error == null) {
                     tasks.clear();
                     tasks.addAll(result);
+                    taskTemplates.clear();
+                    taskTemplates.addAll(templateResult);
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(result);
                     storageReady = true;
@@ -1372,15 +1388,20 @@ public final class MainActivity extends Activity {
     }
 
     private void saveTasksAsync() {
+        saveTasksAsync("Saving encrypted tasks…");
+    }
+
+    private void saveTasksAsync(String savingStatus) {
         if (!storageReady) return;
         long revision = ++saveRevision;
         List<Task> snapshot = new ArrayList<>(tasks);
-        storageStatus.setText("Saving encrypted tasks…");
+        List<TaskTemplate> templateSnapshot = new ArrayList<>(taskTemplates);
+        storageStatus.setText(savingStatus);
         storageStatus.setTextColor(palette.muted);
         storageExecutor.execute(() -> {
             Exception failure = null;
             try {
-                taskStore.save(snapshot);
+                taskStore.saveSnapshot(snapshot, templateSnapshot);
             } catch (Exception exception) {
                 failure = exception;
             }
@@ -2238,11 +2259,138 @@ public final class MainActivity extends Activity {
 
     private static final class AttachmentQuotaException extends Exception { }
 
+    private void showTaskTemplatesDialog() {
+        if (!canEdit()) {
+            showToast("Encrypted task storage is unavailable; templates are paused.");
+            return;
+        }
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(dp(18), dp(4), dp(18), dp(4));
+        if (taskTemplates.isEmpty()) {
+            TextView empty = text("No templates saved yet. Create one here, or save a template from task details. Templates stay encrypted on this device.",
+                    14, palette.muted, Typeface.NORMAL);
+            rows.addView(empty, bottomMargin(dp(8)));
+        }
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.addView(rows);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Task templates")
+                .setView(scroll)
+                .setNegativeButton("Close", null)
+                .setNeutralButton("New template", null)
+                .create();
+        for (TaskTemplate template : new ArrayList<>(taskTemplates)) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(9), dp(7), dp(5), dp(7));
+            row.setBackground(shape(palette.background, 10, palette.line));
+            LinearLayout copy = new LinearLayout(this);
+            copy.setOrientation(LinearLayout.VERTICAL);
+            copy.addView(text(template.title, 14, palette.text, Typeface.BOLD));
+            String due = template.dueDate == null ? "No due date" : dateButtonLabel(template.dueDate);
+            copy.addView(text(due + " · " + template.priority.toUpperCase(Locale.ROOT) + " priority",
+                    12, palette.muted, Typeface.NORMAL));
+            row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            Button use = compactButton("Use", false);
+            use.setContentDescription("Review and edit " + template.title + " before creating a task");
+            use.setOnClickListener(view -> {
+                dialog.dismiss();
+                showTaskEditorFromTemplate(template);
+            });
+            row.addView(use, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+            Button remove = compactButton("Remove", false);
+            remove.setContentDescription("Remove the " + template.title + " task template");
+            LinearLayout.LayoutParams removeParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+            removeParams.leftMargin = dp(4);
+            row.addView(remove, removeParams);
+            remove.setOnClickListener(view -> new AlertDialog.Builder(this)
+                    .setTitle("Remove template?")
+                    .setMessage("Remove \"" + template.title + "\" from this device? Existing tasks will not change.")
+                    .setNegativeButton("Keep", null)
+                    .setPositiveButton("Remove", (confirm, which) -> {
+                        removeTaskTemplate(template.id);
+                        dialog.dismiss();
+                        showTaskTemplatesDialog();
+                    })
+                    .show());
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rowParams.bottomMargin = dp(7);
+            rows.addView(row, rowParams);
+        }
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                .setOnClickListener(view -> {
+                    dialog.dismiss();
+                    showNewTemplateEditor();
+                }));
+        dialog.show();
+        if (dialog.getWindow() != null) dialog.getWindow().setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.min(dp(480), dp(120 + taskTemplates.size() * 88)));
+    }
+
+    private void removeTaskTemplate(String id) {
+        for (int index = 0; index < taskTemplates.size(); index++) {
+            if (taskTemplates.get(index).id.equals(id)) {
+                taskTemplates.remove(index);
+                render();
+                saveTasksAsync("Saving encrypted templates…");
+                showToast("Template removed. Existing tasks are unchanged.");
+                return;
+            }
+        }
+    }
+
+    private boolean saveTaskTemplate(String title, String dueDate, String priority,
+                                     EditText titleInput, TextView validation) {
+        if (!canEdit()) {
+            showToast("Encrypted task storage is unavailable; templates are paused.");
+            return false;
+        }
+        if (taskTemplates.size() >= TaskTemplateLogic.MAX_TEMPLATES) {
+            validation.setText("You can save up to 100 templates. Remove one before adding another.");
+            validation.setVisibility(View.VISIBLE);
+            return false;
+        }
+        try {
+            taskTemplates.add(TaskTemplateLogic.create(title, dueDate, priority));
+            render();
+            saveTasksAsync("Saving encrypted templates…");
+            showToast("Template saved on this device. No task was created.");
+            return true;
+        } catch (IllegalArgumentException exception) {
+            validation.setText(exception.getMessage());
+            validation.setVisibility(View.VISIBLE);
+            titleInput.setError(exception.getMessage());
+            titleInput.requestFocus();
+            return false;
+        }
+    }
+
     private void showTaskEditor(Task editing) {
-        showTaskEditor(editing, "");
+        showTaskEditor(editing, "", editing == null ? null : editing.dueDate,
+                editing == null ? "medium" : editing.priority, null, false);
     }
 
     private void showTaskEditor(Task editing, String draftTitle) {
+        showTaskEditor(editing, draftTitle, editing == null ? null : editing.dueDate,
+                editing == null ? "medium" : editing.priority, null, false);
+    }
+
+    private void showTaskEditorFromTemplate(TaskTemplate template) {
+        showTaskEditor(null, template.title, template.dueDate, template.priority, template, false);
+    }
+
+    private void showNewTemplateEditor() {
+        showTaskEditor(null, "", null, "medium", null, true);
+    }
+
+    private void showTaskEditor(Task editing, String draftTitle, String initialDueDate,
+                                String initialPriority, TaskTemplate sourceTemplate, boolean templateOnly) {
         if (webMode) return;
         if (!canEdit()) {
             showToast("Encrypted task storage is unavailable; edits are paused.");
@@ -2267,7 +2415,7 @@ public final class MainActivity extends Activity {
         fieldLabel.setLetterSpacing(0.08f);
         form.addView(fieldLabel, bottomMargin(dp(4)));
 
-        final String[] selectedDate = { editing == null ? null : editing.dueDate };
+        final String[] selectedDate = { initialDueDate };
         LinearLayout dateActions = new LinearLayout(this);
         dateActions.setGravity(Gravity.CENTER_VERTICAL);
         Button dateButton = compactButton(dateButtonLabel(selectedDate[0]), false);
@@ -2307,7 +2455,7 @@ public final class MainActivity extends Activity {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         prioritySpinner.setAdapter(adapter);
         prioritySpinner.setMinimumHeight(dp(48));
-        prioritySpinner.setSelection(priorityIndex(editing == null ? "medium" : editing.priority));
+        prioritySpinner.setSelection(priorityIndex(initialPriority));
         form.addView(prioritySpinner, bottomMargin(dp(8)));
 
         TextView validation = text("Please enter a task title.", 12, palette.danger, Typeface.NORMAL);
@@ -2317,12 +2465,17 @@ public final class MainActivity extends Activity {
         ScrollView formScroll = new ScrollView(this);
         formScroll.setFillViewport(false);
         formScroll.addView(form);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(editing == null ? "Add task details" : "Edit task")
+        AlertDialog.Builder editorBuilder = new AlertDialog.Builder(this)
+                .setTitle(templateOnly ? "New task template"
+                        : sourceTemplate != null ? "Review task from template"
+                        : editing == null ? "Add task details" : "Edit task")
                 .setView(formScroll)
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton(editing == null ? "Add task" : "Save changes", null)
-                .create();
+                .setPositiveButton(templateOnly ? "Save template"
+                        : editing != null ? "Save changes"
+                        : sourceTemplate != null ? "Create task" : "Add task", null);
+        if (!templateOnly) editorBuilder.setNeutralButton("Save as template", null);
+        AlertDialog dialog = editorBuilder.create();
         dialog.setOnShowListener(ignored -> {
             Button saveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
             saveButton.setOnClickListener(view -> {
@@ -2334,23 +2487,53 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 String priority = priorityValue(prioritySpinner.getSelectedItemPosition());
+                if (templateOnly) {
+                    if (saveTaskTemplate(normalized, selectedDate[0], priority, titleInput, validation)) {
+                        dialog.dismiss();
+                    }
+                    return;
+                }
                 try {
                     if (editing == null) {
-                        tasks.add(TaskLogic.create(normalized, selectedDate[0], priority));
-                        quickCaptureInput.setText("");
-                        captureFeedback.setText("Task added. You can edit it later in your list.");
+                        tasks.add(sourceTemplate == null
+                                ? TaskLogic.create(normalized, selectedDate[0], priority)
+                                : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate[0], priority));
+                        if (sourceTemplate == null) quickCaptureInput.setText("");
+                        captureFeedback.setText(sourceTemplate == null
+                                ? "Task added. You can edit it later in your list."
+                                : "Task created from the reviewed template. You can edit it later in your list.");
                     } else {
                         replaceTask(TaskLogic.update(editing, normalized, selectedDate[0], priority));
                     }
                     dialog.dismiss();
                     render();
                     saveTasksAsync();
-                    showToast(editing == null ? "Task added." : "Task updated.");
+                    showToast(editing == null
+                            ? sourceTemplate == null ? "Task added." : "Task created from template."
+                            : "Task updated.");
                 } catch (IllegalArgumentException exception) {
                     validation.setText(exception.getMessage());
                     validation.setVisibility(View.VISIBLE);
                 }
             });
+            if (!templateOnly) {
+                Button saveTemplateButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+                saveTemplateButton.setOnClickListener(view -> {
+                    String normalized = titleInput.getText() == null
+                            ? "" : titleInput.getText().toString().trim();
+                    if (normalized.isEmpty()) {
+                        validation.setText("Please enter a task title.");
+                        validation.setVisibility(View.VISIBLE);
+                        titleInput.setError("Enter a task title");
+                        titleInput.requestFocus();
+                        return;
+                    }
+                    String priority = priorityValue(prioritySpinner.getSelectedItemPosition());
+                    if (saveTaskTemplate(normalized, selectedDate[0], priority, titleInput, validation)) {
+                        dialog.dismiss();
+                    }
+                });
+            }
         });
         dialog.show();
         if (dialog.getWindow() != null) {

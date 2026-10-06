@@ -26,7 +26,10 @@ assert any(not task["completed"] for task in fixture["tasks"]), "fixture should 
 
 store = (root / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
 assert "TaskSnapshotSchema.isSupportedVersion(version)" in store, "decoder must reject unsupported schema versions"
-assert "TaskSnapshotSchema.isVersionTwo(version)" in store, "only schema v2 may decode attachment metadata"
+assert "TaskSnapshotSchema.isVersionTwo(version)" in store and "TaskSnapshotSchema.isVersionThree(version)" in store, \
+    "schemas v2 and v3 decode attachment metadata"
+assert "TaskSnapshotSchema.isVersionThree(version)" in store, "schema v3 decodes template metadata"
+assert "TaskTemplateLogic.isValidList(templates)" in store, "template snapshots use shared validation"
 assert "TaskSnapshotSchema.requireString(object.opt(\"title\"))" in store, "legacy scalar decoding must remain strict"
 assert "if (!TaskLogic.isValidTaskList(result))" in store, "imported snapshots must pass shared task-list validation"
 
