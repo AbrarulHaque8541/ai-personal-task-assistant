@@ -281,6 +281,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.payload.outputs.tag }}
+          EXPECTED_TITLE: ${{ steps.payload.outputs.title }}
+          NOTES_PATH: ${{ steps.payload.outputs.notes_path }}
           APK_NAME: ${{ steps.payload.outputs.apk_name }}
           EXPECTED_SHA256: ${{ steps.payload.outputs.sha256 }}
           EXPECTED_SIZE: ${{ steps.payload.outputs.size_bytes }}
@@ -294,21 +296,45 @@ jobs:
 
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$error_log"; then
             release_exists=true
+            if ! jq -e --arg tag "$TAG" --arg title "$EXPECTED_TITLE" --rawfile notes "$NOTES_PATH" '
+              .tag_name == $tag
+              and .name == $title
+              and .draft == false
+              and .prerelease == true
+              and .body == $notes
+              and ((.assets | type) == "array")
+            ' "$release_json" >/dev/null; then
+              echo "Existing release metadata does not exactly match the verified payload (tag, title, notes, and published prerelease state); refusing to mutate the release. Use a new tag." >&2
+              exit 1
+            fi
             asset="$(jq -c --arg name "$APK_NAME" '[(.assets // [])[] | select(.name == $name)] | .[0] // empty' "$release_json")"
             if [[ -n "$asset" ]]; then
               existing_asset=true
+              asset_name="$(jq -r '.name // empty' <<< "$asset")"
               asset_size="$(jq -r '.size // empty' <<< "$asset")"
               asset_state="$(jq -r '.state // empty' <<< "$asset")"
-              [[ "$asset_state" == "uploaded" ]] || {
-                echo "Existing APK asset is not fully uploaded (state: $asset_state); refusing to mutate the release" >&2
+              asset_content_type="$(jq -r '.content_type // empty' <<< "$asset")"
+              asset_download_url="$(jq -r '.browser_download_url // empty' <<< "$asset")"
+              [[ "$asset_name" == "$APK_NAME" && "$asset_state" == "uploaded" ]] || {
+                echo "Existing APK asset metadata is invalid (name: $asset_name, state: $asset_state); refusing to mutate the release. Use a new tag." >&2
+                exit 1
+              }
+              [[ -n "$asset_content_type" && "$asset_download_url" == "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/"* ]] || {
+                echo "Existing APK asset download metadata cannot be verified; refusing to mutate the release. Use a new tag." >&2
                 exit 1
               }
 
               download_dir="$RUNNER_TEMP/existing-release-assets"
               mkdir -p "$download_dir"
-              gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME" --dir "$download_dir"
+              if ! gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME" --dir "$download_dir"; then
+                echo "Could not download the existing APK asset for verification; refusing to mutate the release. Use a new tag." >&2
+                exit 1
+              fi
               existing_apk="$download_dir/$APK_NAME"
-              test -s "$existing_apk"
+              if [[ ! -s "$existing_apk" ]]; then
+                echo "Existing APK asset download is missing or empty; refusing to mutate the release. Use a new tag." >&2
+                exit 1
+              fi
               downloaded_size="$(stat -c '%s' "$existing_apk")"
               downloaded_sha="$(sha256sum "$existing_apk" | awk '{print $1}')"
               [[ "$asset_size" == "$EXPECTED_SIZE" && "$downloaded_size" == "$EXPECTED_SIZE" ]] || {
@@ -325,7 +351,7 @@ jobs:
             release_exists=false
           else
             cat "$error_log" >&2
-            echo "Could not read same-tag release metadata; refusing to mutate the release." >&2
+            echo "Could not read same-tag release metadata; refusing to mutate the release. Use a new tag." >&2
             exit 1
           fi
 
@@ -346,18 +372,14 @@ jobs:
           title='${{ steps.payload.outputs.title }}'
           apk='${{ steps.payload.outputs.apk_path }}'
           notes='${{ steps.payload.outputs.notes_path }}'
-          if [[ "$RELEASE_EXISTS" == "true" ]]; then
-            if [[ "$EXISTING_ASSET" == "false" ]]; then
-              gh release upload "$tag" "$apk" --repo "$GITHUB_REPOSITORY"
-            elif [[ "$EXISTING_ASSET" != "true" ]]; then
-              echo "Invalid preflight result; refusing to mutate the release." >&2
-              exit 1
-            fi
-            gh release edit "$tag" --title "$title" --notes-file "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
+          if [[ "$RELEASE_EXISTS" == "true" && "$EXISTING_ASSET" == "true" ]]; then
+            echo "Existing release metadata and APK bytes match exactly; skipping all release writes."
+          elif [[ "$RELEASE_EXISTS" == "true" && "$EXISTING_ASSET" == "false" ]]; then
+            gh release upload "$tag" "$apk" --repo "$GITHUB_REPOSITORY"
           elif [[ "$RELEASE_EXISTS" == "false" && "$EXISTING_ASSET" == "false" ]]; then
             gh release create "$tag" "$apk" --title "$title" --notes-file "$notes" --prerelease --verify-tag --repo "$GITHUB_REPOSITORY"
           else
-            echo "Invalid preflight result; refusing to mutate the release." >&2
+            echo "Invalid preflight result; refusing to mutate the release. Use a new tag." >&2
             exit 1
           fi
 
