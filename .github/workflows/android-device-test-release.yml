@@ -1,0 +1,284 @@
+name: Android device-test release
+
+on:
+  push:
+    tags:
+      - 'v*-device-test.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-device-test-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-device-test:
+    name: Build and publish device-test APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Check out the exact release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Verify tag and source commit
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-device-test\.[0-9]+$ ]]; then
+            echo "Expected a vMAJOR.MINOR.PATCH-device-test.N tag; got $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          tag_ref="refs/tags/$GITHUB_REF_NAME"
+          build_commit="$(git rev-parse HEAD)"
+          tagged_commit="$(git rev-parse "${tag_ref}^{commit}")"
+          if [[ "$build_commit" != "$tagged_commit" ]]; then
+            echo "Checkout does not match the exact commit referenced by $tag_ref" >&2
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          app_version="${version%-device-test.*}"
+          {
+            echo "tag=$GITHUB_REF_NAME"
+            echo "build_commit=$build_commit"
+            echo "app_version=$app_version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-35, build-tools;35.0.0'
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x ./gradlew
+
+      - name: Run Android host regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./tools/check-v1-source.sh
+          sh ./tools/run-storage-recovery-tests.sh
+          sh ./tools/run-updater-picker-routing-tests.sh
+
+      - name: Build and run Android variant checks
+        run: >-
+          ./gradlew --no-daemon --stacktrace --console=plain
+          assembleGithubSideloadDebug
+          lintGithubSideloadDebug
+          lintPlayDebug
+          testGithubSideloadDebugUnitTest
+          testPlayDebugUnitTest
+          compileGithubSideloadDebugAndroidTestJavaWithJavac
+          compilePlayDebugAndroidTestJavaWithJavac
+
+      - name: Verify APK and package metadata
+        id: apk
+        shell: bash
+        env:
+          TAG: ${{ steps.source.outputs.tag }}
+          BUILD_COMMIT: ${{ steps.source.outputs.build_commit }}
+          EXPECTED_VERSION: ${{ steps.source.outputs.app_version }}
+        run: |
+          set -euo pipefail
+          source_apk="app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          test -s "$source_apk"
+          apk_name="Daymark-device-test-${TAG}.apk"
+          apk_path="$RUNNER_TEMP/$apk_name"
+          cp "$source_apk" "$apk_path"
+          test -s "$apk_path"
+          unzip -tqq "$apk_path"
+
+          application_id="$(apkanalyzer manifest application-id "$apk_path")"
+          version_name="$(apkanalyzer manifest version-name "$apk_path")"
+          version_code="$(apkanalyzer manifest version-code "$apk_path")"
+          min_sdk="$(apkanalyzer manifest min-sdk "$apk_path")"
+          target_sdk="$(apkanalyzer manifest target-sdk "$apk_path")"
+          [[ "$application_id" == "com.cue.daymark" ]]
+          [[ "$version_name" == "$EXPECTED_VERSION" ]]
+          [[ "$min_sdk" == "26" ]]
+          [[ "$target_sdk" == "35" ]]
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$sdk_root" ]]; then
+            echo "Android SDK root is not available from the runner." >&2
+            exit 1
+          fi
+          apksigner="$sdk_root/build-tools/35.0.0/apksigner"
+          test -x "$apksigner"
+          "$apksigner" verify "$apk_path"
+          apk_size="$(stat -c '%s' "$apk_path")"
+          [[ "$apk_size" -gt 0 ]]
+          apk_sha256="$(sha256sum "$apk_path" | awk '{print $1}')"
+          {
+            echo "apk_name=$apk_name"
+            echo "apk_path=$apk_path"
+            echo "apk_size=$apk_size"
+            echo "apk_sha256=$apk_sha256"
+            echo "application_id=$application_id"
+            echo "version_name=$version_name"
+            echo "version_code=$version_code"
+            echo "min_sdk=$min_sdk"
+            echo "target_sdk=$target_sdk"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "APK: $apk_name"
+            echo "SHA-256: $apk_sha256"
+            echo "Size: $apk_size bytes"
+            echo "Build commit: $BUILD_COMMIT"
+            echo "Application ID: $application_id"
+            echo "Version: $version_name (versionCode $version_code; release tag $TAG)"
+            echo "Min SDK: $min_sdk"
+            echo "Target SDK: $target_sdk"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate release notes from tagged history
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.source.outputs.tag }}
+          BUILD_COMMIT: ${{ steps.source.outputs.build_commit }}
+          APK_NAME: ${{ steps.apk.outputs.apk_name }}
+          APK_SIZE: ${{ steps.apk.outputs.apk_size }}
+          APK_SHA256: ${{ steps.apk.outputs.apk_sha256 }}
+          APPLICATION_ID: ${{ steps.apk.outputs.application_id }}
+          VERSION_NAME: ${{ steps.apk.outputs.version_name }}
+          VERSION_CODE: ${{ steps.apk.outputs.version_code }}
+          MIN_SDK: ${{ steps.apk.outputs.min_sdk }}
+          TARGET_SDK: ${{ steps.apk.outputs.target_sdk }}
+        run: |
+          set -euo pipefail
+          changes_file="$RUNNER_TEMP/generated-changes.md"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            --field "tag_name=$TAG" \
+            --field "target_commitish=$BUILD_COMMIT" \
+            --jq '.body // empty' > "$changes_file"
+          if [[ ! -s "$changes_file" ]]; then
+            git log -1 --format='- %s' "$BUILD_COMMIT" > "$changes_file"
+          fi
+
+          notes_file="$RUNNER_TEMP/daymark-release-notes.md"
+          {
+            echo "## Device-test build"
+            echo
+            echo "APK: $APK_NAME"
+            echo "SHA-256: $APK_SHA256"
+            echo "APK size: $APK_SIZE bytes"
+            echo "Build commit: $BUILD_COMMIT"
+            echo "Application ID: $APPLICATION_ID"
+            echo "Version: $VERSION_NAME (versionCode $VERSION_CODE; release tag $TAG)"
+            echo "Min SDK: $MIN_SDK"
+            echo "Target SDK: $TARGET_SDK"
+            echo
+            echo "### Included"
+            cat "$changes_file"
+            echo
+            echo "### Testing"
+            echo "- Android host regression checks passed in this workflow run."
+            echo "- Android Gradle build, lint, unit-test, and instrumentation-compilation checks passed in this workflow run."
+            echo
+            echo "### Device testing"
+            echo "- Physical-device/emulator installation testing has not been performed by this workflow. Installation is not verified."
+            echo
+            echo "### Signing"
+            echo "- DEBUG/device-test build signed by the Android Gradle debug configuration; not production signed."
+            echo
+            echo "### Known limitations"
+            echo "- No physical-device or emulator behavior is verified by this workflow."
+            echo "- This debug APK is not a production/update artifact."
+          } > "$notes_file"
+          echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update prerelease and upload APK asset
+        id: upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.source.outputs.tag }}
+          BUILD_COMMIT: ${{ steps.source.outputs.build_commit }}
+          APK_NAME: ${{ steps.apk.outputs.apk_name }}
+          APK_PATH: ${{ steps.apk.outputs.apk_path }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+          test -s "$APK_PATH"
+          notes_body="$(cat "$NOTES_FILE")"
+          release_path="repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}"
+          release_json="$(gh api "$release_path" 2>/dev/null || true)"
+
+          if [[ -n "$release_json" ]]; then
+            release_id="$(jq -r '.id' <<< "$release_json")"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              --field "name=Daymark ${TAG} (Device Test)" \
+              --field "body=${notes_body}" \
+              --field "prerelease=true" > /dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
+              --field "tag_name=${TAG}" \
+              --field "target_commitish=${BUILD_COMMIT}" \
+              --field "name=Daymark ${TAG} (Device Test)" \
+              --field "body=${notes_body}" \
+              --field "draft=true" \
+              --field "prerelease=true" > /dev/null
+          fi
+
+          gh release upload "$TAG" "${APK_PATH}#${APK_NAME}" --clobber
+
+          release_json="$(gh api "$release_path")"
+          release_id="$(jq -r '.id' <<< "$release_json")"
+          jq -e --arg name "$APK_NAME" --argjson size "$(stat -c '%s' "$APK_PATH")" \
+            '.prerelease == true and (.assets | length >= 1) and any(.assets[]; .name == $name and .size == $size and .size > 0 and .state == "uploaded" and (.content_type | length > 0) and (.browser_download_url | startswith("https://github.com/")))' \
+            <<< "$release_json" > /dev/null
+
+          if [[ "$(jq -r '.draft' <<< "$release_json")" == "true" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              --field "draft=false" > /dev/null
+          fi
+
+          release_json="$(gh api "$release_path")"
+          jq -e --arg name "$APK_NAME" --argjson size "$(stat -c '%s' "$APK_PATH")" \
+            '.draft == false and .prerelease == true and (.assets | length >= 1) and any(.assets[]; .name == $name and .size == $size and .size > 0 and .state == "uploaded" and (.content_type | length > 0) and (.browser_download_url | startswith("https://github.com/")))' \
+            <<< "$release_json" > /dev/null
+
+          asset_json="$(jq -c --arg name "$APK_NAME" '.assets[] | select(.name == $name)' <<< "$release_json")"
+          download_url="$(jq -r '.browser_download_url' <<< "$asset_json")"
+          asset_content_type="$(jq -r '.content_type' <<< "$asset_json")"
+          asset_size="$(jq -r '.size' <<< "$asset_json")"
+          asset_state="$(jq -r '.state' <<< "$asset_json")"
+          downloaded_apk="$RUNNER_TEMP/verified-release-asset.apk"
+          curl --fail --location --silent --show-error --retry 5 --retry-all-errors --retry-delay 2 --retry-connrefused \
+            "$download_url" --output "$downloaded_apk"
+          test -s "$downloaded_apk"
+          downloaded_size="$(stat -c '%s' "$downloaded_apk")"
+          downloaded_sha256="$(sha256sum "$downloaded_apk" | awk '{print $1}')"
+          expected_size="$(stat -c '%s' "$APK_PATH")"
+          expected_sha256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+          [[ "$downloaded_size" == "$expected_size" ]]
+          [[ "$downloaded_sha256" == "$expected_sha256" ]]
+
+          release_url="$(jq -r '.html_url' <<< "$release_json")"
+          {
+            echo "Release API verification: PASS"
+            echo "Release URL: $release_url"
+            echo "Asset: $APK_NAME"
+            echo "Asset size: $asset_size bytes"
+            echo "Asset content type: $asset_content_type"
+            echo "Asset state: $asset_state"
+            echo "Browser download URL: $download_url"
+            echo "Downloaded asset size/hash match the build output."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "release_url=$release_url" >> "$GITHUB_OUTPUT"
+          echo "browser_download_url=$download_url" >> "$GITHUB_OUTPUT"
