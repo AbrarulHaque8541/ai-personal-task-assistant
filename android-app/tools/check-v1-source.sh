@@ -269,6 +269,22 @@ assert attachment_callback.count("postActivityCallback(() -> {") == 2
 assert "postActivityCallback(() -> {" in remove_callback
 browser_listener = activity.split("new DaymarkWebView.Listener()", 1)[1].split("browserWebView.setBackgroundColor", 1)[0]
 assert browser_listener.count("if (!isActivityCallbackCurrent()) return;") == 6
+cleanup_callback = activity.split("private void reconcileAndReleasePortableImportSelection", 1)[1].split(
+    "private void releasePersistablePortableReadGrant", 1
+)[0]
+assert "postActivityCallback(() -> {" in cleanup_callback, "portable-import cleanup completion must use the lifecycle gate"
+assert "mainHandler.post(" not in cleanup_callback, "portable-import cleanup must not bypass the lifecycle gate"
+restore_worker = activity.split("private void beginPortableRestore", 1)[1].split("private String portableRestoreFailure", 1)[0]
+restore_completion = restore_worker.split("List<Task> result = restored;", 1)[1].split("            });\n            });", 1)[0]
+assert "postActivityCallback(() -> {" in restore_completion, "restore completion must use the lifecycle gate"
+assert "activePortableImportUri = null;" in restore_completion
+assert "activePortableImportOperationToken = null;" in restore_completion
+assert "if (isFinishing() || isDestroyed()) return;" not in restore_completion, \
+    "Activity-owned restore state must not be mutated before a late lifecycle check"
+save_start = activity.split("private void startVerifiedApkSave", 1)[1].split("private void discardVerifiedUpdate", 1)[0]
+assert "postActivityCallback(() -> showSaveFailureChoices" in save_start, \
+    "queued APK save-failure UI must use the lifecycle gate"
+assert "mainHandler.post(() -> showSaveFailureChoices" not in save_start
 
 updater_dir = main / "java/com/cue/daymark/updater"
 updater_sources = "\n".join(path.read_text(encoding="utf-8") for path in updater_dir.glob("*.java"))

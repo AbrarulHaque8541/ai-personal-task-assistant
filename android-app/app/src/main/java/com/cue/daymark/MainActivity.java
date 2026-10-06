@@ -2859,10 +2859,10 @@ public final class MainActivity extends Activity {
                     failure = cleanupFailure;
                 }
                 Exception result = failure;
-                mainHandler.post(() -> {
+                postActivityCallback(() -> {
                     if (result == null) {
                         portableImportCleanupActive = false;
-                    } else if (!isFinishing() && !isDestroyed()) {
+                    } else {
                         showToast("Temporary backup access could not be safely released. Reopen Daymark to recover it.");
                     }
                 });
@@ -3009,13 +3009,12 @@ public final class MainActivity extends Activity {
                 }
             List<Task> result = restored;
             Exception error = failure;
-            mainHandler.post(() -> {
+            postActivityCallback(() -> {
                 if (activePortableImportUri == selected
                         && selectedOperation.operationToken.equals(activePortableImportOperationToken)) {
                     activePortableImportUri = null;
                     activePortableImportOperationToken = null;
                 }
-                if (isFinishing() || isDestroyed()) return;
                 PortableBackupCodec.clear(pendingRecoveryKey);
                 pendingRecoveryKey = null;
                 pendingPortableImportUri = null;
@@ -3575,7 +3574,7 @@ public final class MainActivity extends Activity {
             pendingVerifiedApk = null;
             pendingVerifiedRelease = null;
             pendingSaveTransaction = null;
-            mainHandler.post(() -> showSaveFailureChoices(release, verifiedApk,
+            postActivityCallback(() -> showSaveFailureChoices(release, verifiedApk,
                     "Android's file picker could not be opened. The verified update remains in app-private storage."));
         }
     }
