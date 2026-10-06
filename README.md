@@ -2,55 +2,48 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-brightgreen.svg)](SECURITY.md)
-[![Zero Data Loss](https://img.shields.io/badge/Data%20Safety-Zero%20Loss%20Guaranteed-success.svg)](android-app/STORAGE_RECOVERY.md)
-[![Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20%28API%2026--35%29-orange.svg)](android-app/)
+[![Storage Recovery](https://img.shields.io/badge/Data%20Safety-Documented%20recovery%20limits-blue.svg)](android-app/STORAGE_RECOVERY.md)
+[![Android](https://img.shields.io/badge/Android-Min%20SDK%2026%20%7C%20device%20tests%20pending-orange.svg)](android-app/)
 
-## 📥 Download Daymark
+## Release status
 
-> **Note:** The current build is a **Debug / device-untested** build. It is not a signed production release. Clicking the link below downloads the APK file directly from this repository (a raw file link — your browser will download it, nothing opens on GitHub).
+There is no current signed production APK. The published [v1.0.0 GitHub Release](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0) has no attached binary asset; its release notes still point to a mutable `raw/main` debug APK. The repository contains historical debug APKs, not release-qualified downloads. The direct download link is intentionally omitted until a current signed artifact has been built, verified, and attached through the release process.
 
-**Debug APK (Android 8.0+, API 26–35):** [Download Daymark debug APK (v1.0.0)](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/raw/main/artifacts/Daymark-debug-device-untested-api35.apk)
+The Android project declares `minSdk = 26`, `compileSdk = 35`, and `targetSdk = 35`. This is configuration evidence, not proof of runtime behavior on Android 8 or newer devices. The app has not been qualified for production or Google Play submission; ordinary new Play submissions and updates must target API 36 or higher from August 31, 2026 ([official requirement](https://developer.android.com/google/play/requirements/target-sdk)).
 
-This review improved normal-light theme text contrast and added source-derived contrast regression checks. `sh android-app/tools/check-v1-source.sh` passes 25 JDK-only task-logic assertions, 70 updater-policy assertions, and 80 parser/transport/download assertions, plus manifest/privacy, accessibility, and contrast checks. The production downloader/core accepts a streamed APK of exactly 104,857,600 bytes and rejects an actual body of 104,857,601 bytes without allocating the body in memory. These host/source checks do not replace device UI or TalkBack testing.
+At the verified main baseline `66476cb49a6caa9a43b65db39912ee397b6e6857`, `npm test` passed 8 tests; the Android source/host checks and storage, attachment, and portable-backup suites also passed. GitHub Actions passed its Android debug-variant build on that commit. These checks do not establish device behavior, Play readiness, or a production release. See the [documentation truth audit](DOCUMENTATION_TRUTH_AUDIT.md) for exact commands, counts, limitations, and artifact inventory.
 
-The GitHub sideload updater is implemented in source but fail-closed: only that flavor declares `INTERNET` and `ACCESS_NETWORK_STATE`; the shared and Play manifests declare none. It checks GitHub in the foreground, requires a per-download choice (Wi-Fi only by default or explicitly allow mobile data), downloads only after confirmation, and verifies size, hash, package, version, minimum Android version, and signer before offering user-directed file saving. Before transfer, it stores validated release expectations in app-private `noBackupFilesDir`; the APK is staged and retained there, avoiding Android's evictable cache and backup. A digest-addressed `.verified.apk` is revalidated against the stored digest, package/version/minimum SDK, installed signer, and pinned publisher signer before it is offered after restart. Startup cleanup removes only abandoned `.partial` staging files. One verified APK can retain up to 100 MiB until the user explicitly discards it; there is no automatic expiry, a new updater download cannot replace a retained update, and saving a user-selected copy does not silently remove the retained copy. Daymark has no `REQUEST_INSTALL_PACKAGES`, `PackageInstaller` session, install-source Settings shortcut, or app-launched installer; the user must open the saved APK from Files and accept any Android-controlled approval. The production signer/release gate remains closed, with an empty signer pin and no production key or stable release. Offline API 35 Java/resource compilation succeeds with Gradle 8.10.2; no APK was assembled or retained in this updater task. Device-side signer parsing, file-picker/open behavior, Android confirmation UI, and install tests remain unverified. Debug signing is not suitable for production updates, and no release artifact exists to measure against the `<15 MB` target.
+Updater code is present but disabled by a closed publisher gate. The common manifest declares `INTERNET`; the `githubSideload` flavor additionally declares `ACCESS_NETWORK_STATE`, while Play does not. If enabled after release signing is configured, the flow verifies an artifact and saves it to a user-selected document; it does not launch Android's installer. Real APK parsing, provider behavior, Android approval screens, and installation remain untested on a device.
 
-The shared and Play manifests declare no permissions; the GitHub sideload flavor declares only `INTERNET` and `ACCESS_NETWORK_STATE`. Source tests use fake clients, transport, and signer metadata: they caused no live request, APK download, installation, or task/history upload. They do not exercise Android’s real APK signer parser, file picker, source-approval Settings, or system install confirmation. ADB found no connected device; installation, launch, offline runtime, TalkBack, locale, and real-device text-size/contrast checks remain unverified. This task uses only already-installed SDK components and produces no APK. GitHub has no stable release APK or production signing setup. See [`android-app/README.md`](android-app/README.md), [`android-app/V1_ACCEPTANCE.md`](android-app/V1_ACCEPTANCE.md), and [`android-app/ANDROID_SOURCES.md`](android-app/ANDROID_SOURCES.md) for prerequisites and release gates.
-
-- Size: 51,831 bytes · SHA-256: `e80428836bcac97ea6655cf9d865a7eb7b9d7bbcd7c4f6859c308d056b533724` (verified)
-- Release page: [Releases → v1.0.0](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0) — its notes carry the same direct download link; the release has **no attached binary asset** yet.
-- Updating from an older Daymark APK is safe — your existing tasks, encrypted storage, and Keystore keys are preserved (same package `com.cue.daymark`, same signing key).
+Source-level checks use local test fixtures and do not perform live updater traffic or test Android's APK signer parser, document picker, or system installation UI. No device/emulator was available for install, launch, airplane-mode, TalkBack, locale, or visual text-size checks. Do not assume an APK update will preserve data unless package and signing identity match; export a portable backup before a device or release transition.
 
 ---
 
 
 
-**Daymark** is a privacy-first, offline-ready personal task assistant with end-to-end encrypted local storage, portable encrypted backups, task attachments, and release-integrity verification.
+**Daymark** is a local-first task app with encrypted app-private task storage, user-selected attachments, portable encrypted backups, and source-level release-integrity checks. Browser access is a separate, user-initiated online feature.
 
 ---
 
 ## Key Features & Architecture
 
 ### 1. Privacy-First Encrypted Storage
-- **Keystore Hardware-Backed Encryption:** Uses Android Keystore with AES-256-GCM authenticated encryption for all tasks and metadata (`EncryptedTaskStore`).
-- **Zero Plaintext at Rest:** User tasks, notes, and attachments are encrypted before hitting flash storage.
-- **AtomicFile Recovery Semantics:** Write operations use fail-safe staged writes with fallback `.bak` restoration. A crash during a write never corrupts previous valid state.
+- Task snapshots use AES-GCM with a key held by Android Keystore. Hardware-backed protection depends on device support and is not guaranteed on every device.
+- Task and attachment payloads are encrypted in app-private storage. This describes stored files, not data in memory or an absolute security guarantee.
+- Writes use Android `AtomicFile`, explicit failure handling, and read-back checks. These measures reduce interruption risk; they do not guarantee zero data loss or durability across every device or sudden power loss.
 
-### 2. Zero-Data-Loss In-Place Updates
-- When updating from an existing APK to a new release:
-  - App-private data directory (`/data/user/0/com.cue.daymark/`) and Keystore keys are preserved across installations with matching signature and package name.
-  - Automatic migration reconciles legacy records safely without deleting user notes.
-  - Portable AES encrypted backups allow exporting data safely before major device transitions.
+### 2. Data recovery and updates
+- Task storage fails closed on unreadable or unavailable data instead of treating it as an ordinary empty list. This is not a promise that all failures are recoverable.
+- Portable backups use a generated recovery key, AES-GCM, and HKDF-SHA-256. Passphrase-based backup is not implemented; device/provider restore behavior remains untested.
+- Android normally preserves app data only when an update is accepted for the same package and signing identity. Daymark has no production signing setup, so update continuity has not been demonstrated.
 
 ### 3. Encrypted Task Attachments & Portable Backups
-- Encrypted file attachments stored locally via `AttachmentBlobStore`.
-- Portable encrypted backup files (`.daymark-backup`) protected by user passphrase (PBKDF2 + AES-GCM).
+- Attachments use encrypted app-private payloads and explicit Android file selection; device-provider behavior remains untested.
+- Portable `.dmbackup` export/import is present in `main`; it is explicitly user-triggered and protected by a generated 32-byte recovery key, not a passphrase.
 
 ### 4. Release-Gated In-App Updater
-- Checks GitHub Releases securely via HTTPS.
-- Displays download sizes, version changes, and prompts the user (*Update Now* vs *Update Later*).
-- Allows choosing between Wi-Fi and Mobile Data.
-- Validates cryptographic SHA-256 integrity of the downloaded APK before triggering system package installer.
+- Source contains a release-gated GitHub updater, but the publisher gate is currently disabled and no production signer is configured.
+- The implemented handoff saves a verified APK to a user-selected document for manual opening; Daymark does not start Android's installer.
 
 ---
 
@@ -63,18 +56,18 @@ ai-personal-task-assistant/
 │   │   ├── bug_report.md
 │   │   └── feature_request.md
 │   └── pull_request_template.md
-├── android-app/                 # Native Android application (Java, API 26-35)
+├── android-app/                 # Native Android app (minSdk 26; runtime qualification pending)
 │   ├── app/src/main/java/com/cue/daymark/
 │   │   ├── EncryptedTaskStore.java       # Atomic AES-256-GCM storage
 │   │   ├── EncryptedBlobStore.java       # Raw payload encryption
 │   │   ├── AttachmentBlobStore.java      # Task attachment storage
-│   │   ├── PortableBackupManager.java    # User-passphrase encrypted backups
+│   │   ├── PortableBackupManager.java    # Generated-recovery-key encrypted backups
 │   │   ├── updater/                      # Release client, SHA-256 verifier, SAF saver
 │   │   └── MainActivity.java             # Main user interface & lifecycle
 │   ├── tools/                           # Offline smoke test suites & verification scripts
 │   ├── ANDROID_DESIGN.md                # System design & threat model
 │   └── STORAGE_RECOVERY.md              # Recovery & migration guarantees
-├── src/                         # Web prototype companion
+├── app.js                       # Web prototype companion
 ├── CONTRIBUTING.md              # Development & contribution guidelines
 ├── CODE_OF_CONDUCT.md           # Community code of conduct
 ├── SECURITY.md                  # Vulnerability reporting & security policy
@@ -85,7 +78,7 @@ ai-personal-task-assistant/
 
 ## Verification & Testing
 
-Daymark maintains a strict offline test runner to guarantee stability:
+Available host and source-level checks exercise selected logic and file-format policies; they are not a guarantee of stability or device acceptance:
 
 ```bash
 # Web prototype tests

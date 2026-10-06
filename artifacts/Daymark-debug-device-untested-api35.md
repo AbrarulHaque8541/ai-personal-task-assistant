@@ -1,5 +1,7 @@
 # Daymark API 35 debug APK — device-untested
 
+**Historical artifact notice:** this APK was built from source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`, not current `main`. It is retained as repository history only; do not treat it as a current or production download. The `v1.0.0` GitHub Release has no attached APK asset.
+
 **Status: debug / device-untested.** This is a locally built debug APK for testing, not a release artifact.
 
 - Package: `com.cue.daymark` (`1.0.0`), minimum API 26, target/compile API 35.

@@ -8,8 +8,8 @@ All contributors are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## Core Principles
 
-1. **Zero Data Loss Guarantee:** No update, migration, or refactoring may delete, corrupt, or expose user tasks or attachment data.
-2. **Offline-First & Privacy First:** Daymark functions completely offline without requiring mandatory third-party accounts.
+1. **Data integrity:** Treat preserving user tasks and attachment data as a design priority. Document failure boundaries, test interrupted writes/migrations and recovery paths, and never promise that all data loss or corruption is impossible.
+2. **Offline-first and privacy-conscious:** Keep core task operations designed for local/offline use without mandatory third-party accounts; distinguish this from optional browser or updater network activity and verify offline behavior on supported devices.
 3. **Strict Integrity:** Any remote feature (such as the in-app updater) must cryptographically verify downloads against expected hashes before prompting the user.
 
 ## Pull Request Guidelines
