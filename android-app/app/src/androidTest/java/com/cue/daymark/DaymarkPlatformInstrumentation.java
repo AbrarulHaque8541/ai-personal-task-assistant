@@ -82,6 +82,7 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
             EncryptedTaskStore legacyStore = new EncryptedTaskStore(snapshotFile, keys);
             List<Task> imported = legacyStore.load();
             check(imported.size() == 2, "schema-v1 snapshot imports as two tasks");
+            check(legacyStore.loadTemplates().isEmpty(), "legacy schema-v1 snapshot has no templates");
             check(imported.get(0).attachments.isEmpty() && imported.get(1).attachments.isEmpty(),
                     "schema-v1 tasks import with no synthesized attachment references");
             assertTask(imported.get(0), "2e8cae89-3dd4-43e3-82d4-51a8df643501",
@@ -91,16 +92,42 @@ public final class DaymarkPlatformInstrumentation extends Instrumentation {
                     "Read Crème & save notes", null, "low", true,
                     "2026-10-04T08:00:00Z", "2026-10-05T14:02:59Z");
 
-            legacyStore.save(imported);
+            TaskTemplate savedTemplate = TaskTemplateLogic.create("Weekly review", "2026-10-12", "high");
+            legacyStore.saveSnapshot(imported, Collections.singletonList(savedTemplate));
+            legacyStore.save(imported); // Ordinary task saves must preserve already-saved templates.
             byte[] migratedJson = loadRawEncryptedSnapshot(snapshotFile, keys);
             JSONObject migrated = new JSONObject(new String(migratedJson, StandardCharsets.UTF_8));
-            check(migrated.optInt("version", -1) == 2, "the first successful save strictly migrates to schema v2");
+            check(migrated.optInt("version", -1) == 3, "the first successful save migrates to template-capable schema v3");
+            check(migrated.optJSONArray("templates") != null && migrated.optJSONArray("templates").length() == 1,
+                    "schema-v3 encrypted snapshot contains the saved template");
             EncryptedTaskStore reloadedStore = new EncryptedTaskStore(snapshotFile, keys);
             List<Task> roundTrip = reloadedStore.load();
             check(roundTrip.size() == imported.size(), "migrated snapshot reopens with the same task count");
             for (int index = 0; index < imported.size(); index++) {
                 assertTaskEquals(imported.get(index), roundTrip.get(index));
             }
+            List<TaskTemplate> templateRoundTrip = reloadedStore.loadTemplates();
+            check(templateRoundTrip.size() == 1 && savedTemplate.id.equals(templateRoundTrip.get(0).id)
+                            && savedTemplate.title.equals(templateRoundTrip.get(0).title)
+                            && savedTemplate.dueDate.equals(templateRoundTrip.get(0).dueDate)
+                            && savedTemplate.priority.equals(templateRoundTrip.get(0).priority),
+                    "template fields survive the encrypted store close/reopen round trip");
+
+            JSONObject v2Document = new JSONObject(new String(legacyJson, StandardCharsets.UTF_8));
+            v2Document.put("version", 2);
+            org.json.JSONArray v2Tasks = v2Document.optJSONArray("tasks");
+            for (int index = 0; index < v2Tasks.length(); index++) {
+                v2Tasks.getJSONObject(index).put("attachments", new org.json.JSONArray());
+            }
+            File v2File = new File(root, "schema-v2.enc");
+            saveRawEncryptedSnapshot(v2File, keys, v2Document.toString().getBytes(StandardCharsets.UTF_8));
+            EncryptedTaskStore v2Store = new EncryptedTaskStore(v2File, keys);
+            check(v2Store.load().size() == 2 && v2Store.loadTemplates().isEmpty(),
+                    "schema-v2 attachment snapshots remain readable without invented templates");
+            v2Store.saveSnapshot(v2Store.load(), Collections.singletonList(savedTemplate));
+            check(new JSONObject(new String(loadRawEncryptedSnapshot(v2File, keys), StandardCharsets.UTF_8))
+                            .optInt("version", -1) == 3,
+                    "the schema-v2 attachment snapshot migrates to v3 on a successful template save");
 
             File corruptSchemaFile = new File(root, "corrupt-schema.enc");
             byte[] malformedJson = ("{\"version\":1,\"tasks\":[{\"id\":\"2e8cae89-3dd4-43e3-82d4-51a8df643501\","

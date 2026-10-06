@@ -16,6 +16,8 @@ public final class TaskLogicSmoke {
     public static void main(String[] args) {
         datesAreStrictAndDateOnly();
         CRUDKeepsStableIdentityAndTimestamps();
+        templatesValidateAndCreateFreshTasks();
+        templateListsRejectDuplicatesAndExcess();
         storedTaskSnapshotsMatchWriterRules();
         snapshotSchemaRejectsCoercibleWrongTypes();
         attachmentMetadataAndQuotasAreStrict();
@@ -45,6 +47,51 @@ public final class TaskLogicSmoke {
         expectIllegalArgument(() -> TaskLogic.create("Bad date", "2026-02-30", "medium"), "invalid due date rejected");
     }
 
+    private static void templatesValidateAndCreateFreshTasks() {
+        TaskTemplate template = TaskTemplateLogic.create("  Weekly review  ", "2026-10-12", "high");
+        check("Weekly review".equals(template.title), "template titles are trimmed before saving");
+        check(TaskTemplateLogic.isValid(template), "new task template has valid bounded fields");
+        Task task = TaskTemplateLogic.instantiate(template);
+        check(TaskLogic.isValid(task), "template converts to a valid task draft");
+        check(!template.id.equals(task.id), "template reuse creates a fresh task identity");
+        check("Weekly review".equals(task.title) && "2026-10-12".equals(task.dueDate)
+                        && "high".equals(task.priority),
+                "template values populate the editable task fields");
+        check(!task.completed && task.attachments.isEmpty(),
+                "template-created task starts open and does not copy attachments");
+        Task edited = TaskTemplateLogic.instantiate(template, "Weekly review for launch", null, "medium");
+        check(TaskLogic.isValid(edited) && !edited.id.equals(template.id)
+                        && "Weekly review for launch".equals(edited.title) && edited.dueDate == null,
+                "populated task values remain editable before task creation");
+        expectIllegalArgument(() -> TaskTemplateLogic.create("  ", null, "medium"),
+                "blank template title rejected");
+        expectIllegalArgument(() -> TaskTemplateLogic.create("x".repeat(161), null, "medium"),
+                "overlong template title rejected");
+        expectIllegalArgument(() -> TaskTemplateLogic.create("Review", "2026-02-30", "medium"),
+                "invalid template date rejected");
+        expectIllegalArgument(() -> TaskTemplateLogic.create("Review", null, "urgent"),
+                "invalid template priority rejected");
+        check(TaskSnapshotSchema.isVersionThree(3) && TaskSnapshotSchema.isSupportedVersion(1)
+                        && TaskSnapshotSchema.isSupportedVersion(2),
+                "new template schema is supported without dropping v1 or v2 readers");
+        check(!TaskSnapshotSchema.isSupportedVersion(4), "unknown future snapshot schema is rejected");
+    }
+
+    private static void templateListsRejectDuplicatesAndExcess() {
+        TaskTemplate one = TaskTemplateLogic.create("First", null, "medium");
+        TaskTemplate two = TaskTemplateLogic.create("Second", null, "low");
+        check(TaskTemplateLogic.isValidList(Arrays.asList(one, two)),
+                "distinct templates form a valid stored template list");
+        check(!TaskTemplateLogic.isValidList(Arrays.asList(one,
+                        new TaskTemplate(one.id, "Duplicate ID", null, "medium"))),
+                "duplicate template IDs are rejected before persistence");
+        List<TaskTemplate> overLimit = new ArrayList<>();
+        for (int index = 0; index <= TaskTemplateLogic.MAX_TEMPLATES; index++) {
+            overLimit.add(TaskTemplateLogic.create("Template " + index, null, "medium"));
+        }
+        check(!TaskTemplateLogic.isValidList(overLimit), "template storage count is bounded");
+    }
+
     private static void storedTaskSnapshotsMatchWriterRules() {
         Task first = task("one", "Write report", null, "medium", false, 1);
         Task second = task("two", "Call dentist", null, "low", false, 2);
@@ -63,7 +110,7 @@ public final class TaskLogicSmoke {
         check(TaskSnapshotSchema.isVersionOne(1), "numeric schema version one is accepted");
         check(TaskSnapshotSchema.isVersionTwo(2) && TaskSnapshotSchema.isSupportedVersion(1),
                 "v1 remains readable and v2 is supported for attachment metadata");
-        check(!TaskSnapshotSchema.isSupportedVersion(3), "unknown future schema versions are rejected");
+        check(!TaskSnapshotSchema.isSupportedVersion(4), "unknown future schema versions are rejected");
         check(!TaskSnapshotSchema.isVersionOne("1"), "string schema version is not coerced to a number");
         check(!TaskSnapshotSchema.isVersionOne(1.5), "fractional schema version is not truncated to one");
         check("title".equals(TaskSnapshotSchema.requireString("title")), "actual JSON string values are accepted");

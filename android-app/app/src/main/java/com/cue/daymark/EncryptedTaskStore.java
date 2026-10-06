@@ -28,6 +28,7 @@ final class EncryptedTaskStore {
     private static final Object FILE_ACCESS_LOCK = new Object();
     private final EncryptedBlobStore encryptedStore;
     private boolean loadReady;
+    private List<TaskTemplate> loadedTemplates = new ArrayList<>();
 
     EncryptedTaskStore(Context context) {
         this(new File(context.getFilesDir(), "tasks.enc"), new AndroidKeyAccess());
@@ -43,31 +44,48 @@ final class EncryptedTaskStore {
     List<Task> load() throws Exception {
         synchronized (FILE_ACCESS_LOCK) {
             loadReady = false;
+            loadedTemplates = new ArrayList<>();
             EncryptedBlobStore.LoadResult loaded = encryptedStore.load();
             if (loaded.isEmpty()) {
                 loadReady = true;
                 return new ArrayList<>();
             }
             try {
-                List<Task> tasks = decodeTasks(loaded.plaintext());
+                Snapshot snapshot = decodeSnapshot(loaded.plaintext());
+                loadedTemplates = new ArrayList<>(snapshot.templates);
                 loadReady = true;
-                return tasks;
+                return new ArrayList<>(snapshot.tasks);
             } catch (Exception exception) {
                 throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.CORRUPT_DATA,
-                        "Saved task data is malformed or unsupported.", exception);
+                        "Saved task or template data is malformed or unsupported.", exception);
             }
         }
     }
 
+    List<TaskTemplate> loadTemplates() throws Exception {
+        synchronized (FILE_ACCESS_LOCK) {
+            if (!loadReady) {
+                throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
+                        "Task storage must load successfully before templates can be read.");
+            }
+            return new ArrayList<>(loadedTemplates);
+        }
+    }
+
     void save(List<Task> tasks) throws Exception {
+        saveSnapshot(tasks, loadedTemplates);
+    }
+
+    void saveSnapshot(List<Task> tasks, List<TaskTemplate> templates) throws Exception {
         synchronized (FILE_ACCESS_LOCK) {
             if (!loadReady) {
                 throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
                         "Task storage must load successfully before it can be changed.");
             }
-            byte[] plaintext = encodeTasks(tasks);
+            byte[] plaintext = encodeSnapshot(tasks, templates);
             try {
                 encryptedStore.save(plaintext);
+                loadedTemplates = new ArrayList<>(templates);
             } catch (EncryptedBlobStore.StorageException exception) {
                 loadReady = false;
                 throw exception;
@@ -209,9 +227,9 @@ final class EncryptedTaskStore {
         }
     }
 
-    private byte[] encodeTasks(List<Task> tasks) throws JSONException {
-        if (!TaskLogic.isValidTaskList(tasks)) {
-            throw new JSONException("Refusing to save invalid or duplicate task data.");
+    private byte[] encodeSnapshot(List<Task> tasks, List<TaskTemplate> templates) throws JSONException {
+        if (!TaskLogic.isValidTaskList(tasks) || !TaskTemplateLogic.isValidList(templates)) {
+            throw new JSONException("Refusing to save invalid or duplicate task or template data.");
         }
         JSONArray array = new JSONArray();
         for (Task task : tasks) {
@@ -235,19 +253,30 @@ final class EncryptedTaskStore {
             object.put("attachments", attachments);
             array.put(object);
         }
+        JSONArray templateArray = new JSONArray();
+        for (TaskTemplate template : templates) {
+            JSONObject object = new JSONObject();
+            object.put("id", template.id);
+            object.put("title", template.title);
+            object.put("dueDate", template.dueDate == null ? JSONObject.NULL : template.dueDate);
+            object.put("priority", template.priority);
+            templateArray.put(object);
+        }
         JSONObject document = new JSONObject();
-        document.put("version", 2);
+        document.put("version", 3);
         document.put("tasks", array);
+        document.put("templates", templateArray);
         return document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    private List<Task> decodeTasks(byte[] plaintext) throws Exception {
+    private Snapshot decodeSnapshot(byte[] plaintext) throws Exception {
         JSONObject document = new JSONObject(new String(plaintext, java.nio.charset.StandardCharsets.UTF_8));
         Object version = document.opt("version");
         if (!TaskSnapshotSchema.isSupportedVersion(version)) {
             throw new IOException("Task data schema version is not supported.");
         }
-        boolean hasAttachments = TaskSnapshotSchema.isVersionTwo(version);
+        boolean hasAttachments = TaskSnapshotSchema.isVersionTwo(version)
+                || TaskSnapshotSchema.isVersionThree(version);
         JSONArray array = document.optJSONArray("tasks");
         if (array == null) throw new IOException("Task data is missing its task list.");
 
@@ -286,7 +315,32 @@ final class EncryptedTaskStore {
             result.add(task);
         }
         if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");
-        return result;
+        List<TaskTemplate> templates = new ArrayList<>();
+        if (TaskSnapshotSchema.isVersionThree(version)) {
+            JSONArray templateArray = document.optJSONArray("templates");
+            if (templateArray == null) throw new IOException("Task template list is malformed.");
+            for (int index = 0; index < templateArray.length(); index++) {
+                JSONObject object = templateArray.optJSONObject(index);
+                if (object == null) throw new IOException("Task template record is malformed.");
+                Object dueValue = object.opt("dueDate");
+                String dueDate = dueValue == JSONObject.NULL ? null : TaskSnapshotSchema.requireString(dueValue);
+                templates.add(new TaskTemplate(TaskSnapshotSchema.requireString(object.opt("id")),
+                        TaskSnapshotSchema.requireString(object.opt("title")), dueDate,
+                        TaskSnapshotSchema.requireString(object.opt("priority"))));
+            }
+        }
+        if (!TaskTemplateLogic.isValidList(templates)) throw new IOException("Task template data failed validation.");
+        return new Snapshot(result, templates);
+    }
+
+    private static final class Snapshot {
+        final List<Task> tasks;
+        final List<TaskTemplate> templates;
+
+        Snapshot(List<Task> tasks, List<TaskTemplate> templates) {
+            this.tasks = new ArrayList<>(tasks);
+            this.templates = new ArrayList<>(templates);
+        }
     }
 
 }
