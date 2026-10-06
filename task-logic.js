@@ -23,6 +23,7 @@
     return Boolean(task && typeof task === 'object'
       && typeof task.id === 'string' && task.id.length > 0
       && typeof task.title === 'string' && task.title.trim().length > 0
+      && task.title.trim().length <= 160
       && (task.dueDate === null || isDateOnly(task.dueDate))
       && ['low', 'medium', 'high'].includes(task.priority)
       && typeof task.completed === 'boolean'
@@ -56,12 +57,12 @@
   }
 
   function getFilteredTasks(tasks, filter, query, today) {
-    const normalizedQuery = String(query || '').trim().toLocaleLowerCase();
+    const normalizedQuery = String(query || '').trim().toLowerCase();
     return tasks.filter((task) => {
       if (filter === 'completed' && !task.completed) return false;
       if (filter === 'today' && task.dueDate !== today) return false;
       if (filter === 'upcoming' && !(task.dueDate !== null && task.dueDate > today)) return false;
-      return !normalizedQuery || task.title.toLocaleLowerCase().includes(normalizedQuery);
+      return !normalizedQuery || task.title.toLowerCase().includes(normalizedQuery);
     }).slice().sort(compareTasks);
   }
 

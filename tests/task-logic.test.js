@@ -19,10 +19,12 @@ test('date-only values reject impossible calendar dates', () => {
   assert.equal(logic.isDateOnly('2026-1-01'), false);
 });
 
-test('task records must contain valid fields', () => {
+test('task records must contain valid fields and enforce 160-character title limit', () => {
   const valid = task('one', 'Review notes', { dueDate: TODAY, priority: 'high' });
   assert.equal(logic.isValidTask(valid), true);
   assert.equal(logic.isValidTask({ ...valid, title: '   ' }), false);
+  assert.equal(logic.isValidTask({ ...valid, title: 'a'.repeat(160) }), true);
+  assert.equal(logic.isValidTask({ ...valid, title: 'a'.repeat(161) }), false);
   assert.equal(logic.isValidTask({ ...valid, dueDate: '2026-02-29' }), false);
   assert.equal(logic.isValidTask({ ...valid, priority: 'urgent' }), false);
 });
@@ -52,7 +54,7 @@ test('date filters preserve completed tasks while Completed collects them all', 
   assert.equal(logic.getFilteredTasks(tasks, 'all', '', TODAY).length, tasks.length);
 });
 
-test('title search is case-insensitive and composes with the active filter', () => {
+test('title search is case-insensitive and composes with the active filter using deterministic lowercasing', () => {
   const tasks = [
     task('a', 'Review Project Plan', { dueDate: TODAY }),
     task('b', 'Review project budget', { dueDate: '2026-10-12' }),
@@ -61,6 +63,9 @@ test('title search is case-insensitive and composes with the active filter', () 
   assert.deepEqual(logic.getFilteredTasks(tasks, 'all', '  PROJECT ', TODAY).map((item) => item.id), ['a', 'b']);
   assert.deepEqual(logic.getFilteredTasks(tasks, 'today', 'project', TODAY).map((item) => item.id), ['a']);
   assert.deepEqual(logic.getFilteredTasks(tasks, 'all', 'missing', TODAY), []);
+  // Deterministic search match verification
+  const mixedTasks = [task('d', 'TURKISH İNDEX', { dueDate: TODAY })];
+  assert.deepEqual(logic.getFilteredTasks(mixedTasks, 'all', 'İNDEX', TODAY).map((item) => item.id), ['d']);
 });
 
 test('demo suggestions are deterministic, prioritize nearest dates, and skip completed tasks', () => {
