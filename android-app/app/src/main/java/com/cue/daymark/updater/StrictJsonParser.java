@@ -56,11 +56,14 @@ final class StrictJsonParser {
     static long requiredLong(Map<String, Object> values, String key) {
         Object value = values.get(key);
         if (!(value instanceof BigInteger)) throw new IllegalArgumentException(key + " must be an integer.");
-        try {
-            return ((BigInteger) value).longValueExact();
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException(key + " is outside the supported integer range.", exception);
+        BigInteger integer = (BigInteger) value;
+        // BigInteger.longValueExact() requires API level 31, but the app supports API 26;
+        // on older devices it would throw NoSuchMethodError. bitLength() <= 63 holds exactly
+        // when the value fits in a signed long, so this conversion is exact on all APIs.
+        if (integer.bitLength() > 63) {
+            throw new IllegalArgumentException(key + " is outside the supported integer range.");
         }
+        return integer.longValue();
     }
 
     static int requiredInt(Map<String, Object> values, String key) {

@@ -52,6 +52,14 @@ build = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
 deps = build.split("dependencies {", 1)[1].split("}", 1)[0]
 assert "implementation(" not in deps and "api(" not in deps and "runtimeOnly(" not in deps, "unexpected app runtime dependency"
 activity = (main / "java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+sideload_network = (root / "app/src/githubSideload/java/com/cue/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
+play_network = (root / "app/src/play/java/com/cue/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
+assert "UpdaterNetworkAccess.isWifiConnected(getApplicationContext())" in activity, \
+    "the updater must use the flavor-specific network-access boundary"
+assert "getActiveNetwork()" in sideload_network and "getNetworkCapabilities(" in sideload_network
+assert "ConnectivityManager" not in play_network and "getActiveNetwork()" not in play_network
+assert re.search(r"static boolean isWifiConnected\(Context context\)\s*\{\s*return false;\s*\}", play_network), \
+    "Play updater network access must fail closed without adding a permission"
 export_flow = activity.split("private void beginPortableExport", 1)[1].split("private void writePortableExport", 1)[0]
 assert "new Intent(Intent.ACTION_CREATE_DOCUMENT)" in export_flow, "portable export must create a new SAF document"
 assert "Intent.ACTION_OPEN_DOCUMENT" not in export_flow, "portable export must not select an existing document for overwrite"
