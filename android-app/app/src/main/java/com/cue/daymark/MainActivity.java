@@ -19,9 +19,6 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -39,7 +36,6 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
-import android.provider.DocumentsContract;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.Button;
@@ -99,7 +95,7 @@ public final class MainActivity extends Activity {
     private static final String HIGH_CONTRAST_KEY = "high_contrast";
     private static final String LAST_UPDATE_CHECK_KEY = "updater.last_check_at";
     private static final String DISMISSED_UPDATE_TAG_KEY = "updater.dismissed_release_tag";
-    private static final int REQUEST_SAVE_VERIFIED_APK = 7343;
+    private static final int REQUEST_SAVE_VERIFIED_APK = 7344;
     private static final String PENDING_SAVE_STATE_KEY = "updater.pending_save_transaction.v1";
     private static final String BROWSER_PREFERENCES = "daymark.browser.local.v1";
     private static final String BROWSER_HISTORY_KEY = "history_urls";
@@ -366,7 +362,6 @@ public final class MainActivity extends Activity {
     }
 
     @Override
-    @Override
     protected void onSaveInstanceState(Bundle outState) {
         if (pendingAttachmentTaskId != null) {
             outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
@@ -405,53 +400,54 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_SAVE_VERIFIED_APK) return;
-        PendingSaveTransaction transaction = pendingSaveTransaction;
-        File verifiedApk = pendingVerifiedApk;
-        UpdaterCore.Release release = pendingVerifiedRelease;
-        pendingSaveTransaction = null;
-        pendingVerifiedApk = null;
-        pendingVerifiedRelease = null;
-        if (transaction == null || verifiedApk == null || release == null
-                || !transaction.isValidFor(release)) {
-            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                cleanStalePickerResult(data.getData());
-            }
-            recoverPendingVerifiedUpdate();
-            return;
-        }
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            if (!recoverPendingVerifiedUpdate()) {
-                showSaveFailureChoices(release, verifiedApk,
-                        "No save location was selected. The verified update remains in app-private storage.");
-            }
-            return;
-        }
-        Uri destination = data.getData();
-        verifiedSaveRunning = true;
-        updaterExecutor.execute(() -> {
-            boolean saved = false;
-            String failureMessage = null;
-            try {
-                revalidatePendingSaveTransaction(transaction, verifiedApk, release);
-                copyVerifiedApkToDocument(verifiedApk, destination, release, transaction);
-                saved = true;
-            } catch (Exception exception) {
-                failureMessage = "The verified APK could not be saved safely. The source is revalidated before copying, the destination is read back before finalization, and interrupted copies use a .daymark-incomplete marker; if the provider failed during finalization, check the chosen folder before retrying. The verified source remains in app-private storage for retry or explicit discard.";
-            }
-            final boolean savedResult = saved;
-            final String saveFailure = failureMessage;
-            mainHandler.post(() -> {
-                verifiedSaveRunning = false;
-                if (!activityResumed || isFinishing() || isDestroyed()) return;
-                if (savedResult) {
-                    showInfo("Verified APK saved", "A copy was saved to your chosen location. Daymark did not open an installer or install it. The verified app-private copy remains available until you explicitly discard it; open the saved copy yourself from Files if you choose to continue.");
-                } else {
-                    showSaveFailureChoices(release, verifiedApk, saveFailure);
+        if (requestCode == REQUEST_SAVE_VERIFIED_APK) {
+            PendingSaveTransaction transaction = pendingSaveTransaction;
+            File verifiedApk = pendingVerifiedApk;
+            UpdaterCore.Release release = pendingVerifiedRelease;
+            pendingSaveTransaction = null;
+            pendingVerifiedApk = null;
+            pendingVerifiedRelease = null;
+            if (transaction == null || verifiedApk == null || release == null
+                    || !transaction.isValidFor(release)) {
+                if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                    cleanStalePickerResult(data.getData());
                 }
+                recoverPendingVerifiedUpdate();
+                return;
+            }
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+                if (!recoverPendingVerifiedUpdate()) {
+                    showSaveFailureChoices(release, verifiedApk,
+                            "No save location was selected. The verified update remains in app-private storage.");
+                }
+                return;
+            }
+            Uri destination = data.getData();
+            verifiedSaveRunning = true;
+            updaterExecutor.execute(() -> {
+                boolean saved = false;
+                String failureMessage = null;
+                try {
+                    revalidatePendingSaveTransaction(transaction, verifiedApk, release);
+                    copyVerifiedApkToDocument(verifiedApk, destination, release, transaction);
+                    saved = true;
+                } catch (Exception exception) {
+                    failureMessage = "The verified APK could not be saved safely. The source is revalidated before copying, the destination is read back before finalization, and interrupted copies use a .daymark-incomplete marker; if the provider failed during finalization, check the chosen folder before retrying. The verified source remains in app-private storage for retry or explicit discard.";
+                }
+                final boolean savedResult = saved;
+                final String saveFailure = failureMessage;
+                mainHandler.post(() -> {
+                    verifiedSaveRunning = false;
+                    if (!activityResumed || isFinishing() || isDestroyed()) return;
+                    if (savedResult) {
+                        showInfo("Verified APK saved", "A copy was saved to your chosen location. Daymark did not open an installer or install it. The verified app-private copy remains available until you explicitly discard it; open the saved copy yourself from Files if you choose to continue.");
+                    } else {
+                        showSaveFailureChoices(release, verifiedApk, saveFailure);
+                    }
+                });
             });
-        });
-    }
+            return;
+        }
         if (requestCode == REQUEST_ATTACH_DOCUMENT) {
             String taskId = pendingAttachmentTaskId;
             pendingAttachmentTaskId = null;
@@ -3349,7 +3345,7 @@ public final class MainActivity extends Activity {
         }
         updateTransferRunning = true;
         GitHubApkDownloader downloader = new GitHubApkDownloader(getApplicationContext(), allowMobileData,
-                () -> isWifiConnected(getApplicationContext()));
+                () -> UpdaterNetworkAccess.isWifiConnected(getApplicationContext()));
         activeUpdateDownloader = downloader;
         updateDownloadDialog = new AlertDialog.Builder(this)
                 .setTitle("Downloading and verifying")
@@ -3408,14 +3404,6 @@ public final class MainActivity extends Activity {
                 }
             });
         });
-    }
-
-    private static boolean isWifiConnected(Context context) {
-        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (manager == null) return false;
-        Network activeNetwork = manager.getActiveNetwork();
-        NetworkCapabilities capabilities = activeNetwork == null ? null : manager.getNetworkCapabilities(activeNetwork);
-        return capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
     }
 
     /** Revalidate any retained artifact before offering it; no verified cache file is swept at startup. */

@@ -38,6 +38,7 @@ public final class GitHubTransportSmoke {
 
     public static void main(String[] args) throws Exception {
         parserAcceptsRealisticReleaseFixture();
+        parserConvertsSignedLongBoundariesExactly();
         parserIgnoresOnlyWellFormedUnstableReleaseFlags();
         parserRejectsMalformedOrAmbiguousMetadata();
         releaseClientConstrainsRequestAndClassifiesResponses();
@@ -75,6 +76,13 @@ public final class GitHubTransportSmoke {
         check(assetUrl().equals(release.assetUrl), "release asset URL is parsed");
         UpdaterCore.CheckResult result = UpdaterCore.check(() -> release, UpdaterCore.APPLICATION_ID, 1L);
         check(result.status == UpdaterCore.CheckStatus.UPDATE_AVAILABLE, "parsed fixture reaches normal stable-version policy");
+    }
+
+    private static void parserConvertsSignedLongBoundariesExactly() {
+        check(parsedLong("9223372036854775807") == Long.MAX_VALUE, "maximum signed long parses exactly");
+        check(parsedLong("-9223372036854775808") == Long.MIN_VALUE, "minimum signed long parses exactly");
+        expectInvalidLong("9223372036854775808", "positive signed-long overflow is rejected");
+        expectInvalidLong("-9223372036854775809", "negative signed-long overflow is rejected");
     }
 
     private static void parserIgnoresOnlyWellFormedUnstableReleaseFlags() throws Exception {
@@ -718,6 +726,22 @@ public final class GitHubTransportSmoke {
     private static void expectDownloadFailure(UpdaterCore.Failure failure, CheckedOperation operation,
             String message) throws Exception {
         expectFailure(failure, operation, message);
+    }
+
+    private static long parsedLong(String rawNumber) {
+        Map<String, Object> object = StrictJsonParser.object(
+                StrictJsonParser.parse("{\"value\":" + rawNumber + "}"), "root");
+        return StrictJsonParser.requiredLong(object, "value");
+    }
+
+    private static void expectInvalidLong(String rawNumber, String message) {
+        assertions++;
+        try {
+            parsedLong(rawNumber);
+            throw new AssertionError(message + " (out-of-range integer was accepted)");
+        } catch (IllegalArgumentException expected) {
+            // Expected: the parser must reject values that do not fit in a signed long.
+        }
     }
 
     private static void check(boolean condition, String message) {
