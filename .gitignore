@@ -4,3 +4,10 @@ dist/
 *.log
 .DS_Store
 Thumbs.db
+
+# Build outputs must never be committed at the repository root.
+# Installable builds are produced by .github/workflows/android-release-assets.yml
+# and attached to GitHub Releases, not stored in the source tree.
+*.apk
+*.aab
+*.rom

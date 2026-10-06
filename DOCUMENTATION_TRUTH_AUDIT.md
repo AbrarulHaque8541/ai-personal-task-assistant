@@ -24,12 +24,15 @@ The ten-feature roadmap, general model/provider integration, fully autonomous wo
 
 ## Repository and release artifacts
 
-The repository tracks two different debug APKs; neither is a production release. Their sizes and SHA-256 digests are:
+The repository tracks one historical debug APK. It is not a production release:
 
-- `Daymark-debug-untested.apk` — 45,031 bytes; `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`.
 - `artifacts/Daymark-debug-device-untested-api35.apk` — 51,831 bytes; `e80428836bcac97ea6655cf9d865a7eb7b9d7bbcd7c4f6859c308d056b533724`.
 
-They are distinct binaries, not duplicate byte-for-byte copies. The second artifact's metadata records source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`; it is historical and device-untested. Local Gradle output in the audit workspace also contained Git-ignored debug APKs and unsigned release APKs under `android-app/app/build/outputs`; these were generated build output, not tracked release assets. No temporary `.tmp`/`.temp` files were found. No generated build output or APK was added, removed, or published by this change.
+Its metadata records source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`; it is historical and device-untested. It is retained deliberately: the published `v1.0.0` release notes link to this exact path as a mutable `raw/main` download, and that release has **zero attached assets**, so deleting the file would break the release's only working download pointer. Restoring that pointer would require editing the release, which repository cleanup must not do.
+
+A second debug APK, `Daymark-debug-untested.apk` (45,031 bytes; `4688733df7429495ae9b74504bc71b703186d7f366b02611e535e57a59afaa71`), was previously tracked at the repository root and has been removed as a stale build artifact. No workflow, Gradle file, script, README, or release referenced it, and it was a distinct binary rather than a byte-for-byte copy of the retained artifact. It remains recoverable from Git history.
+
+Local Gradle output in the audit workspace also contained Git-ignored debug APKs and unsigned release APKs under `android-app/app/build/outputs`; these were generated build output, not tracked release assets, and were not touched. No temporary `.tmp`/`.temp` files were found. No APK was published, and no GitHub Release or tag was modified.
 
 The published [v1.0.0 release](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0) has **zero attached assets**. Its release notes link to a mutable `raw/main` artifact and state that the release has no attached asset. That raw pointer remains on the external release page by instruction; the repository README download pointer was removed so users are not directed to the stale debug binary. The release page/tag/assets were not edited.
 
