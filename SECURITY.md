@@ -2,10 +2,12 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+The table describes security-report triage policy, not a claim that a production release has been qualified. As of 2026-10-06, `v1.0.0` is published without an attached APK asset, and no signed production APK is established.
+
+| Version | Security-report status |
+| ------- | ---------------------- |
+| Current `main` / unreleased source | Best-effort triage |
+| `v1.0.0` debug release metadata | Report accepted; no production-support or device-qualification claim |
 
 ## Reporting a Vulnerability
 
