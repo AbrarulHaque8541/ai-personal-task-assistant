@@ -4,11 +4,15 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
 sh ./tools/run-window-insets-tests.sh
+sh ./tools/run-diagnostics-tests.sh
+sh ./tools/run-web-mode-tests.sh
+sh ./tools/run-text-scale-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-merged-manifests.py "$ROOT"
+python3 ./tools/check-slsa-workflow.py
 python3 - "$ROOT" <<'PY'
 import pathlib
 import re
@@ -383,7 +387,7 @@ print("PASS V1 source policy: main declares INTERNET for browser; Play inherits 
 print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
 print("PASS permission/updater policy: release-only sideload gates, exact publisher verification, explicit install-choice boundary, Play permission isolation, task data isolated")
 print("PASS V1 source policy: no permissions/network, background components or runtime dependencies; only the non-exported grant-only attachment provider; no optional media/model binaries")
-print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
+print("PASS accessibility/localization source checks: scalable text, labeled controls, live status, explicit English-only scope, device-locale dates")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
 print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
