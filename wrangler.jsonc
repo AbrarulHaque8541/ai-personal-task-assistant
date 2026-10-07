@@ -5,8 +5,13 @@
   "observability": {
     "enabled": true
   },
+  // #43: publish ONLY the built web prototype, never the repository root.
+  // `npm run build:web` copies the allowlisted static files into ./public-web,
+  // and `npm run check:web-assets` fails the CI job if that directory ever
+  // contains an APK, .github/, android-app/, artifacts/, source/tests, docs or
+  // credentials. Publishing "." is what previously risked serving non-web files.
   "assets": {
-    "directory": "."
+    "directory": "./public-web"
   },
   "compatibility_flags": [
     "nodejs_compat"

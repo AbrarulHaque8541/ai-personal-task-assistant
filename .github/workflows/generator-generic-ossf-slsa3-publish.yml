@@ -1,66 +1,111 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# SLSA v3 provenance for Daymark's REAL release artifacts.
+#
+# History (#21): this file was the untouched OpenSSF generic-generator template. Its
+# "Build artifacts" step literally ran `echo "artifact1" > artifact1`, so the workflow
+# generated valid, verifiable SLSA v3 provenance for two meaningless text files and attached
+# it to releases. That quietly undermined the supply-chain story the rest of the repository
+# takes seriously (SHA-256-pinned updater, verified APK digests, fail-closed publishing).
+#
+# It now builds the same production artifacts the release pipeline ships, and the provenance
+# subjects are the SHA-256 digests of those real files, so a verifier's subject digests match
+# the digest the updater checks. If no real artifact is produced the job fails instead of
+# attesting placeholder content.
+#
+# Production signing is mandatory for a release build (see android-app/app/build.gradle.kts):
+# a release variant is refused outright when the signing credentials are absent, so this
+# workflow fails closed rather than attesting an unsigned or debug-signed artifact.
+# Repository secrets required: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.
 
-# This workflow lets you generate SLSA provenance file for your project.
-# The generation satisfies level 3 for the provenance requirements - see https://slsa.dev/spec/v0.1/requirements
-# The project is an initiative of the OpenSSF (openssf.org) and is developed at
-# https://github.com/slsa-framework/slsa-github-generator.
-# The provenance file can be verified using https://github.com/slsa-framework/slsa-verifier.
-# For more information about SLSA and how it improves the supply-chain, visit slsa.dev.
+name: SLSA provenance
 
-name: SLSA generic generator
 on:
   workflow_dispatch:
   release:
     types: [created]
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build the real release artifacts
     runs-on: ubuntu-latest
     outputs:
       digests: ${{ steps.hash.outputs.digests }}
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the exact ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      # ========================================================
-      #
-      # Step 1: Build your artifacts.
-      #
-      # ========================================================
-      - name: Build artifacts
-        run: |
-            # These are some amazing artifacts.
-            echo "artifact1" > artifact1
-            echo "artifact2" > artifact2
+      - name: Set up JDK 17
+        uses: actions/setup-java@d7793b545071e98d581d3bf084a51c3213318a07 # v4.9.1
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
 
-      # ========================================================
-      #
-      # Step 2: Add a step to generate the provenance subjects
-      #         as shown below. Update the sha256 sum arguments
-      #         to include all binaries that you generate
-      #         provenance for.
-      #
-      # ========================================================
-      - name: Generate subject for provenance
-        id: hash
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+
+      - name: Restore the production keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "KEYSTORE_BASE64 is not configured; refusing to attest an unsigned release artifact." >&2
+            exit 1
+          fi
+          mkdir -p android-app/release
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android-app/release/daymark-release.jks
+          test -s android-app/release/daymark-release.jks
 
-          # List the artifacts the provenance will refer to.
-          files=$(ls artifact*)
-          # Generate the subjects (base64 encoded).
-          echo "hashes=$(sha256sum $files | base64 -w0)" >> "${GITHUB_OUTPUT}"
+      - name: Build the real release APK and AAB
+        working-directory: android-app
+        env:
+          RELEASE_STORE_FILE: ${{ github.workspace }}/android-app/release/daymark-release.jks
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleGithubSideloadRelease bundleGithubSideloadRelease
+
+      # The provenance subjects MUST be the digests of the artifacts actually built above.
+      # There is deliberately no `ls artifact*` placeholder list here.
+      - name: Generate the provenance subjects from the built artifacts
+        id: hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(
+            android-app/app/build/outputs/apk/githubSideload/release/*.apk
+            android-app/app/build/outputs/bundle/githubSideloadRelease/*.aab
+          )
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No real artifact was produced; refusing to generate provenance for placeholder files (#21)." >&2
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            test -s "$f" || { echo "Artifact $f is empty" >&2; exit 1; }
+          done
+          sha256sum "${files[@]}"
+          echo "hashes=$(sha256sum "${files[@]}" | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Remove the decoded keystore
+        if: always()
+        run: rm -f android-app/release/daymark-release.jks
 
   provenance:
+    name: Generate SLSA v3 provenance
     needs: [build]
     permissions:
-      actions: read   # To read the workflow path.
-      id-token: write # To sign the provenance.
-      contents: write # To add assets to a release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.4.0
+      actions: read   # read the reusable generator workflow path
+      id-token: write # sign the provenance with the workflow identity
+      contents: write # attach the provenance to the release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       base64-subjects: "${{ needs.build.outputs.digests }}"
-      upload-assets: true # Optional: Upload to a new release
+      upload-assets: true

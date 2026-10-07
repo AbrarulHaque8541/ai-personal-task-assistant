@@ -1,36 +1,65 @@
 name: Android CI
+
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: android-app
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-    - name: Run Android host regression checks
-      run: |
-        sh ./tools/check-v1-source.sh
-        sh ./tools/run-storage-recovery-tests.sh
-        sh ./tools/run-updater-picker-routing-tests.sh
-    - name: Build and verify debug variants
-      run: >-
-        ./gradlew assembleDebug
-        lintGithubSideloadDebug
-        lintPlayDebug
-        testGithubSideloadDebugUnitTest
-        testPlayDebugUnitTest
-        compileGithubSideloadDebugAndroidTestJavaWithJavac
-        compilePlayDebugAndroidTestJavaWithJavac
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@d7793b545071e98d581d3bf084a51c3213318a07 # v4.9.1
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Android host regression checks
+        run: |
+          sh ./tools/check-v1-source.sh
+          sh ./tools/run-storage-recovery-tests.sh
+          sh ./tools/run-updater-picker-routing-tests.sh
+
+      # #41 (34A): the release build must fail closed when signing credentials are absent.
+      # This asserts the contract itself, so it cannot silently regress to a debug-signed
+      # or unsigned production artifact.
+      - name: Verify release builds fail closed without signing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(./gradlew assembleGithubSideloadRelease --dry-run 2>&1 || true)"
+          printf '%s\n' "$output"
+          if ! printf '%s' "$output" | grep -q "Production release signing is not configured"; then
+            echo "::error::A release build without signing credentials did not fail closed." >&2
+            exit 1
+          fi
+
+      - name: Build and verify debug variants
+        run: >-
+          ./gradlew assembleDebug
+          lintGithubSideloadDebug
+          lintPlayDebug
+          testGithubSideloadDebugUnitTest
+          testPlayDebugUnitTest
+          compileGithubSideloadDebugAndroidTestJavaWithJavac
+          compilePlayDebugAndroidTestJavaWithJavac

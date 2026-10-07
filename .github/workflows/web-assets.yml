@@ -1,0 +1,33 @@
+name: Web deployment package
+
+# #43: prove the Cloudflare Workers static-asset package only ever contains the
+# intended web-prototype files. The job builds the package exactly as a deploy
+# would, then inspects it and fails if anything non-web is present. It does not
+# deploy, touch production configuration, or claim a live deployment.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-assets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build and inspect the deployment package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build the deployment package
+        run: node tools/build-web-assets.mjs
+
+      - name: Verify the deployment package is web-only
+        run: node tools/check-web-assets.mjs

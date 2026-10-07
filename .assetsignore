@@ -1,17 +1,41 @@
-# Only the web prototype should be published as static assets.
-# Everything below is source, tooling, or the Android project.
+# Defense in depth only (#43).
+#
+# The deployment package is now built into ./public-web by `npm run build:web`
+# and wrangler's assets.directory points there, so the repository root is never
+# published. This ignore file still enumerates everything that must never end up
+# in a deployment, so a future change of assets.directory cannot silently expose
+# source, tooling, the Android project, CI config, release binaries or docs.
+
 android-app/
+artifacts/
 tests/
+tools/
+.github/
 .git/
 .gitignore
 .assetsignore
 package.json
 package-lock.json
+bun.lock
 README.md
-wrangler.jsonc
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+PROJECT_PLAN.md
+DOCUMENTATION_TRUTH_AUDIT.md
+V1_ACCEPTANCE.md
+TASK_TEMPLATES.md
+LICENSE
 node_modules/
 .wrangler/
+public-web/
 dist/
+*.apk
+*.aab
+*.jks
+*.keystore
+.env
+.env.*
 *.log
 .DS_Store
 Thumbs.db

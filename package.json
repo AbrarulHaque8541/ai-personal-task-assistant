@@ -4,6 +4,8 @@
   "private": true,
   "description": "Daymark — local-first personal task manager, reference web prototype.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build:web": "node tools/build-web-assets.mjs",
+    "check:web-assets": "node tools/check-web-assets.mjs"
   }
 }
