@@ -1,0 +1,102 @@
+diff --git a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+index 5227818..3e21032 100644
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -84,6 +84,8 @@ public final class MainActivity extends Activity {
+     private static final int REQUEST_PORTABLE_EXPORT = 7342;
+     private static final int REQUEST_PORTABLE_IMPORT = 7343;
+     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
++    private static final String STATE_TASK_DRAFT = ComposerDraftPolicy.TASK_DRAFT_KEY;
++    private static final String STATE_WEB_QUERY = ComposerDraftPolicy.WEB_QUERY_KEY;
+     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
+     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
+     private static final String PREFERENCES = "daymark.preferences.v1";
+@@ -167,6 +169,7 @@ public final class MainActivity extends Activity {
+     private boolean suppressBrowserOnlineToggleListener;
+     private boolean suppressSafeBrowsingToggleListener;
+     private String taskDraft = "";
++    private String webQueryDraft = "";
+     private float textScale = 1.0f;
+     private SharedPreferences browserPreferences;
+     private BrowserAddress.SearchEngine searchEngine = BrowserAddress.SearchEngine.DUCKDUCKGO;
+@@ -263,6 +266,8 @@ public final class MainActivity extends Activity {
+                     pendingPortableImportNeedsRepick = true;
+                 }
+             }
++            taskDraft = ComposerDraftPolicy.restore(savedInstanceState.getString(STATE_TASK_DRAFT));
++            webQueryDraft = ComposerDraftPolicy.restore(savedInstanceState.getString(STATE_WEB_QUERY));
+         }
+         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
+         searchEngine = BrowserAddress.SearchEngine.fromName(
+@@ -381,6 +386,8 @@ public final class MainActivity extends Activity {
+         if (pendingAttachmentTaskId != null) {
+             outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
+         }
++        outState.putString(STATE_TASK_DRAFT, taskDraft);
++        outState.putString(STATE_WEB_QUERY, webQueryDraft);
+         PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
+         if (pendingSelection != null) {
+             try {
+@@ -713,6 +720,7 @@ public final class MainActivity extends Activity {
+         quickCaptureInput.setHintTextColor(palette.muted);
+         quickCaptureInput.setBackground(shape(palette.background, 10, palette.line));
+         card.addView(quickCaptureInput, bottomMargin(dp(9)));
++        quickCaptureInput.setText(ComposerDraftPolicy.textForMode(webMode, taskDraft, webQueryDraft));
+ 
+         taskActions = new LinearLayout(this);
+         taskActions.setOrientation(LinearLayout.VERTICAL);
+@@ -820,7 +828,9 @@ public final class MainActivity extends Activity {
+             @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) { }
+             @Override public void onTextChanged(CharSequence value, int start, int before, int count) { }
+             @Override public void afterTextChanged(Editable editable) {
+-                if (!webMode) taskDraft = editable == null ? "" : editable.toString();
++                String value = editable == null ? "" : editable.toString();
++                if (webMode) webQueryDraft = value;
++                else taskDraft = value;
+             }
+         });
+         return card;
+@@ -908,6 +918,7 @@ public final class MainActivity extends Activity {
+         button.setOnClickListener(view -> {
+             if (!webMode) return;
+             quickCaptureInput.setText(address);
++            webQueryDraft = address;
+             navigateBrowserTo(address);
+         });
+         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+@@ -1072,7 +1083,10 @@ public final class MainActivity extends Activity {
+     private void showBrowserHome() {
+         discardBrowserWebView();
+         if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+-        if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
++        if (quickCaptureInput != null && webMode) {
++            quickCaptureInput.setText("");
++            webQueryDraft = "";
++        }
+         if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
+         syncBrowserButtons();
+     }
+@@ -1115,6 +1129,7 @@ public final class MainActivity extends Activity {
+                 .setItems(entries, (whichDialog, selected) -> {
+                     if (selected < 0 || selected >= history.size()) return;
+                     quickCaptureInput.setText(history.get(selected));
++                    webQueryDraft = history.get(selected);
+                     navigateBrowserTo(history.get(selected));
+                 })
+                 .setNeutralButton("Clear site history & data", null)
+@@ -1559,11 +1574,12 @@ public final class MainActivity extends Activity {
+         }
+         if (!webMode) {
+             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
+-        } else if (browserWebView != null) {
+-            discardBrowserWebView();
++        } else {
++            webQueryDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
++            if (browserWebView != null) discardBrowserWebView();
+         }
+         webMode = enabled;
+-        quickCaptureInput.setText(enabled ? "" : taskDraft);
++        quickCaptureInput.setText(ComposerDraftPolicy.textForMode(enabled, taskDraft, webQueryDraft));
+         quickCaptureInput.setError(null);
+         if (enabled && browserStatus != null) {
+             browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()

@@ -3,6 +3,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
+sh ./tools/run-composer-draft-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
@@ -137,8 +138,8 @@ navigate = re.search(r"private void navigateFromInput\(\)\s*\{(.*?)\n    \}", ac
 assert navigate and "if (!webMode) return;" in navigate.group(1), "browser navigation must require Web mode"
 set_mode = re.search(r"private void setWebMode\(boolean enabled\)\s*\{(.*?)\n    \}", activity, re.S)
 assert set_mode and "taskDraft = quickCaptureInput.getText()" in set_mode.group(1), "task draft should remain local in task mode"
-assert "quickCaptureInput.setText(enabled ? \"\" : taskDraft);" in activity, "task draft must not be prefilled into Web mode"
-assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity, "Web text must not overwrite the local task draft"
+assert "quickCaptureInput.setText(ComposerDraftPolicy.textForMode(enabled, taskDraft, webQueryDraft));" in activity, "task draft must not be prefilled into Web mode"
+assert "new TextWatcher()" in activity and "if (webMode) webQueryDraft = value;" in activity and "else taskDraft = value;" in activity, "each mode must track its own draft without overwriting the other"
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
