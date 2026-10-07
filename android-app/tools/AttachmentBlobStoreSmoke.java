@@ -29,6 +29,7 @@ public final class AttachmentBlobStoreSmoke {
             exactFileLimitPassesAndOversizeFails(root);
             quotasCancellationAndLowSpaceAreEnforcedDuringStreaming(root);
             corruptedPayloadFailsAuthentication(root);
+            verifyReadableAuthenticatesOrFailsClosed(root);
             System.out.println("PASS encrypted attachment smoke tests: " + assertions + " assertions");
         } finally {
             erase(root);
@@ -190,6 +191,47 @@ public final class AttachmentBlobStoreSmoke {
         check(rejected, "modified attachment ciphertext fails AES-GCM authentication");
         check(plaintextReleased.get() == 0,
                 "a tampered multi-chunk GCM payload emits no plaintext before authentication fails");
+    }
+
+    private static void verifyReadableAuthenticatesOrFailsClosed(File root) throws Exception {
+        File directory = new File(root, "verify-readable");
+        AttachmentBlobStore store = new AttachmentBlobStore(directory, new KeyVault());
+        String id = AttachmentBlobStore.newId();
+        byte[] plaintext = new byte[64 * 1024 + 7];
+        Arrays.fill(plaintext, (byte) 0x41);
+        long written = store.importStream(TASK_A, id, new ByteArrayInputStream(plaintext));
+        check(store.verifyReadable(TASK_A, id) == written,
+                "a healthy payload authenticates to its exact byte count");
+        check(store.isReadable(TASK_A, id), "a healthy payload is reported readable");
+
+        // Flip one byte inside the GCM tag: the payload still exists on disk, so an existence-only
+        // check would pass, but authenticated verification must fail closed.
+        File file = new File(directory, id + ".enc");
+        try (RandomAccessFile bytes = new RandomAccessFile(file, "rw")) {
+            bytes.seek(bytes.length() - 3);
+            int value = bytes.read();
+            bytes.seek(bytes.length() - 3);
+            bytes.write(value ^ 0x20);
+        }
+        check(store.exists(id), "the tampered payload still exists, so existence alone is not integrity");
+        expectIOException(() -> store.verifyReadable(TASK_A, id),
+                "a present-but-corrupt payload fails authenticated verification");
+        check(!store.isReadable(TASK_A, id), "the fail-closed readable check reports a corrupt payload");
+
+        // A truncated payload is likewise rejected rather than silently treated as stored.
+        String truncatedId = AttachmentBlobStore.newId();
+        store.importStream(TASK_A, truncatedId, new ByteArrayInputStream(plaintext));
+        File truncated = new File(directory, truncatedId + ".enc");
+        try (RandomAccessFile bytes = new RandomAccessFile(truncated, "rw")) {
+            bytes.setLength(bytes.length() - 20);
+        }
+        check(store.exists(truncatedId), "the truncated payload still exists");
+        expectIOException(() -> store.verifyReadable(TASK_A, truncatedId),
+                "a truncated payload fails authenticated verification");
+
+        // A payload must not verify under a different owning task (AAD binds task + id).
+        expectIOException(() -> store.verifyReadable(TASK_B, id),
+                "a payload cannot be verified under a different owning task");
     }
 
     private static void payloadSubstitutionAcrossAttachmentOrTaskFailsAuthentication(File root) throws Exception {

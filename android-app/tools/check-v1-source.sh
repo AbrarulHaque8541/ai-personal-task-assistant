@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-cd "$ROOT"
 sh ./tools/run-core-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
+sh ./tools/run-portable-failure-report-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-merged-manifests.py "$ROOT"
@@ -93,6 +93,49 @@ assert "recordTakenGrantOrRelease" in manager and "releaseExactPortableReadGrant
 assert "JOURNAL_MAGIC" in manager and "operationToken" in manager, "URI journal must bind the token and URI"
 assert "releasePersistableUriPermission(uri," in manager and "Intent.FLAG_GRANT_READ_URI_PERMISSION" in manager
 assert "exactUri.equals(permission.getUri()) && permission.isReadPermission()" in manager
+blob_store = (main / "java/com/cue/daymark/AttachmentBlobStore.java").read_text(encoding="utf-8")
+attachment_store = (main / "java/com/cue/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
+assert "long verifyReadable(String taskId, String id) throws IOException" in blob_store, \
+    "payload integrity must be checkable by full AES-GCM authentication, not existence alone"
+assert "boolean isReadable(String taskId, String id)" in blob_store, "a fail-closed readable check is required"
+assert "long verifyReadable(String taskId, String appOwnedId)" in attachment_store, \
+    "the attachment store must expose authenticated verification"
+assert "verifyReadable(ownerTaskId, attachmentId)" in manager, \
+    "restore reconciliation must authenticate every restored payload before recording the backup as imported"
+assert "attachments.exists(attachmentId)" not in manager, \
+    "restore reconciliation must not rely on an existence-only check for a trusted payload"
+assert "void verifyReferencedPayloads(List<Task> loadedTasks, AndroidAttachmentStore attachments)" in manager, \
+    "the manager must authenticate every referenced payload before a snapshot is exposed or exported"
+assert "verifyReferencedPayloads(loadedTasks, attachments);" in manager, \
+    "startup must authenticate referenced payloads before exposing storage as ready"
+assert "void cleanupTransientFiles(File preserve)" in manager, \
+    "staging cleanup must be able to preserve an in-process export while sweeping the rest"
+assert "cleanupTransientFiles(pendingExportArchive)" in activity, \
+    "startup staging cleanup must run and must not delete a pending in-process export"
+failure_report = (main / "java/com/cue/daymark/PortableFailureReport.java").read_text(encoding="utf-8")
+assert "static Kind classifyRestore" in failure_report and "static Kind classifyExport" in failure_report, \
+    "backup and restore failures must be classified, not collapsed into one generic sentence"
+assert "PortableFailureReport.describeRestore(failure, portableCancelRequested)" in activity, \
+    "the restore failure message must come from the shared classifier"
+assert "PortableFailureReport.describeExport(error, portableCancelRequested)" in activity, \
+    "the export failure message must come from the shared classifier"
+assert 'storageStatus.setText("Backup not restored")' in activity, \
+    "a failed restore must keep its reason visible rather than only toasting it"
+assert activity.index("cleanupTransientFiles(pendingExportArchive)") < activity.index("loaded = taskStore.load()"), \
+    "plaintext staging must be swept before load/reconcile can fail out of the pipeline"
+assert activity.count("cleanupTransientFiles(pendingExportArchive)") == 2, \
+    "transient staging must be swept on both the pre-sweep and post-load paths"
+assert "PortableExportWriter.write(stagedArchive" in activity, \
+    "portable export must use the marked, verified staging writer"
+assert "SafBackupDocument" in activity and "PortableExportWriter.INCOMPLETE_MARKER" not in activity, \
+    "portable export must stage the SAF document through the marked writer"
+assert 'openOutputStream(destination, "w")' not in activity, \
+    "portable export must not blindly truncate the destination before verification"
+writer_source = (root / "app/src/main/java/com/cue/daymark/PortableExportWriter.java").read_text(encoding="utf-8")
+write_body = writer_source.split("static String write(File stagedArchive", 1)[1]
+assert write_body.index("renameTo(incompleteName)") < write_body.index("openForWrite()") \
+    < write_body.index("openForRead()") < write_body.index("renameTo(finalName)"), \
+    "portable export must mark the document before writing, independently read it back, then finalize"
 preflight = codec.split("private static void preflightManifestAttachmentCount", 1)[1].split("private static void skipManifestString", 1)[0]
 assert "totalAttachments > AttachmentLogic.MAX_TOTAL_COUNT - attachmentCount" in preflight
 assert codec.index("preflightManifestAttachmentCount(plaintext)") < codec.index("List<PortableTask> tasks = new ArrayList<>(taskCount)")
@@ -246,7 +289,7 @@ text_size_calls = re.findall(r"\.setTextSize\(([^)]*)\)", activity)
 assert text_size_calls, "expected scalable text controls"
 assert all("textScale" in call for call in text_size_calls), "every app text-size call must apply the user's text-size setting"
 assert "textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f" in activity, "compact/standard/extra-large text choices changed"
-for label in ("Search tasks by title", "Clear task search", "Choose low, medium, or high priority", "Edit task:", "Delete task:", "Mark “"):
+for label in ("Search tasks by title", "Clear task search", "Choose low, medium, or high priority", "Edit task:", "Delete task:", "Mark \u201c"):
     assert label in activity, f"missing screen-reader label source: {label}"
 assert "setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE)" in activity
 assert "screen text is English only" in activity, "language limitations must remain explicit"
@@ -331,7 +374,7 @@ assert not any("PackageInstaller" in path.read_text(encoding="utf-8") for path i
 assert not list(updater_dir.glob("*PackageInstaller*.java")), "PackageInstaller adapter/status source must be absent"
 assert "canRequestPackageInstalls()" not in activity and "ACTION_MANAGE_UNKNOWN_APP_SOURCES" not in activity, "no install-source Settings flow is enabled"
 assert '"Download and verify"' in activity and '"Cancel"' in activity and "downloadAndVerify" in activity, "download requires explicit consent and stops after verification"
-assert "VerificationStatus.VERIFIED" in activity and "APK verified — not installed" in activity, "successful verification must not imply installation"
+assert "VerificationStatus.VERIFIED" in activity and "APK verified \u2014 not installed" in activity, "successful verification must not imply installation"
 assert '"Wi-Fi only (recommended)"' in activity and '"Allow mobile data"' in activity, "download requires a clear network choice with Wi-Fi as default"
 assert "NETWORK_POLICY" in updater_core and "isWifiConnected" in downloader, "Wi-Fi-only choice must be enforced before and during transfer"
 assert "ACTION_CREATE_DOCUMENT" in activity and "open the saved copy yourself from Files" in activity, "verified APK must be saved for user-directed manual opening"
