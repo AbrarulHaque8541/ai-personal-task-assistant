@@ -1,0 +1,26 @@
+diff --git a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+index 5227818..d5cea87 100644
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -231,7 +231,9 @@ public final class MainActivity extends Activity {
+         themeMode = Math.max(THEME_SYSTEM, Math.min(THEME_DARK, preferences.getInt(THEME_KEY, THEME_SYSTEM)));
+         powerMode = preferences.getBoolean(POWER_MODE_KEY, false);
+         textSizeMode = Math.max(0, Math.min(2, preferences.getInt(TEXT_SIZE_KEY, 1)));
+-        textScale = textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f;
++        textScale = TextScalePolicy.combined(
++                textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f,
++                getResources().getConfiguration().fontScale);
+         highContrast = preferences.getBoolean(HIGH_CONTRAST_KEY, false);
+         setTheme(themeResource(themeMode));
+         super.onCreate(savedInstanceState);
+@@ -3333,7 +3335,9 @@ public final class MainActivity extends Activity {
+                 .setTitle("Text size")
+                 .setSingleChoiceItems(sizes, textSizeMode, (dialog, selected) -> {
+                     textSizeMode = selected;
+-                    textScale = selected == 0 ? 0.9f : selected == 2 ? 1.25f : 1.0f;
++                    textScale = TextScalePolicy.combined(
++                            selected == 0 ? 0.9f : selected == 2 ? 1.25f : 1.0f,
++                            getResources().getConfiguration().fontScale);
+                     getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
+                             .putInt(TEXT_SIZE_KEY, textSizeMode).apply();
+                     dialog.dismiss();
