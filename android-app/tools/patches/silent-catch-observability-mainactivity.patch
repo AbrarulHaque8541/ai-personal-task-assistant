@@ -1,0 +1,70 @@
+diff --git a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+index 5227818..52e3d0e 100644
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -1347,7 +1347,7 @@ public final class MainActivity extends Activity {
+                     portableSelectionPreserved = portableBackupManager.reconcileStartupImportUri(
+                             loaded, attachmentStore, restoredSelection);
+                     try { attachmentStore.cleanupOrphans(attachmentIds(loaded)); }
+-                    catch (Exception ignored) { /* Retry orphan cleanup on a later launch. */ }
++                    catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.ORPHAN_CLEANUP_FAILED, exception); }
+                     portableBackupManager.cleanupTransientFiles();
+                 }
+             } catch (Exception exception) {
+@@ -2931,7 +2931,10 @@ public final class MainActivity extends Activity {
+ 
+     private boolean deleteCreatedDocument(Uri uri) {
+         try { return DocumentsContract.deleteDocument(getContentResolver(), uri); }
+-        catch (Exception ignored) { return false; }
++        catch (Exception exception) {
++            StartupDiagnostics.record(StartupDiagnostics.EXPORT_STAGE_CLEANUP_FAILED, exception);
++            return false;
++        }
+     }
+ 
+     private void choosePortableImport() {
+@@ -3575,7 +3578,7 @@ public final class MainActivity extends Activity {
+             }
+             if (failure != null || (result != null && result.status == UpdaterCore.VerificationStatus.CANCELLED)) {
+                 try { updaterRecoveryStore.clearIfNoVerifiedArtifact(release); }
+-                catch (Exception ignored) { }
++                catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.UPDATER_RECOVERY_CLEAR_FAILED, exception); }
+             }
+             final UpdaterCore.VerificationResult completedResult = result;
+             final UpdaterCore.UpdateException completedFailure = failure;
+@@ -3616,7 +3619,7 @@ public final class MainActivity extends Activity {
+                     offerUnrecoverableArtifact(orphanedArtifacts.get(0));
+                     return true;
+                 }
+-            } catch (IOException ignored) { }
++            } catch (IOException exception) { StartupDiagnostics.record(StartupDiagnostics.UPDATER_ARTIFACT_LIST_FAILED, exception); }
+             return false;
+         }
+         if (recoveryCheckRunning) return true;
+@@ -3685,7 +3688,7 @@ public final class MainActivity extends Activity {
+                 offerUnrecoverableArtifact(artifacts.get(0));
+                 return;
+             }
+-        } catch (IOException ignored) { }
++        } catch (IOException exception) { StartupDiagnostics.record(StartupDiagnostics.UPDATER_ARTIFACT_LIST_FAILED, exception); }
+         if (recoveryPromptShowing) return;
+         recoveryPromptShowing = true;
+         AlertDialog dialog = new AlertDialog.Builder(this)
+@@ -3862,7 +3865,7 @@ public final class MainActivity extends Activity {
+         String version = "unknown";
+         try {
+             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+-        } catch (Exception ignored) { }
++        } catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.PACKAGE_INFO_FAILED, exception); }
+         String distributionDetails = BuildConfig.UPDATER_ENABLED
+                 ? "GitHub sideload distribution: declares INTERNET and ACCESS_NETWORK_STATE for foreground checks and consented, Wi-Fi/mobile-choice downloads. Verified APKs can be saved for manual opening; Daymark does not launch an installer. The protected publisher release gate is closed."
+                 : "Play distribution: no network or package-install permissions are declared. Tasks remain local and offline.";
+@@ -3893,7 +3896,7 @@ public final class MainActivity extends Activity {
+         String version = "unknown";
+         try {
+             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+-        } catch (Exception ignored) { }
++        } catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.PACKAGE_INFO_FAILED, exception); }
+         String report = "Daymark " + version + " | Android API " + Build.VERSION.SDK_INT
+                 + " | theme " + themeLabel() + " | tasks " + tasks.size()
+                 + " | encrypted storage " + (storageReady ? "ready" : "unavailable");

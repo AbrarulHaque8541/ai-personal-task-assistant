@@ -4,6 +4,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
 sh ./tools/run-window-insets-tests.sh
+sh ./tools/run-diagnostics-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
