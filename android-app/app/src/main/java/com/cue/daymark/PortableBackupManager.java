@@ -21,9 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -55,6 +57,16 @@ final class PortableBackupManager {
         activeImportUriJournal = new ActiveImportUriJournal(new AtomicFile(
                 new File(noBackup, "portable-import-uri.bin")));
         this.checkpoint = checkpoint == null ? RestoreCheckpoint.NONE : checkpoint;
+        // Sweep abandoned staging as early as the manager is constructed. Startup staging can hold
+        // decrypted archive plaintext, and the previous placement (at the end of the load pipeline)
+        // meant a load or reconcile failure skipped the sweep entirely and left that plaintext on
+        // disk until the next successful launch. A failure here is deliberately non-fatal: the
+        // caller adds no error path, and the next launch retries the sweep.
+        try {
+            cleanupTransientFiles();
+        } catch (IOException ignored) {
+            // A later load retries the sweep; nothing has been exposed by leaving it for now.
+        }
     }
 
     File createExportStageFile() throws IOException {
@@ -70,10 +82,44 @@ final class PortableBackupManager {
     }
 
     void cleanupTransientFiles() throws IOException {
+        cleanupTransientFiles(null);
+    }
+
+    /**
+     * Sweep abandoned private staging, optionally preserving one artifact the caller still needs.
+     *
+     * <p>Restore staging under this root holds decrypted archive plaintext until the archive is
+     * cleared and the directory deleted. If a load or reconcile failure previously skipped the
+     * sweep, that plaintext survived on disk until the next successful launch.
+     *
+     * @param preserve a staging path to keep (an in-process export the user has not saved yet),
+     *                 or null to remove every entry
+     */
+    void cleanupTransientFiles(File preserve) throws IOException {
         ensureStagingRoot();
         File[] children = stagingRoot.listFiles();
         if (children == null) throw new IOException("Private backup staging could not be enumerated.");
-        for (File child : children) deleteTree(child);
+        File preserved = preserve;
+        if (preserved != null) {
+            try {
+                preserved = preserve.getCanonicalFile();
+            } catch (IOException unreadable) {
+                preserved = null;
+            }
+            if (preserved != null && !preserved.exists()) preserved = null;
+        }
+        for (File child : children) {
+            if (preserved != null) {
+                File candidate;
+                try {
+                    candidate = child.getCanonicalFile();
+                } catch (IOException unreadable) {
+                    candidate = child;
+                }
+                if (preserved.equals(candidate)) continue;
+            }
+            deleteTree(child);
+        }
     }
 
     /** Resolve a pending snapshot-last import before normal orphan cleanup or future edits. */
@@ -94,16 +140,29 @@ final class PortableBackupManager {
         }
         if (foundTasks == pending.taskIds.size() && !pending.taskIds.isEmpty()) {
             Set<String> importedAttachmentRefs = new HashSet<>();
+            Map<String, String> importedAttachmentOwners = new HashMap<>();
             for (Task task : loadedTasks) {
                 if (!pending.taskIds.contains(task.id)) continue;
-                for (AttachmentRef reference : task.attachments) importedAttachmentRefs.add(reference.id);
+                for (AttachmentRef reference : task.attachments) {
+                    importedAttachmentRefs.add(reference.id);
+                    importedAttachmentOwners.putIfAbsent(reference.id, task.id);
+                }
             }
             if (!importedAttachmentRefs.equals(new HashSet<>(pending.attachmentIds))) {
                 throw new IOException("The committed restore snapshot does not match its journal; storage was left untouched.");
             }
             for (String attachmentId : pending.attachmentIds) {
-                if (!attachments.exists(attachmentId)) {
-                    throw new IOException("A restored attachment is missing; storage was left untouched for safety.");
+                String ownerTaskId = importedAttachmentOwners.get(attachmentId);
+                if (ownerTaskId == null) {
+                    throw new IOException("A restored attachment is not owned by the committed snapshot; storage was left untouched for safety.");
+                }
+                try {
+                    // Existence is not integrity. A present-but-corrupt payload must fail closed here,
+                    // before the backup is recorded as imported and its SAF read grant is released,
+                    // otherwise the user loses both the attachment and the ability to re-import the backup.
+                    attachments.verifyReadable(ownerTaskId, attachmentId);
+                } catch (IOException unreadable) {
+                    throw new IOException("A restored attachment failed authenticated decryption; the restore is left uncommitted so it can be retried.", unreadable);
                 }
             }
             completePending(state, pending.backupId);
@@ -120,6 +179,35 @@ final class PortableBackupManager {
         }
         for (String attachmentId : pending.attachmentIds) attachments.discardPortableImport(attachmentId);
         clearPending(state);
+    }
+
+    /**
+     * Authenticate every payload referenced by the loaded snapshot before that snapshot is exposed
+     * as editable or backed up.
+     *
+     * <p>An existence-only check cannot tell an intact payload from a present-but-corrupt or
+     * truncated one, so a damaged blob would otherwise stay invisible until the user happened to
+     * open that attachment - or worse, until it was exported into a new backup as if it were sound.
+     * The scan is bounded by the app's own attachment quota (at most {@code MAX_TOTAL_COUNT}
+     * payloads totalling {@code MAX_TOTAL_BYTES}) and runs on the storage worker thread, so it stays
+     * inside the 100 MiB / 100 file envelope the store already enforces at import time.
+     *
+     * @throws IOException when any referenced payload fails authenticated decryption; the caller
+     *                     must fail storage closed rather than expose or export unverified data
+     */
+    void verifyReferencedPayloads(List<Task> loadedTasks, AndroidAttachmentStore attachments)
+            throws IOException {
+        if (loadedTasks == null) return;
+        for (Task task : loadedTasks) {
+            for (AttachmentRef reference : task.attachments) {
+                try {
+                    attachments.verifyReadable(task.id, reference.id);
+                } catch (IOException unreadable) {
+                    throw new IOException("A stored attachment failed authenticated decryption; "
+                            + "storage was left untouched so the data can be recovered.", unreadable);
+                }
+            }
+        }
     }
 
     /** Durably record the exact selected archive and return its non-secret operation token. */
@@ -145,6 +233,8 @@ final class PortableBackupManager {
     /** Reconcile first; preserve only a matching saved selection still live in this process with a read grant. */
     boolean reconcileStartupImportUri(List<Task> loadedTasks, AndroidAttachmentStore attachments,
                                       PortableImportGrantRecovery.Selection restoredSelection) throws IOException {
+        // Authenticate every referenced payload before startup treats the snapshot as usable.
+        verifyReferencedPayloads(loadedTasks, attachments);
         return PortableImportGrantRecovery.reconcileStartup(activeImportUriJournal, restoredSelection,
                 () -> reconcile(loadedTasks, attachments), this::hasExactPortableReadGrant,
                 this::releaseExactPortableReadGrant);
