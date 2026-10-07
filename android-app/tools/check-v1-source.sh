@@ -3,6 +3,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
+sh ./tools/run-window-insets-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
@@ -217,7 +218,13 @@ for expected in (
     "settings.setAllowFileAccessFromFileURLs(false)",
     "settings.setAllowUniversalAccessFromFileURLs(false)",
     "settings.setJavaScriptCanOpenWindowsAutomatically(false)",
-    "settings.setSupportMultipleWindows(true)",
+    "settings.setSupportMultipleWindows(BrowserViewportPolicy.SUPPORT_MULTIPLE_WINDOWS)",
+    "settings.setUseWideViewPort(BrowserViewportPolicy.USE_WIDE_VIEW_PORT)",
+    "settings.setLoadWithOverviewMode(BrowserViewportPolicy.LOAD_WITH_OVERVIEW_MODE)",
+    "settings.setSupportZoom(BrowserViewportPolicy.SUPPORT_ZOOM)",
+    "settings.setBuiltInZoomControls(BrowserViewportPolicy.BUILT_IN_ZOOM_CONTROLS)",
+    "settings.setDisplayZoomControls(BrowserViewportPolicy.DISPLAY_ZOOM_CONTROLS)",
+    "BrowserViewportPolicy.allowsSeparateWindow()",
     "handler.cancel()",
     "request.deny()",
     "callback.invoke(origin, false, false)",
@@ -228,8 +235,18 @@ for expected in (
     "onHttpNavigationBlocked(request.getUrl().toString(), request.isRedirect())",
 ):
     assert expected in webview, f"missing WebView security boundary: {expected}"
-for forbidden in ("addJavascriptInterface(", "shouldInterceptRequest(", "loadUrl(request.getUrl"):
+for forbidden in ("addJavascriptInterface(", "shouldInterceptRequest(", "loadUrl(request.getUrl",
+                 "setSupportMultipleWindows(true)"):
     assert forbidden not in webview, f"unsafe/unrequested WebView bridge or interception found: {forbidden}"
+viewport_policy = (main / "java/com/cue/daymark/BrowserViewportPolicy.java").read_text(encoding="utf-8")
+viewport_smoke = (root / "tools/BrowserViewportPolicySmoke.java").read_text(encoding="utf-8")
+assert "SUPPORT_MULTIPLE_WINDOWS = false" in viewport_policy, \
+    "multiple windows must stay disabled so target=_blank result links are not dropped"
+assert "USE_WIDE_VIEW_PORT = true" in viewport_policy and "LOAD_WITH_OVERVIEW_MODE = true" in viewport_policy, \
+    "desktop result pages must fit the device width"
+assert "SUPPORT_ZOOM = true" in viewport_policy, "pinch-zoom must be enabled for long result pages"
+assert "target=_blank" in viewport_smoke and "loads in place" in viewport_smoke, \
+    "the dropped-result-link regression must be covered by the viewport smoke test"
 
 for expected in (
     "DUCKDUCKGO(\"DuckDuckGo\"",
