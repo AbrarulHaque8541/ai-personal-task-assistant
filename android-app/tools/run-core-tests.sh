@@ -19,6 +19,7 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserSettingsPolicy.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserViewportPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterCore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterRecoveryStore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/PendingSaveTransaction.java" \
@@ -32,7 +33,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/GitHubTransportSmoke.java" \
   "$ROOT/tools/BrowserAddressSmoke.java" \
   "$ROOT/tools/BrowserNetworkPolicySmoke.java" \
-  "$ROOT/tools/BrowserSettingsPolicySmoke.java"
+  "$ROOT/tools/BrowserSettingsPolicySmoke.java" \
+  "$ROOT/tools/BrowserViewportPolicySmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.ActivityCallbackGateSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.UpdaterSmoke
@@ -40,3 +42,4 @@ java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.GitHubTransportSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserAddressSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserNetworkPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSettingsPolicySmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserViewportPolicySmoke

@@ -46,8 +46,16 @@ final class DaymarkWebView extends WebView {
         settings.setAllowFileAccessFromFileURLs(false);
         settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setSupportMultipleWindows(true);
         settings.setMediaPlaybackRequiresUserGesture(true);
+        // Viewport/zoom/pop-up policy: see BrowserViewportPolicy. Multiple windows stay
+        // disabled so target="_blank" result links load in this WebView (and still pass the
+        // HTTPS/offline guard) instead of being silently dropped.
+        settings.setSupportMultipleWindows(BrowserViewportPolicy.SUPPORT_MULTIPLE_WINDOWS);
+        settings.setUseWideViewPort(BrowserViewportPolicy.USE_WIDE_VIEW_PORT);
+        settings.setLoadWithOverviewMode(BrowserViewportPolicy.LOAD_WITH_OVERVIEW_MODE);
+        settings.setSupportZoom(BrowserViewportPolicy.SUPPORT_ZOOM);
+        settings.setBuiltInZoomControls(BrowserViewportPolicy.BUILT_IN_ZOOM_CONTROLS);
+        settings.setDisplayZoomControls(BrowserViewportPolicy.DISPLAY_ZOOM_CONTROLS);
 
         setWebViewClient(new WebViewClient() {
             @Override
@@ -122,7 +130,10 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                                          android.os.Message resultMsg) {
-                return false;
+                // Multiple windows are disabled, so target="_blank" / window.open navigations
+                // are loaded by this WebView and still pass through shouldOverrideUrlLoading's
+                // HTTPS/offline guard. Returning false here would silently drop them.
+                return BrowserViewportPolicy.allowsSeparateWindow();
             }
         });
         setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
