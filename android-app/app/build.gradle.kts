@@ -30,16 +30,37 @@ android {
 
     signingConfigs {
         create("release") {
-            // Release signing is driven entirely by CI environment variables so no
-            // keystore or secret ever enters the repository. When KEYSTORE_PATH is
-            // unset (local debug builds), this config stays inert and Gradle uses
-            // the default debug signing key.
+            // Validate release signing environment variables.
             val keystorePath = System.getenv("KEYSTORE_PATH")
             val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
             val alias = System.getenv("KEY_ALIAS")
             val keyPassword = System.getenv("KEY_PASSWORD")
-            if (keystorePath != null && keystorePassword != null && alias != null && keyPassword != null) {
-                storeFile = file(keystorePath)
+
+            val anyProvided = keystorePath != null || keystorePassword != null || alias != null || keyPassword != null
+
+            if (anyProvided) {
+                val missing = mutableListOf<String>()
+                if (keystorePath.isNullOrBlank()) missing.add("KEYSTORE_PATH")
+                if (keystorePassword.isNullOrBlank()) missing.add("KEYSTORE_PASSWORD")
+                if (alias.isNullOrBlank()) missing.add("KEY_ALIAS")
+                if (keyPassword.isNullOrBlank()) missing.add("KEY_PASSWORD")
+
+                if (missing.isNotEmpty()) {
+                    throw GradleException(
+                        "Release signing configuration error: Missing required environment variable(s): " +
+                        missing.joinToString(", ") +
+                        ". All four variables (KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) must be set."
+                    )
+                }
+
+                val keystoreFile = file(keystorePath!!)
+                if (!keystoreFile.exists()) {
+                    throw GradleException(
+                        "Release signing configuration error: Keystore file not found at KEYSTORE_PATH: ${keystoreFile.absolutePath}"
+                    )
+                }
+
+                storeFile = keystoreFile
                 storePassword = keystorePassword
                 this.keyAlias = alias
                 this.keyPassword = keyPassword
@@ -51,9 +72,8 @@ android {
 
     buildTypes {
         release {
-            // Signed with the release config only when CI provides a keystore;
-            // otherwise Gradle falls back to its default unsigned/debug behavior.
-            if (System.getenv("KEYSTORE_PATH") != null) {
+            val isSigningConfigured = System.getenv("KEYSTORE_PATH") != null
+            if (isSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
             }
             isMinifyEnabled = false
@@ -73,6 +93,30 @@ android {
     packaging {
         resources {
             excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
+        }
+    }
+}
+
+// Fail release assemble tasks if signing environment variables are missing
+gradle.taskGraph.whenReady {
+    val hasReleaseAssembleTask = allTasks.any { task ->
+        task.name.contains("Release", ignoreCase = true) &&
+        task.name.startsWith("assemble", ignoreCase = true)
+    }
+
+    if (hasReleaseAssembleTask) {
+        val missing = mutableListOf<String>()
+        if (System.getenv("KEYSTORE_PATH").isNullOrBlank()) missing.add("KEYSTORE_PATH")
+        if (System.getenv("KEYSTORE_PASSWORD").isNullOrBlank()) missing.add("KEYSTORE_PASSWORD")
+        if (System.getenv("KEY_ALIAS").isNullOrBlank()) missing.add("KEY_ALIAS")
+        if (System.getenv("KEY_PASSWORD").isNullOrBlank()) missing.add("KEY_PASSWORD")
+
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Release build rejected: Missing required signing environment variable(s): " +
+                missing.joinToString(", ") +
+                ". Refusing to build an unsigned or partially configured release APK."
+            )
         }
     }
 }
