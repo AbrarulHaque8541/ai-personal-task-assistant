@@ -1,0 +1,28 @@
+diff --git a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+index 5227818..533ec0b 100644
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -86,6 +86,7 @@ public final class MainActivity {
+     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
+     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
+     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
++    private static final String STATE_WEB_MODE = WebModeState.KEY;
+     private static final String PREFERENCES = "daymark.preferences.v1";
+     private static final String THEME_KEY = "theme_mode";
+     private static final int THEME_SYSTEM = 0;
+@@ -263,6 +264,7 @@ public final class MainActivity {
+                     pendingPortableImportNeedsRepick = true;
+                 }
+             }
++            webMode = WebModeState.restore(savedInstanceState.getBoolean(STATE_WEB_MODE, false));
+         }
+         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
+         searchEngine = BrowserAddress.SearchEngine.fromName(
+@@ -381,6 +383,7 @@ public final class MainActivity {
+         if (pendingAttachmentTaskId != null) {
+             outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
+         }
++        outState.putBoolean(STATE_WEB_MODE, webMode);
+         PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
+         if (pendingSelection != null) {
+             try {
