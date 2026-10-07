@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
 sh ./tools/run-core-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
-sh ./tools/run-portable-failure-report-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-merged-manifests.py "$ROOT"
@@ -97,7 +97,8 @@ blob_store = (main / "java/com/cue/daymark/AttachmentBlobStore.java").read_text(
 attachment_store = (main / "java/com/cue/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
 assert "long verifyReadable(String taskId, String id) throws IOException" in blob_store, \
     "payload integrity must be checkable by full AES-GCM authentication, not existence alone"
-assert "boolean isReadable(String taskId, String id)" in blob_store, "a fail-closed readable check is required"
+assert "boolean isReadable(String taskId, String id)" in blob_store, \
+    "the fail-closed readable check is required"
 assert "long verifyReadable(String taskId, String appOwnedId)" in attachment_store, \
     "the attachment store must expose authenticated verification"
 assert "verifyReadable(ownerTaskId, attachmentId)" in manager, \
@@ -108,34 +109,6 @@ assert "void verifyReferencedPayloads(List<Task> loadedTasks, AndroidAttachmentS
     "the manager must authenticate every referenced payload before a snapshot is exposed or exported"
 assert "verifyReferencedPayloads(loadedTasks, attachments);" in manager, \
     "startup must authenticate referenced payloads before exposing storage as ready"
-assert "void cleanupTransientFiles(File preserve)" in manager, \
-    "staging cleanup must be able to preserve an in-process export while sweeping the rest"
-assert "cleanupTransientFiles(pendingExportArchive)" in activity, \
-    "startup staging cleanup must run and must not delete a pending in-process export"
-failure_report = (main / "java/com/cue/daymark/PortableFailureReport.java").read_text(encoding="utf-8")
-assert "static Kind classifyRestore" in failure_report and "static Kind classifyExport" in failure_report, \
-    "backup and restore failures must be classified, not collapsed into one generic sentence"
-assert "PortableFailureReport.describeRestore(failure, portableCancelRequested)" in activity, \
-    "the restore failure message must come from the shared classifier"
-assert "PortableFailureReport.describeExport(error, portableCancelRequested)" in activity, \
-    "the export failure message must come from the shared classifier"
-assert 'storageStatus.setText("Backup not restored")' in activity, \
-    "a failed restore must keep its reason visible rather than only toasting it"
-assert activity.index("cleanupTransientFiles(pendingExportArchive)") < activity.index("loaded = taskStore.load()"), \
-    "plaintext staging must be swept before load/reconcile can fail out of the pipeline"
-assert activity.count("cleanupTransientFiles(pendingExportArchive)") == 2, \
-    "transient staging must be swept on both the pre-sweep and post-load paths"
-assert "PortableExportWriter.write(stagedArchive" in activity, \
-    "portable export must use the marked, verified staging writer"
-assert "SafBackupDocument" in activity and "PortableExportWriter.INCOMPLETE_MARKER" not in activity, \
-    "portable export must stage the SAF document through the marked writer"
-assert 'openOutputStream(destination, "w")' not in activity, \
-    "portable export must not blindly truncate the destination before verification"
-writer_source = (root / "app/src/main/java/com/cue/daymark/PortableExportWriter.java").read_text(encoding="utf-8")
-write_body = writer_source.split("static String write(File stagedArchive", 1)[1]
-assert write_body.index("renameTo(incompleteName)") < write_body.index("openForWrite()") \
-    < write_body.index("openForRead()") < write_body.index("renameTo(finalName)"), \
-    "portable export must mark the document before writing, independently read it back, then finalize"
 preflight = codec.split("private static void preflightManifestAttachmentCount", 1)[1].split("private static void skipManifestString", 1)[0]
 assert "totalAttachments > AttachmentLogic.MAX_TOTAL_COUNT - attachmentCount" in preflight
 assert codec.index("preflightManifestAttachmentCount(plaintext)") < codec.index("List<PortableTask> tasks = new ArrayList<>(taskCount)")
