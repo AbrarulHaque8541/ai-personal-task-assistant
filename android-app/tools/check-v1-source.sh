@@ -93,6 +93,22 @@ assert "recordTakenGrantOrRelease" in manager and "releaseExactPortableReadGrant
 assert "JOURNAL_MAGIC" in manager and "operationToken" in manager, "URI journal must bind the token and URI"
 assert "releasePersistableUriPermission(uri," in manager and "Intent.FLAG_GRANT_READ_URI_PERMISSION" in manager
 assert "exactUri.equals(permission.getUri()) && permission.isReadPermission()" in manager
+blob_store = (main / "java/com/cue/daymark/AttachmentBlobStore.java").read_text(encoding="utf-8")
+attachment_store = (main / "java/com/cue/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
+assert "long verifyReadable(String taskId, String id) throws IOException" in blob_store, \
+    "payload integrity must be checkable by full AES-GCM authentication, not existence alone"
+assert "boolean isReadable(String taskId, String id)" in blob_store, \
+    "the fail-closed readable check is required"
+assert "long verifyReadable(String taskId, String appOwnedId)" in attachment_store, \
+    "the attachment store must expose authenticated verification"
+assert "verifyReadable(ownerTaskId, attachmentId)" in manager, \
+    "restore reconciliation must authenticate every restored payload before recording the backup as imported"
+assert "attachments.exists(attachmentId)" not in manager, \
+    "restore reconciliation must not rely on an existence-only check for a trusted payload"
+assert "void verifyReferencedPayloads(List<Task> loadedTasks, AndroidAttachmentStore attachments)" in manager, \
+    "the manager must authenticate every referenced payload before a snapshot is exposed or exported"
+assert "verifyReferencedPayloads(loadedTasks, attachments);" in manager, \
+    "startup must authenticate referenced payloads before exposing storage as ready"
 preflight = codec.split("private static void preflightManifestAttachmentCount", 1)[1].split("private static void skipManifestString", 1)[0]
 assert "totalAttachments > AttachmentLogic.MAX_TOTAL_COUNT - attachmentCount" in preflight
 assert codec.index("preflightManifestAttachmentCount(plaintext)") < codec.index("List<PortableTask> tasks = new ArrayList<>(taskCount)")
@@ -246,7 +262,7 @@ text_size_calls = re.findall(r"\.setTextSize\(([^)]*)\)", activity)
 assert text_size_calls, "expected scalable text controls"
 assert all("textScale" in call for call in text_size_calls), "every app text-size call must apply the user's text-size setting"
 assert "textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f" in activity, "compact/standard/extra-large text choices changed"
-for label in ("Search tasks by title", "Clear task search", "Choose low, medium, or high priority", "Edit task:", "Delete task:", "Mark “"):
+for label in ("Search tasks by title", "Clear task search", "Choose low, medium, or high priority", "Edit task:", "Delete task:", "Mark \u201c"):
     assert label in activity, f"missing screen-reader label source: {label}"
 assert "setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE)" in activity
 assert "screen text is English only" in activity, "language limitations must remain explicit"
@@ -331,7 +347,7 @@ assert not any("PackageInstaller" in path.read_text(encoding="utf-8") for path i
 assert not list(updater_dir.glob("*PackageInstaller*.java")), "PackageInstaller adapter/status source must be absent"
 assert "canRequestPackageInstalls()" not in activity and "ACTION_MANAGE_UNKNOWN_APP_SOURCES" not in activity, "no install-source Settings flow is enabled"
 assert '"Download and verify"' in activity and '"Cancel"' in activity and "downloadAndVerify" in activity, "download requires explicit consent and stops after verification"
-assert "VerificationStatus.VERIFIED" in activity and "APK verified — not installed" in activity, "successful verification must not imply installation"
+assert "VerificationStatus.VERIFIED" in activity and "APK verified \u2014 not installed" in activity, "successful verification must not imply installation"
 assert '"Wi-Fi only (recommended)"' in activity and '"Allow mobile data"' in activity, "download requires a clear network choice with Wi-Fi as default"
 assert "NETWORK_POLICY" in updater_core and "isWifiConnected" in downloader, "Wi-Fi-only choice must be enforced before and during transfer"
 assert "ACTION_CREATE_DOCUMENT" in activity and "open the saved copy yourself from Files" in activity, "verified APK must be saved for user-directed manual opening"

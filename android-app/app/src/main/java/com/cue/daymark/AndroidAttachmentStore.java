@@ -56,6 +56,18 @@ final class AndroidAttachmentStore {
         return blobs.exists(appOwnedId);
     }
 
+    /**
+     * Authenticate a stored payload through AES-GCM before it is trusted. Existence alone is not
+     * integrity: see {@link AttachmentBlobStore#verifyReadable(String, String)}.
+     */
+    long verifyReadable(String taskId, String appOwnedId) throws IOException {
+        return blobs.verifyReadable(taskId, appOwnedId);
+    }
+
+    boolean isReadable(String taskId, String appOwnedId) {
+        return blobs.isReadable(taskId, appOwnedId);
+    }
+
     InputStream openDecrypted(String taskId, String appOwnedId) throws IOException {
         return blobs.openInput(taskId, appOwnedId);
     }

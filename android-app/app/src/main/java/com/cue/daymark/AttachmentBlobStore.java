@@ -194,6 +194,43 @@ final class AttachmentBlobStore {
         }
     }
 
+    /**
+     * Fully authenticate a stored payload by streaming it to EOF through AES-GCM.
+     *
+     * <p>AES-GCM only verifies its authentication tag once the final ciphertext block has been
+     * fed through the cipher, so the whole stream must be read before a payload can be trusted.
+     * An existence-only check cannot distinguish an intact payload from a present-but-corrupt or
+     * truncated one; callers that are about to treat a payload as safely stored (for example
+     * restore reconciliation, which records a backup as imported and releases its SAF read grant)
+     * must use this method instead.
+     *
+     * @return the number of authenticated plaintext bytes that were read
+     * @throws IOException if the payload is missing, malformed, truncated, or fails authentication
+     */
+    long verifyReadable(String taskId, String id) throws IOException {
+        requireTaskId(taskId);
+        requireId(id);
+        long verified = 0;
+        try (InputStream input = openInput(taskId, id)) {
+            byte[] buffer = new byte[32 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (read > 0) verified += read;
+            }
+        }
+        return verified;
+    }
+
+    /** Fail-closed convenience wrapper around {@link #verifyReadable(String, String)}. */
+    boolean isReadable(String taskId, String id) {
+        try {
+            verifyReadable(taskId, id);
+            return true;
+        } catch (IOException | RuntimeException exception) {
+            return false;
+        }
+    }
+
     void commitStaged(String id) throws IOException {
         requireId(id);
         File staging = new File(directory, id + ".pending");
