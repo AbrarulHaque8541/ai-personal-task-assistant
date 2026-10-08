@@ -1,52 +1,60 @@
-# Daymark browser extensions
+# Daymark browser extensions — research & real path
 
-## Honest scope
+## Short answer
 
-Daymark uses **Android System WebView**, not full Chromium/Firefox.
+Daymark is a **WebView** browser (Android System WebView), not a full Chromium browser like Kiwi/Edge with Chrome Web Store support.
 
-| Format | Support in Daymark |
-|--------|---------------------|
-| **Daymark pack** (`.daymark-ext.json`) | Full — recommended |
-| **User CSS** (Stylus-like) | Yes — via pack `css` |
-| **User scripts** (Tampermonkey-like, limited) | Partial — `js` + optional `@match` patterns; **no** `GM_*` APIs, no cross-origin XHR bridge |
-| **Chrome Web Store / Firefox Add-ons (.crx / WebExtension)** | **Not supported** — those need `chrome.*` / `browser.*` APIs WebView does not provide |
-| **uBlock Origin full engine** | **Not supported** — would need network interception; Daymark intentionally forbids `shouldInterceptRequest` for security policy |
+**There is a path** — not “every .crx works”, but a **converter middle layer**:
 
-Full Chrome/Firefox extension compatibility would require embedding a custom browser engine (multi‑MB, different product). Daymark stays lightweight and local-first.
-
-## Daymark pack format (`.daymark-ext.json`)
-
-```json
-{
-  "id": "com.example.focus",
-  "name": "Focus reading",
-  "version": "1.0.0",
-  "description": "Larger text and calmer colors",
-  "enabled": true,
-  "matches": ["*://*/*"],
-  "css": "body { max-width: 40rem; margin: 0 auto; line-height: 1.6; }",
-  "js": "/* optional page script; no native bridge */",
-  "runAt": "document_end"
-}
+```
+Chrome / Firefox extension  →  filter to content CSS/JS only  →  Daymark pack  →  inject on page
+Userscript (.user.js)       →  parse @match + body            →  Daymark pack  →  inject on page
+EasyList cosmetic ##rules   →  CSS element-hide               →  Daymark pack  →  inject on page
 ```
 
-- `matches`: simple patterns (`*://host/*`, `*://*/*`). Invalid URLs never match.
-- `css` / `js`: injected on page load for matching HTTPS pages only.
-- Scripts run **inside the page**; there is **no** `addJavascriptInterface` bridge to app data/tasks.
-- Packs are stored under the app’s private files directory (local only).
+That is the same strategy used by lightweight WebView projects (WebMonkey userscripts, WebView injectors, cosmetic-only adblock scripts). Full store extensions need **Chrome’s extension process model**, which only exists inside a **Chromium embed** (large binary, Kiwi-class maintenance).
+
+## What works vs what does not
+
+| Source | After conversion |
+|--------|------------------|
+| Extension **content_scripts** (DOM/CSS) | ✅ often usable |
+| Userstyles / Stylus CSS | ✅ |
+| Greasemonkey/Tampermonkey scripts (DOM-only) | ⚠️ partial (no full GM_* suite) |
+| EasyList **##cosmetic** hide rules | ✅ → CSS |
+| EasyList **network** rules (`\|, $script`) | ❌ needs request interception |
+| `chrome.tabs` / service worker / toolbar popup | ❌ |
+| Full uBlock Origin | ❌ |
+
+## Converter tools in this repo
+
+| Class | Role |
+|-------|------|
+| `ExtensionChromeImport` | `manifest.json` + joined content JS/CSS → Daymark pack |
+| `CosmeticFilterToCss` | ABP `##selector` lines → CSS pack |
+| `ExtensionPackageParser` | Daymark JSON + minimal userscript header |
+| `ExtensionRuntime` | Applies enabled packs on `onPageFinished` |
 
 ## Built-in packs
 
-1. **Calm reading** — readable typography CSS  
-2. **Hide common noise** — CSS selectors for frequent clutter classes (best-effort, not an adblocker)  
-3. **Link highlighter** — subtle outline on links  
+- **Calm reading** (default on)
+- **Hide common noise** (off)
+- **Link highlighter** (off)
 
-Toggle built-ins and future user packs from **Web → overflow → Extensions** when the UI hook is present; packs still apply when enabled in storage even if UI is minimal.
+## Security (unchanged)
 
-## Security
+- No `addJavascriptInterface` bridge to tasks/keys
+- No `shouldInterceptRequest` (project policy)
+- HTTPS pages only; Online still requires consent
+- Third-party scripts are untrusted page code
 
-- No native JS bridge to Daymark tasks or encryption keys.
-- No request interception API for third-party filter lists.
-- Online browsing still requires explicit Online consent.
-- Only HTTPS main-frame pages receive injection.
-- Treat third-party scripts like any untrusted code you paste into a page.
+## Why not “just change the engine a little”
+
+Embedding Chromium for real `chrome.*` extensions is not a small patch — it is a multi‑MB browser fork (Kiwi’s whole product). Daymark stays WebView + local packs so install size and privacy model stay small.
+
+## Practical install flow (for users / UI)
+
+1. Prefer **userscript** or **CSS** sources when possible.  
+2. Or unpack an extension → take `content_scripts` files + `matches` from `manifest.json` → convert via `ExtensionChromeImport` → save `.daymark-ext.json` in app private storage.  
+3. Cosmetic filter lists: only `##` rules → `CosmeticFilterToCss`.  
+4. Reload the page.
