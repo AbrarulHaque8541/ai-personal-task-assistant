@@ -83,6 +83,25 @@ final class ExtensionStore {
         writeFile(out, json);
     }
 
+    void setUserPackEnabled(String id, boolean enabled) {
+        if (id == null || id.trim().isEmpty() || id.startsWith("daymark.builtin.")) return;
+        File file = findUserPack(id);
+        if (file == null) return;
+        try {
+            BrowserExtension ext = ExtensionPackageParser.parseDaymarkJson(readFile(file), false);
+            BrowserExtension updated = ext.withEnabled(enabled);
+            writeFile(file, ExtensionPackageParser.toDaymarkJson(updated));
+        } catch (Exception ignored) {
+            // Corrupt packs remain hidden from the runtime until re-imported.
+        }
+    }
+
+    private File findUserPack(String id) {
+        if (id == null) return null;
+        File file = new File(userDir, sanitizeFileName(id) + ".daymark-ext.json");
+        return file.exists() ? file : null;
+    }
+
     void uninstallUserPack(String id) {
         if (id == null || id.startsWith("daymark.builtin.")) return;
         File out = new File(userDir, sanitizeFileName(id) + ".daymark-ext.json");
