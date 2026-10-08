@@ -17,6 +17,8 @@ final class TaskLogic {
     static final String FILTER_TODAY = "today";
     static final String FILTER_UPCOMING = "upcoming";
     static final String FILTER_COMPLETED = "completed";
+    static final String FILTER_OVERDUE = "overdue";
+    static final String FILTER_NO_DATE = "no_date";
 
     private TaskLogic() { }
 
@@ -97,6 +99,8 @@ final class TaskLogic {
         List<Task> result = new ArrayList<>();
         for (Task task : tasks) {
             if (FILTER_COMPLETED.equals(filter) && !task.completed) continue;
+            if (FILTER_OVERDUE.equals(filter) && (task.completed || task.dueDate == null || !LocalDate.parse(task.dueDate).isBefore(today))) continue;
+            if (FILTER_NO_DATE.equals(filter) && task.dueDate != null) continue;
             if (FILTER_TODAY.equals(filter) && !today.toString().equals(task.dueDate)) continue;
             if (FILTER_UPCOMING.equals(filter)
                     && (task.dueDate == null || !LocalDate.parse(task.dueDate).isAfter(today))) continue;
