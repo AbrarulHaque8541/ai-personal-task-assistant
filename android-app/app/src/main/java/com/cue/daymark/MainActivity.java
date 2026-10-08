@@ -177,6 +177,7 @@ public final class MainActivity extends Activity {
     private float textScale = 1.0f;
     private SharedPreferences browserPreferences;
     private BrowserAddress.SearchEngine searchEngine = BrowserAddress.SearchEngine.DUCKDUCKGO;
+    private ExtensionRuntime extensionRuntime;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
     private Task pendingDeletedTask;
@@ -259,6 +260,7 @@ public final class MainActivity extends Activity {
         updaterExecutor = Executors.newSingleThreadExecutor();
         taskStore = new EncryptedTaskStore(this);
         attachmentStore = new AndroidAttachmentStore(getApplicationContext());
+        extensionRuntime = ExtensionRuntime.create(this);
         portableBackupManager = new PortableBackupManager(getApplicationContext());
         if (savedInstanceState != null) {
             pendingAttachmentTaskId = savedInstanceState.getString(STATE_PENDING_ATTACHMENT_TASK);
@@ -1069,6 +1071,7 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onPageFinished(String url) {
+                if (extensionRuntime != null) extensionRuntime.onPageFinished(browserWebView, url);
                 if (!isActivityCallbackCurrent()) return;
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
