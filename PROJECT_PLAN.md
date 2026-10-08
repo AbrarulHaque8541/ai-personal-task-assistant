@@ -22,7 +22,8 @@ Keep the core task experience small and local. Let a task expand into a workspac
 
 Use a stable, provider-neutral capability interface between the task/workspace layer and optional tools. Each capability should declare its purpose, typed input/output schema, version, permissions, data scope, online/offline needs, risk, resource limits, cancellation behavior, and license/terms. A broker—not model-generated tool code—checks that a request is within the current task’s granted scope. Keep model, search, and tool adapters replaceable; do not hard-wire task storage or UI to one vendor.
 
-The core tasks, local search, filters, and existing data access must work without a network connection. Optional web search, browsing, or a user-selected hosted model may need the network and must say so before use. **No feature requires cloud fallback.** A local model that is unavailable, too large, or out of memory should report that limitation; it must not silently send the prompt to a cloud provider.
+The core tasks, local search, filters, and existing data access must work without a network connection. Optional web search, browsing, or a user-selected hosted model
+ may need the network and must say so before use. **No feature requires cloud fallback.** A local model that is unavailable, too large, or out of memory should report that limitation; it must not silently send the prompt to a cloud provider.
 
 ## Capability map and feasibility matrix
 
@@ -52,7 +53,8 @@ The core tasks, local search, filters, and existing data access must work withou
 
 Extend the task model through small, versioned, reversible migrations, preserving existing IDs, encrypted storage, backups, and undo behavior. The ten-feature slate referenced in earlier planning is not tracked in current public `main`; this document does not establish its location, status, or acceptance criteria. Confirm the authoritative project queue before treating additions as in flight. Keep the simple add/edit/complete flow prominent, and make richer fields discoverable only when the user expands a task.
 
-For every task-data migration, test old snapshot reading, interrupted writes, backup export/import, missing or invalid fields, undo/delete interactions, and recovery after process death. Avoid silently rewriting an existing task when a template changes, a recurrence advances, or a task is restored.
+For every task-data migration, test old snapshot reading, interrupted writes, backup export/import, missing or invalid fields, undo/delete interactions, and recovery after process death. Avoid silently rewriting an 
+existing task when a template changes, a recurrence advances, or a task is restored.
 
 ## Local-first data, security, and permissions
 
@@ -103,7 +105,8 @@ Separate these evidence levels in every release note and handoff:
 
 A passing source script is not a Gradle build; an API 35 build is not an API 36 build; neither is proof of device behavior. The repository's tracked APKs are debug artifacts, not current signed releases. The published release has no attached binary, while its notes retain a mutable raw-file link. This review ran host tests and manifest merge tasks; the latest main CI run built debug variants. No APK was assembled or installed locally, and no emulator or real device was tested.
 
-Google Play’s current target requirement says that, from 2026-08-31, new apps and updates submitted to Google Play must target Android 16 (API 36) or higher for ordinary mobile apps; this is a **conditional Play-submission requirement**, not a blanket requirement for local review or a GitHub-sideload APK. See [Google Play’s target API requirement](https://developer.android.com/google/play/requirements/target-sdk). The repository README currently describes API 26–35, and no API 36 build evidence is established for current `main`. Do not describe API 36 support without a verified build and device test. If Play submission becomes a goal, plan a separately reviewed API 36 migration and test gate before submission.
+Google Play’s current target requirement says that, from 2026-08-31, new apps and updates submitted to Google Play must target Android 16 (API 36) or higher for ordinary mobile apps;
+ this is a **conditional Play-submission requirement**, not a blanket requirement for local review or a GitHub-sideload APK. See [Google Play’s target API requirement](https://developer.android.com/google/play/requirements/target-sdk). The repository README currently describes API 26–35, and no API 36 build evidence is established for current `main`. Do not describe API 36 support without a verified build and device test. If Play submission becomes a goal, plan a separately reviewed API 36 migration and test gate before submission.
 
 Before any production release, verify signing/release provenance, backup restore and upgrade migration, permissions and revocation, file-provider recovery, offline behavior, low-storage/resource limits, accessibility, and device behavior. Keep debug artifacts clearly labeled and do not call a build production-ready without the relevant signing, release, and device evidence.
 
@@ -112,7 +115,8 @@ Before any production release, verify signing/release provenance, backup restore
 1. **Protect the current core.** Reconcile README claims with current source and release artifacts; preserve task data, encryption, undo, backup, and the minimal UI. Recheck live issue/PR status before each implementation change.
 2. **Verify merged network-facing features.** The updater and WebView from PRs #12/#13 are in `main`; confirm the fail-closed updater gate, signer configuration, HTTPS/network controls, Safe Browsing disclosures, history handling, and device behavior before enabling or promoting them. Issue #14 is closed, but real provider/process-death recovery still needs validation. Separately review the open PR #15/#19 reminder stack; reminder code is not in `main`. Keep suggestion navigation distinct from that work and close issue #16 with device evidence before describing reminders as reliable.
 3. **Reconcile the near-term feature queue.** Identify its authoritative source and acceptance criteria before implementation; the ten-feature slate is not tracked in current public `main`. Keep each migration reversible and offline-first.
-4. **Design the agent foundation.** Define the task-scoped workspace, capability schemas, permission broker, local audit trail, cancellation, and rollback before connecting a model.
+4. 
+**Design the agent foundation.** Define the task-scoped workspace, capability schemas, permission broker, local audit trail, cancellation, and rollback before connecting a model.
 5. **Research optional runtimes.** Evaluate model weights, browser, OCR/speech, user-space terminal, coding tools, and any plugin mechanism against device budgets, policy, license, and maintenance cost before committing to a delivery design.
 6. **Defer high-risk breadth.** Do not start arbitrary app containers, unrestricted multi-agent control, persistent background autonomy, or screen recording until the narrower single-agent workspace is proven safe and useful.
 
@@ -124,4 +128,72 @@ Defer arbitrary Android app cloning, unrestricted cross-app automation, root-lik
 
 A future contributor or AI agent should read this plan and the [README](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/blob/main/README.md), then recheck the live `main` SHA, relevant open issues/PRs, current source, and release artifacts before proposing work. Verify every assumption against the checked-out implementation; do not duplicate merged or in-flight work. Never expose secrets, private chat/audit history, personal emails, or unrelated local workspace details in public documentation.
 
-Preserve user data and the minimal core; use small, reversible, modular changes with tests. Make a recoverable snapshot before risky mutations. Do not bypass Android security or claim an API/device test that was not performed on that API/device. Report source checks, host tests, API-level compile/build results, APK/release status, and device tests as separate evidence. Keep user approvals, permission scopes, provider/network choices, and cancellation explicit. Recheck exact branch and PR heads because public status may have changed since this draft was written.
+Preserve user data and the minimal core; use small, reversible, modular changes with tests. Make a recoverable snapshot before risky mutations. Do not bypass Android security or claim an API/device test that was not performed on that API/device. Report source checks, host tests, API-level compile/build results, APK/release status, and device tests as separate 
+evidence. Keep user approvals, permission scopes, provider/network choices, and cancellation explicit. Recheck exact branch and PR heads because public status may have changed since this draft was written.
+
+---
+
+## Plan expansion (master architecture addendum)
+
+> Added 2026-10-08 (UTC) after re-audit against the master product vision. This part extends the plan above without replacing any of it. Sections map the vision's required topic list that the base plan did not yet cover in detail.
+
+### Modular download-on-demand system
+
+The base APK stays minimal; every capability beyond the core is an installable **module**. Nothing is bundled "just in case."
+
+**Module manifest (signed index entry):**
+
+```json
+{
+  "id": "lang.ur",
+  "version": "1.0.0",
+  "coreCompat": ">=2.0 <3",
+  "type": "data",
+  "sizeBytes": 4400000,
+  "minRamMb": 0,
+  "sha256": "…",
+  "signature": "ed25519(daymark-release-key)",
+  "license": "string-resources license",
+  "deps": [],
+  "uninstallable": true,
+  "offlineCapable": true
+}
+```
+
+**Lifecycle:** discover → verify signature + hash → compatibility check (RAM/storage/ABI/SDK) → explicit user consent (size shown) → resumable download → re-verify → install → update → rollback to previous version → uninstall. The previous version is kept until the new one verifies; removal never breaks the core app.
+
+**Phase order:** data-only modules first (language packs such as Urdu/Hindi, model weights, prompt packs). Code-bearing modules (DexClassLoader) are RESEARCH REQUIRED and security-gated; no promise is made until a signed, sandboxed design is reviewed.
+
+### Model Manager
+
+A registry of open-source, redistributable model candidates with metadata: size, quantization, minimum RAM, context length, capabilities, license. The manager profiles the device (ActivityManager memory class, ABI, free storage, SDK level) and classifies it low/mid/high end, then **recommends** matching quantized models (for example 0.5B–1B q4 for low-end). It never downloads without explicit consent showing size and RAM cost. Lifecycle: download → verify → smoke-test prompt → activate/switch → update → remove. Low-end devices cap concurrent models at one.
+
+### Standard tool interface and capability discovery
+
+Every agent-facing tool exposes a predictable schema: `name, description, input_schema, output_schema, permissions, risk_level, timeout, cancellation, error_codes`. A small model learns WHAT a tool does and HOW to call it — never Android internals. `agent.capabilities()` returns a structured availability report (browser available, terminal installed, python not-installed, microphone denied) so quantized models can reason reliably. The Java implementation may change; this interface is the stability contract.
+
+### Search provider abstraction
+
+No hard-coded provider. A `SearchProvider` interface (query in, ranked structured results out) with user-selectable implementations. Feasibility: API-key providers are READY; scraping-based providers are ToS/fragility-limited and RESEARCH. Offline searches honestly report "network required."
+
+### Risk levels and confirmation policy
+
+- LOW (no prompt): read, search, analyze inside the workspace.
+- MEDIUM (configurable): create/edit workspace files, download modules, modify workspace state.
+- HIGH (always confirm): delete, install software, external messages, data sharing, sensitive resources, irreversible operations.
+
+Users can configure policies per level; the Permission Broker enforces and audits every decision.
+
+### Memory layers
+
+Scoped and user-clearable: task memory, workspace memory, session memory, user-approved preferences, project memory, tool memory, model context. Agents read/write only within granted scope; each layer has explicit deletion controls. No ambient cross-scope access.
+
+### Update channels
+
+Separate channels for CORE APP, MODULES, MODELS, PLUGINS, TOOLS — each with version, integrity verification, compatibility check, rollback strategy, and update history. New capability never grows the base APK.
+
+### Explicitly not feasible / deferred (unchanged)
+
+- Arbitrary Android app cloning/containers: NOT FEASIBLE under modern Android security; PWAs and sandboxed web workspaces are the alternative.
+- Full Linux terminal on low-end devices: DEFERRED pending a restricted-shell research spike.
+- Python bundling (~30–60 MB): ANDROID-LIMITED, download-on-demand only if the module system proves code-module safety.
