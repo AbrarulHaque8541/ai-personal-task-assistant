@@ -104,8 +104,12 @@ final class TaskLogic {
             if (FILTER_TODAY.equals(filter) && !today.toString().equals(task.dueDate)) continue;
             if (FILTER_UPCOMING.equals(filter)
                     && (task.dueDate == null || !LocalDate.parse(task.dueDate).isAfter(today))) continue;
-            if (!normalizedQuery.isEmpty()
-                    && !task.title.toLowerCase(Locale.ROOT).contains(normalizedQuery)) continue;
+            if (!normalizedQuery.isEmpty()) {
+                String searchable = task.title.toLowerCase(Locale.ROOT)
+                        + " " + task.priority.toLowerCase(Locale.ROOT)
+                        + " " + (task.dueDate == null ? "no date" : task.dueDate);
+                if (!searchable.contains(normalizedQuery)) continue;
+            }
             result.add(task);
         }
         result.sort(taskOrder());
