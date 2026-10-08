@@ -2916,7 +2916,18 @@ public final class MainActivity extends Activity {
         titleInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
         if (editing != null) titleInput.setText(editing.title);
         else if (draftTitle != null && !draftTitle.trim().isEmpty()) titleInput.setText(draftTitle.trim());
-        form.addView(titleInput, bottomMargin(dp(12)));
+        form.addView(titleInput, bottomMargin(dp(4)));
+        TextView titleCounter = text("0 / 160", 11, palette.muted, Typeface.NORMAL);
+        titleCounter.setGravity(Gravity.END);
+        form.addView(titleCounter, bottomMargin(dp(10)));
+        titleInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                int length = s == null ? 0 : s.length();
+                titleCounter.setText(length + " / 160");
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
 
         TextView fieldLabel = text("Due date (optional)", 13, palette.muted, Typeface.BOLD);
         fieldLabel.setLetterSpacing(0.08f);
@@ -3011,6 +3022,13 @@ public final class MainActivity extends Activity {
         AlertDialog dialog = editorBuilder.create();
         dialog.setOnShowListener(ignored -> {
             Button saveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            titleInput.setOnEditorActionListener((view, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    saveButton.performClick();
+                    return true;
+                }
+                return false;
+            });
             saveButton.setOnClickListener(view -> {
                 String normalized = titleInput.getText() == null ? "" : titleInput.getText().toString().trim();
                 if (normalized.isEmpty()) {
@@ -3020,6 +3038,21 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 String priority = priorityValue(prioritySpinner.getSelectedItemPosition());
+                if (!templateOnly) {
+                    String normalizedKey = normalized.toLowerCase(Locale.ROOT);
+                    for (Task existing : tasks) {
+                        if (editing != null && existing.id.equals(editing.id)) continue;
+                        if (existing.title != null && existing.title.trim().toLowerCase(Locale.ROOT).equals(normalizedKey)) {
+                            new AlertDialog.Builder(this)
+                                    .setTitle("Possible duplicate task")
+                                    .setMessage("A task with the same title already exists. Add another one anyway?")
+                                    .setNegativeButton("Cancel", null)
+                                    .setPositiveButton("Add anyway", (d, w) -> saveTaskFromEditor(dialog, editing, normalized, selectedDate[0], priority, sourceTemplate))
+                                    .show();
+                            return;
+                        }
+                    }
+                }
                 if (templateOnly) {
                     if (saveTaskTemplate(normalized, selectedDate[0], priority, titleInput, validation)) {
                         dialog.dismiss();
@@ -3073,6 +3106,31 @@ public final class MainActivity extends Activity {
             dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
         }
         titleInput.requestFocus();
+    }
+
+    private void saveTaskFromEditor(AlertDialog dialog, Task editing, String normalized,
+                                    String selectedDate, String priority, TaskTemplate sourceTemplate) {
+        try {
+            if (editing == null) {
+                tasks.add(sourceTemplate == null
+                        ? TaskLogic.create(normalized, selectedDate, priority)
+                        : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate, priority));
+                if (sourceTemplate == null) quickCaptureInput.setText("");
+                captureFeedback.setText(sourceTemplate == null
+                        ? "Task added. You can edit it later in your list."
+                        : "Task created from the reviewed template. You can edit it later in your list.");
+            } else {
+                replaceTask(TaskLogic.update(editing, normalized, selectedDate, priority));
+            }
+            dialog.dismiss();
+            render();
+            saveTasksAsync();
+            showToast(editing == null
+                    ? sourceTemplate == null ? "Task added." : "Task created from template."
+                    : "Task updated.");
+        } catch (IllegalArgumentException exception) {
+            showToast(exception.getMessage());
+        }
     }
 
     private void showDatePicker(String[] selectedDate, Button dateButton) {
