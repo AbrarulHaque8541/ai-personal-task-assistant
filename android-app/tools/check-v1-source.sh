@@ -339,7 +339,10 @@ assert release_client.count("https://") == 1, "release metadata client must not 
 assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
 assert 'create("githubSideload")' in build and 'create("play")' in build, "explicit sideload and Play product flavors are required"
 assert '"UPDATER_ENABLED", "true"' in build and '"UPDATER_ENABLED", "false"' in build, "only sideload may include the updater"
-assert "UPDATER_ENABLED = false" in publisher_config and 'PUBLISHER_SIGNER_SHA256 = ""' in publisher_config, "publisher updater gate and signer pin must remain fail-closed"
+assert "UPDATER_ENABLED = true" in publisher_config, "publisher updater gate must be explicitly enabled only in the intended source"
+signer_match = re.search(r'PUBLISHER_SIGNER_SHA256\s*=\s*"([0-9a-fA-F]{64})"', publisher_config)
+assert signer_match, "publisher signer pin must be a valid 64-hex SHA-256 fingerprint"
+assert "UpdaterCore.normalizeSha256(PUBLISHER_SIGNER_SHA256) != null" in publisher_config, "publisher signer pin must fail closed when malformed"
 assert "BuildConfig.UPDATER_ENABLED" in publisher_config and "!BuildConfig.DEBUG" in publisher_config, "updater must be release-only and sideload-only"
 assert "UpdaterCore.isNetworkCheckAllowed(hasInternetPermission(), publisherConfigured)" in activity, "publisher configuration must gate even release-metadata network checks"
 assert activity.index("UpdaterCore.isNetworkCheckAllowed") < activity.index("new GitHubReleaseClient()"), "network policy must run before release-client construction"
