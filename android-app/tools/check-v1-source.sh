@@ -234,7 +234,7 @@ for expected in (
     "handler.cancel()",
     "request.deny()",
     "callback.invoke(origin, false, false)",
-    "listener.onDownloadRequested()",
+    "listener.onDownloadRequested(url, userAgent, contentDisposition, mimeType, contentLength)",
     "BrowserAddress.isAllowedWebUrl(url)",
     "request.isForMainFrame()",
     "request.isRedirect()",
