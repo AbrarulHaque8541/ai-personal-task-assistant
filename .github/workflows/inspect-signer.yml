@@ -1,0 +1,26 @@
+name: Inspect production signer continuity
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: temurin
+      - name: Download last production APK
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/daymark-v1.0.2.apk "https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk"
+          test -s /tmp/daymark-v1.0.2.apk
+      - name: Print old APK signer fingerprint
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$apksigner" verify --print-certs /tmp/daymark-v1.0.2.apk
