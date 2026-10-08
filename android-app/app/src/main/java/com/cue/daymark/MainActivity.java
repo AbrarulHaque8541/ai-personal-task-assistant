@@ -2608,7 +2608,12 @@ public final class MainActivity extends Activity {
 
     private void showTaskActions(Task task) {
         if (task == null || !canEdit()) return;
-        String[] actions = {"Duplicate task", "Move due date to today", "Clear due date", "Save as template"};
+        String[] actions = {
+                "Duplicate task", "Mark as done", "Move due date to today",
+                "Move due date to tomorrow", "Clear due date",
+                "Set high priority", "Set medium priority", "Set low priority",
+                "Save as template"
+        };
         new AlertDialog.Builder(this)
                 .setTitle(task.title)
                 .setItems(actions, (dialog, which) -> {
@@ -2623,17 +2628,38 @@ public final class MainActivity extends Activity {
                             saveTasksAsync();
                             showToast("Task duplicated.");
                         } else if (which == 1) {
+                            if (!current.completed) {
+                                replaceTask(TaskLogic.toggleCompleted(current));
+                                render();
+                                saveTasksAsync();
+                            }
+                            showToast("Task marked done.");
+                        } else if (which == 2) {
                             replaceTask(TaskLogic.update(current, current.title, LocalDate.now().toString(), current.priority));
                             render();
                             saveTasksAsync();
                             showToast("Due date moved to today.");
-                        } else if (which == 2) {
+                        } else if (which == 3) {
+                            replaceTask(TaskLogic.update(current, current.title, LocalDate.now().plusDays(1).toString(), current.priority));
+                            render();
+                            saveTasksAsync();
+                            showToast("Due date moved to tomorrow.");
+                        } else if (which == 4) {
                             replaceTask(TaskLogic.update(current, current.title, null, current.priority));
                             render();
                             saveTasksAsync();
                             showToast("Due date cleared.");
-                        } else if (which == 3) {
-                            if (taskTemplates.size() >= TaskTemplateLogic.MAX_TEMPLATES) throw new IllegalStateException("Template limit reached."); taskTemplates.add(TaskTemplateLogic.create(current.title, current.dueDate, current.priority)); saveTasksAsync("Saving templates"); render();
+                        } else if (which == 5 || which == 6 || which == 7) {
+                            String priority = which == 5 ? "high" : which == 6 ? "medium" : "low";
+                            replaceTask(TaskLogic.update(current, current.title, current.dueDate, priority));
+                            render();
+                            saveTasksAsync();
+                            showToast("Priority set to " + priority + ".");
+                        } else if (which == 8) {
+                            if (taskTemplates.size() >= TaskTemplateLogic.MAX_TEMPLATES) throw new IllegalStateException("Template limit reached.");
+                            taskTemplates.add(TaskTemplateLogic.create(current.title, current.dueDate, current.priority));
+                            saveTasksAsync("Saving templates");
+                            render();
                             showToast("Template saved.");
                         }
                     } catch (Exception exception) {
