@@ -24,13 +24,15 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
-        versionCode = 2
-        versionName = "1.0.1"
+        // Same app identity as v1.0.1 (com.cue.daymark). Higher versionCode so Android
+        // treats this as an in-place update and preserves app-private encrypted data
+        // when signed with the same production keystore secrets already in GitHub.
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     signingConfigs {
         create("release") {
-            // Validate release signing environment variables.
             val keystorePath = System.getenv("KEYSTORE_PATH")
             val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
             val alias = System.getenv("KEY_ALIAS")
@@ -97,7 +99,6 @@ android {
     }
 }
 
-// Fail release assemble tasks if signing environment variables are missing
 gradle.taskGraph.whenReady {
     val hasReleaseAssembleTask = allTasks.any { task ->
         task.name.contains("Release", ignoreCase = true) &&

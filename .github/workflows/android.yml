@@ -107,11 +107,9 @@ jobs:
           aab="app/build/outputs/bundle/githubSideloadRelease/app-githubSideload-release.aab"
           test -s "$apk"
           test -s "$aab"
-
           mkdir -p release-artifacts
           cp "$apk" release-artifacts/app-release.apk
           cp "$aab" release-artifacts/app-release.aab
-
           sha256sum release-artifacts/app-release.apk release-artifacts/app-release.aab | tee release-artifacts/SHA256SUMS.txt
 
       - name: Upload release APK and AAB
@@ -138,7 +136,8 @@ jobs:
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$apksigner" verify --verbose release-artifacts/app-release.apk
           "$aapt" dump badging release-artifacts/app-release.apk | grep -F "package: name='com.cue.daymark'"
-          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionName='1.0.1'"
+          # Version is defined in build.gradle.kts — do not hardcode 1.0.1
+          "$aapt" dump badging release-artifacts/app-release.apk | grep -E "versionName='[^']+'"
           test "$(stat -c '%s' release-artifacts/app-release.apk)" -gt 0
           test "$(stat -c '%s' release-artifacts/app-release.aab)" -gt 0
 
