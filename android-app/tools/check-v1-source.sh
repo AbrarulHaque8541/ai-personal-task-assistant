@@ -6,6 +6,10 @@ sh ./tools/run-core-tests.sh
 sh ./tools/run-window-insets-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
+sh ./tools/run-updater-picker-routing-tests.sh
+sh ./tools/run-diagnostics-tests.sh
+sh ./tools/run-web-mode-tests.sh
+sh ./tools/run-text-scale-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-merged-manifests.py "$ROOT"
