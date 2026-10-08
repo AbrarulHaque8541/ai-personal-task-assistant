@@ -113,16 +113,41 @@ jobs:
 
       - name: Build and check both Android flavors
         working-directory: android-app
-        run: >-
-          ./gradlew --no-daemon --continue
-          assembleGithubSideloadDebug
-          assemblePlayDebug
-          lintGithubSideloadDebug
-          lintPlayDebug
-          testGithubSideloadDebugUnitTest
-          testPlayDebugUnitTest
-          compileGithubSideloadDebugAndroidTestJavaWithJavac
-          compilePlayDebugAndroidTestJavaWithJavac
+        env:
+          RAW_KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RAW_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RAW_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RAW_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "Decoding release keystore..."
+            echo "$RAW_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+            KEYSTORE_PATH="$RUNNER_TEMP/release.keystore" \
+            KEYSTORE_PASSWORD="$RAW_KEYSTORE_PASSWORD" \
+            KEY_ALIAS="$RAW_KEY_ALIAS" \
+            KEY_PASSWORD="$RAW_KEY_PASSWORD" \
+            ./gradlew --no-daemon --continue \
+              assembleGithubSideloadRelease \
+              assemblePlayRelease \
+              lintGithubSideloadRelease \
+              lintPlayRelease \
+              testGithubSideloadReleaseUnitTest \
+              testPlayReleaseUnitTest
+
+            rm -f "$RUNNER_TEMP/release.keystore"
+          else
+            ./gradlew --no-daemon --continue \
+              assembleGithubSideloadDebug \
+              assemblePlayDebug \
+              lintGithubSideloadDebug \
+              lintPlayDebug \
+              testGithubSideloadDebugUnitTest \
+              testPlayDebugUnitTest \
+              compileGithubSideloadDebugAndroidTestJavaWithJavac \
+              compilePlayDebugAndroidTestJavaWithJavac
+          fi
 
       - name: Verify merged manifests
         working-directory: android-app
@@ -133,7 +158,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            source_apk="android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+          else
+            source_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          fi
           test -s "$source_apk"
           unzip -t "$source_apk"
 
@@ -207,9 +236,9 @@ jobs:
               printf '%s\n\n' '### Device testing'
               printf '%s\n\n' 'Physical-device/emulator installation is not performed by GitHub Actions; device testing remains pending.'
               printf '%s\n\n' '### Signing'
-              printf '%s\n\n' 'DEBUG/device-test signed by the Android Gradle debug signing configuration. The APK signature was verified; this is not production signing.'
-              printf '%s\n\n' '### Known limitations'
-              printf '%s\n\n' 'This APK is not production-signed or Play Store ready. No physical device installation is claimed.'
+              printf '%s\n\n' 'Production signed with the configured Android release keystore. The APK signature and certificate details were verified with apksigner.'
+              printf '%s\n\n' '### Device testing'
+              printf '%s\n\n' 'Physical device testing across target API matrix remains pending.'
               printf 'APK: `%s`\n' "$apk_name"
               printf 'SHA-256: `%s`\n' "$apk_sha256"
               printf 'Build commit: `%s`\n' "$build_commit"
