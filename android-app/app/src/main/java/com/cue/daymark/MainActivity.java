@@ -221,6 +221,8 @@ public final class MainActivity extends Activity {
     private Button browserHistoryButton;
     private Button browserSettingsButton;
     private Button browserExpandButton;
+    private Button browserReaderButton;
+    private LinearLayout browserReaderActionRow;
     private android.app.Dialog fullScreenWebDialog;
     private FrameLayout fullScreenWebContainer;
     private Spinner searchEngineSpinner;
@@ -876,7 +878,7 @@ public final class MainActivity extends Activity {
         browserExpandButton.setEnabled(false);
         browserExpandButton.setOnClickListener(view -> openFullScreenWebReader());
         for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
-                browserReloadButton, browserExpandButton, browserHomeButton, browserHistoryButton, browserSettingsButton)) {
+                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton)) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
             params.setMargins(0, 0, dp(5), 0);
@@ -907,6 +909,19 @@ public final class MainActivity extends Activity {
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         panel.addView(browserStatus, bottomMargin(dp(4)));
+
+        browserReaderActionRow = new LinearLayout(this);
+        browserReaderActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        browserReaderActionRow.setGravity(Gravity.CENTER_VERTICAL);
+        browserReaderActionRow.setPadding(dp(2), 0, dp(2), 0);
+        browserReaderButton = compactButton("Read full screen", true);
+        browserReaderButton.setContentDescription("Open the current web page in a full-screen reader");
+        browserReaderButton.setEnabled(false);
+        browserReaderButton.setOnClickListener(view -> openFullScreenWebReader());
+        browserReaderActionRow.addView(browserReaderButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        browserReaderActionRow.setVisibility(View.GONE);
+        panel.addView(browserReaderActionRow, bottomMargin(dp(4)));
 
         browserViewport = new FrameLayout(this);
         browserViewport.setBackground(shape(palette.surface, 12, palette.line));
@@ -1087,6 +1102,12 @@ public final class MainActivity extends Activity {
         if (browserExpandButton != null) {
             browserExpandButton.setEnabled(available && hasPage);
         }
+        if (browserReaderActionRow != null) {
+            browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
+        }
+        if (browserReaderButton != null) {
+            browserReaderButton.setEnabled(available && hasPage);
+        }
     }
 
     private void showBrowserHome() {
@@ -1136,10 +1157,6 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         fullScreenWebDialog.setContentView(dialogRoot);
-        Window window = fullScreenWebDialog.getWindow();
-        if (window != null) {
-            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        }
 
         fullScreenWebDialog.setOnCancelListener(d -> returnWebViewToViewport());
         fullScreenWebDialog.setOnDismissListener(d -> {
@@ -1148,6 +1165,10 @@ public final class MainActivity extends Activity {
         });
 
         fullScreenWebDialog.show();
+        Window window = fullScreenWebDialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        }
     }
 
     private void closeFullScreenWebReader() {
