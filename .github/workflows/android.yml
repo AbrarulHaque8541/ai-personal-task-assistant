@@ -154,7 +154,7 @@ jobs:
             ""|*[!0-9A-Fa-f]*) echo "::error::Invalid configured publisher signer fingerprint"; exit 1 ;;
           esac
           test "${#expected_signer}" -eq 64
-          actual_signer="$(keytool -list -v -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" | awk -F": " '/SHA256:/{gsub(":", "", $2); print tolower($2); exit}')"
+          actual_signer="$(keytool -exportcert -rfc -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | openssl dgst -sha256 -binary | od -An -tx1 | tr -d " \n" | tr "A-F" "a-f")"
           test -n "$actual_signer"
           test "${actual_signer,,}" = "${expected_signer,,}"
           echo "Release signer fingerprint matches the pinned publisher certificate."
