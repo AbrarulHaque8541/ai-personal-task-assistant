@@ -448,7 +448,55 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
+        super.onActivityResult(requestCode, resultCode, data);        if (requestCode != REQUEST_IMPORT_EXTENSION || resultCode != RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        try {
+            String raw;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new IOException("Could not open extension file.");
+                byte[] buffer = new byte[200_001];
+                int total = 0;
+                int read;
+                while ((read = in.read(buffer, total, buffer.length - total)) > 0) {
+                    total += read;
+                    if (total >= buffer.length) throw new IOException("Extension file is too large.");
+                }
+                raw = new String(buffer, 0, total, java.nio.charset.StandardCharsets.UTF_8);
+            }
+            BrowserExtension parsed;
+            String trimmed = raw.trim();
+            if (trimmed.startsWith("{")) parsed = ExtensionPackageParser.parseDaymarkJson(trimmed, false);
+            else parsed = ExtensionPackageParser.parseUserScript(raw);
+
+            String warning = parsed.warnings == null || parsed.warnings.isEmpty()
+                    ? "No unsupported API warnings."
+                    : parsed.warnings;
+            String summary = "Name: " + parsed.name + "\nVersion: " + parsed.version +
+                    "\nMatches: " + parsed.matches.size() +
+                    "\nCSS: " + parsed.css.length() + " chars · JS: " + parsed.js.length() +
+                    "\n\n" + warning +
+                    "\n\nDaymark will keep this pack local and will not provide privileged browser APIs.";
+            new AlertDialog.Builder(this)
+                    .setTitle("Review extension")
+                    .setMessage(summary)
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Install", (d, w) -> {
+                        try {
+                            extensionRuntime.store().installUserPack(parsed);
+                            showToast("Extension installed.");
+                            showBrowserExtensionsManager();
+                        } catch (Exception exception) {
+                            showToast("Extension could not be installed.");
+                        }
+                    }).show();
+        } catch (Exception exception) {
+            showToast("Invalid or unsupported extension file.");
+        }
+    }
+
+
         UpdaterActivityResultRouter.Route updaterRoute = UpdaterActivityResultRouter.route(
                 requestCode, resultCode == RESULT_OK, data != null && data.getData() != null);
         if (updaterRoute != UpdaterActivityResultRouter.Route.NOT_UPDATER) {
@@ -1338,57 +1386,6 @@ public final class MainActivity extends Activity {
                 .setView(scroll)
                 .setPositiveButton("Done", null)
                 .show();
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_IMPORT_EXTENSION || resultCode != RESULT_OK || data == null || data.getData() == null) {
-            return;
-        }
-        Uri uri = data.getData();
-        try {
-            String raw;
-            try (InputStream in = getContentResolver().openInputStream(uri)) {
-                if (in == null) throw new IOException("Could not open extension file.");
-                byte[] buffer = new byte[200_001];
-                int total = 0;
-                int read;
-                while ((read = in.read(buffer, total, buffer.length - total)) > 0) {
-                    total += read;
-                    if (total >= buffer.length) throw new IOException("Extension file is too large.");
-                }
-                raw = new String(buffer, 0, total, java.nio.charset.StandardCharsets.UTF_8);
-            }
-            BrowserExtension parsed;
-            String trimmed = raw.trim();
-            if (trimmed.startsWith("{")) parsed = ExtensionPackageParser.parseDaymarkJson(trimmed, false);
-            else parsed = ExtensionPackageParser.parseUserScript(raw);
-
-            String warning = parsed.warnings == null || parsed.warnings.isEmpty()
-                    ? "No unsupported API warnings."
-                    : parsed.warnings;
-            String summary = "Name: " + parsed.name + "\nVersion: " + parsed.version +
-                    "\nMatches: " + parsed.matches.size() +
-                    "\nCSS: " + parsed.css.length() + " chars · JS: " + parsed.js.length() +
-                    "\n\n" + warning +
-                    "\n\nDaymark will keep this pack local and will not provide privileged browser APIs.";
-            new AlertDialog.Builder(this)
-                    .setTitle("Review extension")
-                    .setMessage(summary)
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Install", (d, w) -> {
-                        try {
-                            extensionRuntime.store().installUserPack(parsed);
-                            showToast("Extension installed.");
-                            showBrowserExtensionsManager();
-                        } catch (Exception exception) {
-                            showToast("Extension could not be installed.");
-                        }
-                    }).show();
-        } catch (Exception exception) {
-            showToast("Invalid or unsupported extension file.");
-        }
     }
 
     private void showFindInPageDialog() {
