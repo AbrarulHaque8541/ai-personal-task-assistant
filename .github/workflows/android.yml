@@ -158,8 +158,10 @@ jobs:
           keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" >/dev/null
           actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr "A-F" "a-f")"
           test -n "$actual_signer"
+          echo "Release certificate SHA-256: ${actual_signer}"
+          echo "Pinned publisher SHA-256: ${expected_signer}"
           if [[ "${actual_signer,,}" != "${expected_signer,,}" ]]; then
-            echo "::error::Release signer mismatch. Keystore certificate SHA-256=${actual_signer}; pinned publisher SHA-256=${expected_signer}"
+            echo "::error::Release signer mismatch. The configured production keystore is not the pinned publisher certificate."
             exit 1
           fi
           echo "Release signer fingerprint matches the pinned publisher certificate."
