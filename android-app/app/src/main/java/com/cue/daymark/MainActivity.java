@@ -218,8 +218,6 @@ public final class MainActivity extends Activity {
     private View taskScreen;
     private LinearLayout taskActions;
     private LinearLayout webActions;
-    private LinearLayout sharedComposer;
-    private View appTopBar;
     private EditText browserAddressInput;
     private Spinner browserSearchEngineSpinner;
     private LinearLayout browserScreen;
