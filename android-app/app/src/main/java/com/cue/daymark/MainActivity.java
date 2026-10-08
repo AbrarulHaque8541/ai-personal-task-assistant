@@ -89,7 +89,6 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
     private static final int REQUEST_PORTABLE_IMPORT = 7343;
-    private static final int REQUEST_EXTENSION_IMPORT = 7344;
     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
@@ -1110,22 +1109,12 @@ public final class MainActivity extends Activity {
         sitesScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout sites = new LinearLayout(this);
         sites.setOrientation(LinearLayout.HORIZONTAL);
-        // Curated AI web providers. These are normal HTTPS shortcuts, not API integrations.
-        sites.addView(browserSiteButton("ChatGPT", "https://chatgpt.com/"));
-        sites.addView(browserSiteButton("Claude", "https://claude.ai/"));
-        sites.addView(browserSiteButton("Gemini", "https://gemini.google.com/"));
-        sites.addView(browserSiteButton("Copilot", "https://copilot.microsoft.com/"));
-        sites.addView(browserSiteButton("Grok", "https://grok.com/"));
-        sites.addView(browserSiteButton("DeepSeek", "https://chat.deepseek.com/"));
-        sites.addView(browserSiteButton("Mistral", "https://chat.mistral.ai/"));
-        sites.addView(browserSiteButton("Meta AI", "https://www.meta.ai/"));
-        sites.addView(browserSiteButton("Qwen", "https://chat.qwen.ai/"));
-        sites.addView(browserSiteButton("Kimi", "https://www.kimi.com/"));
-        sites.addView(browserSiteButton("Poe", "https://poe.com/"));
-        sites.addView(browserSiteButton("HuggingChat", "https://huggingface.co/chat/"));
-        sites.addView(browserSiteButton("You.com", "https://you.com/"));
-        sites.addView(browserSiteButton("Character AI", "https://character.ai/"));
-        sites.addView(browserSiteButton("Perplexity", "https://www.perplexity.ai/"));
+        // Curated AI web providers from the shared catalog. These are normal HTTPS
+        // shortcuts, not API integrations; the catalog keeps every label/URL pair in
+        // one place so the row and the catalog cannot drift apart.
+        for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
+            sites.addView(browserSiteButton(entry.label, entry.httpsUrl));
+        }
         sitesScroll.addView(sites);
         panel.addView(sitesScroll, bottomMargin(dp(3)));
 
