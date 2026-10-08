@@ -85,6 +85,7 @@ import com.cue.daymark.updater.UpdaterRecoveryStore;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
+    private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
     private static final int REQUEST_PORTABLE_IMPORT = 7343;
     private static final int REQUEST_EXTENSION_IMPORT = 7344;
@@ -1251,6 +1252,142 @@ public final class MainActivity extends Activity {
             showExtensionManagerDialog();
         } catch (Exception exception) {
             showToast("Extension rejected: " + exception.getMessage());
+        }
+    }
+
+    private void showBrowserExtensionsManager() {
+        if (extensionRuntime == null) return;
+        List<BrowserExtension> extensions = extensionRuntime.store().listAll();
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+
+        TextView disclosure = text(
+                "Extensions run only inside Daymark's HTTPS WebView. They cannot access tasks, encryption keys, or app-private data. " +
+                "Chrome/Firefox privileged APIs, network interception, and GM_* storage are not available.",
+                12, palette.muted, Typeface.NORMAL);
+        disclosure.setLineSpacing(dp(2), 1f);
+        content.addView(disclosure, bottomMargin(dp(10)));
+
+        if (extensions.isEmpty()) {
+            content.addView(text("No extensions installed.", 13, palette.muted, Typeface.NORMAL),
+                    bottomMargin(dp(8)));
+        }
+        for (BrowserExtension ext : extensions) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(10), dp(9), dp(10), dp(9));
+            row.setBackground(shape(palette.surface, 10, palette.line));
+
+            CheckBox enabled = new CheckBox(this);
+            enabled.setText(ext.name + (ext.builtIn ? " · built-in" : " · user pack"));
+            enabled.setTextColor(palette.text);
+            enabled.setTextSize(14 * textScale);
+            enabled.setChecked(ext.enabled);
+            enabled.setContentDescription((ext.enabled ? "Disable " : "Enable ") + ext.name);
+            enabled.setOnCheckedChangeListener((button, checked) -> {
+                if (ext.builtIn) extensionRuntime.store().setBuiltinEnabled(ext.id, checked);
+                else extensionRuntime.store().setUserPackEnabled(ext.id, checked);
+                showToast((checked ? "Enabled: " : "Disabled: ") + ext.name);
+            });
+            row.addView(enabled);
+
+            String detail = "v" + ext.version + " · " +
+                    (ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size() + " match rule(s)");
+            if (ext.warnings != null && !ext.warnings.isEmpty()) detail += "\nWarning: " + ext.warnings;
+            TextView description = text(
+                    (ext.description.isEmpty() ? detail : ext.description + "\n" + detail),
+                    12, ext.warnings.isEmpty() ? palette.muted : palette.warning, Typeface.NORMAL);
+            description.setLineSpacing(dp(2), 1f);
+            row.addView(description, topMargin(dp(2)));
+
+            if (!ext.builtIn) {
+                Button remove = compactButton("Remove", false);
+                remove.setContentDescription("Remove extension " + ext.name);
+                remove.setOnClickListener(view -> {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Remove extension?")
+                            .setMessage("Remove " + ext.name + " from this device?")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Remove", (d, w) -> {
+                                extensionRuntime.store().uninstallUserPack(ext.id);
+                                showToast("Extension removed.");
+                                showBrowserExtensionsManager();
+                            }).show();
+                });
+                row.addView(remove, topMargin(dp(5)));
+            }
+            content.addView(row, bottomMargin(dp(7)));
+        }
+
+        Button importButton = primaryButton("Add extension / userscript");
+        importButton.setContentDescription("Import a Daymark extension pack or compatible userscript from device storage");
+        importButton.setOnClickListener(view -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_IMPORT_EXTENSION);
+        });
+        content.addView(importButton, topMargin(dp(4)));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Extensions")
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_IMPORT_EXTENSION || resultCode != RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        try {
+            String raw;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new IOException("Could not open extension file.");
+                byte[] buffer = new byte[200_001];
+                int total = 0;
+                int read;
+                while ((read = in.read(buffer, total, buffer.length - total)) > 0) {
+                    total += read;
+                    if (total >= buffer.length) throw new IOException("Extension file is too large.");
+                }
+                raw = new String(buffer, 0, total, java.nio.charset.StandardCharsets.UTF_8);
+            }
+            BrowserExtension parsed;
+            String trimmed = raw.trim();
+            if (trimmed.startsWith("{")) parsed = ExtensionPackageParser.parseDaymarkJson(trimmed, false);
+            else parsed = ExtensionPackageParser.parseUserScript(raw);
+
+            String warning = parsed.warnings == null || parsed.warnings.isEmpty()
+                    ? "No unsupported API warnings."
+                    : parsed.warnings;
+            String summary = "Name: " + parsed.name + "\nVersion: " + parsed.version +
+                    "\nMatches: " + parsed.matches.size() +
+                    "\nCSS: " + parsed.css.length() + " chars · JS: " + parsed.js.length() +
+                    "\n\n" + warning +
+                    "\n\nDaymark will keep this pack local and will not provide privileged browser APIs.";
+            new AlertDialog.Builder(this)
+                    .setTitle("Review extension")
+                    .setMessage(summary)
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Install", (d, w) -> {
+                        try {
+                            extensionRuntime.store().installUserPack(parsed);
+                            showToast("Extension installed.");
+                            showBrowserExtensionsManager();
+                        } catch (Exception exception) {
+                            showToast("Extension could not be installed.");
+                        }
+                    }).show();
+        } catch (Exception exception) {
+            showToast("Invalid or unsupported extension file.");
         }
     }
 
