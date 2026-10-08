@@ -22,10 +22,10 @@ jobs:
       run:
         working-directory: android-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "17"
           distribution: "temurin"
@@ -138,7 +138,21 @@ jobs:
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$apksigner" verify --verbose release-artifacts/app-release.apk
           "$aapt" dump badging release-artifacts/app-release.apk | grep -F "package: name='com.cue.daymark'"
-          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionName='1.0.1'"
+          expected_version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          expected_version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          test -n "$expected_version_name"
+          test -n "$expected_version_code"
+          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionName='$expected_version_name'"
+          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionCode=$expected_version_code"
+          expected_signer="$(sed -n 's/.*PUBLISHER_SIGNER_SHA256[[:space:]]*=[[:space:]]*"/"/p' app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java | tr -d ' 	";' | head -n 1)"
+          case "$expected_signer" in
+            ""|*[!0-9A-Fa-f]*) echo "::error::Invalid configured publisher signer fingerprint"; exit 1 ;;
+          esac
+          test "${#expected_signer}" -eq 64
+          actual_signer="$( "$apksigner" verify --print-certs release-artifacts/app-release.apk | sed -n 's/.*certificate SHA-256 digest: \([0-9A-Fa-f:]*\).*/\1/p' | tr -d ':' | head -n 1 )"
+          test -n "$actual_signer"
+          test "${actual_signer,,}" = "${expected_signer,,}"
+          echo "Release signer fingerprint matches the pinned publisher certificate."
           test "$(stat -c '%s' release-artifacts/app-release.apk)" -gt 0
           test "$(stat -c '%s' release-artifacts/app-release.aab)" -gt 0
 
@@ -152,9 +166,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
       - name: Run web prototype tests
