@@ -1,0 +1,37 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ apply manually if needed — MainActivity exceeds multi-file payload limits.
+@@
+ // 1) After webMode restore in onCreate(savedInstanceState):
++            taskDraft = ComposerDraftState.restore(savedInstanceState);
+@@
+ // 2) In onSaveInstanceState after outState.putBoolean(STATE_WEB_MODE, webMode):
++        ComposerDraftState.save(outState, taskDraft);
+@@
+ // 3) In showSettingsDialog options array, add before "Check now":
++                "Report a bug",
+@@
+ // 4) In the setItems listener, handle Report a bug and shift Check now:
+-                    else if (selected == 8) showPortableBackupDialog();
+-                    else checkForUpdates(true);
++                    else if (selected == 8) showPortableBackupDialog();
++                    else if (selected == 9) openBugReport();
++                    else checkForUpdates(true);
+@@
+ // 5) Add method:
++    private void openBugReport() {
++        try {
++            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
++            String versionName = info.versionName == null ? "unknown" : info.versionName;
++            int versionCode = Build.VERSION.SDK_INT >= 28
++                    ? (int) info.getLongVersionCode() : info.versionCode;
++            String flavor = BuildConfig.UPDATER_ENABLED ? "githubSideload" : "play";
++            android.content.Intent intent = new android.content.Intent(
++                    android.content.Intent.ACTION_VIEW,
++                    BugReportComposer.buildUri(versionName, versionCode, flavor));
++            startActivity(intent);
++        } catch (Exception exception) {
++            showInfo("Report a bug",
++                    "Open https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/new in a browser to file a report. Task data is never attached automatically.");
++        }
++    }
