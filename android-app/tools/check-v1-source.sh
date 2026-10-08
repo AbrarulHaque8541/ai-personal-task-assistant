@@ -3,6 +3,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 sh ./tools/run-core-tests.sh
+sh ./tools/run-activity-request-code-tests.sh
+sh ./tools/run-portable-export-tests.sh
 sh ./tools/run-window-insets-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
@@ -12,7 +14,9 @@ sh ./tools/run-diagnostics-tests.sh
 sh ./tools/run-web-mode-tests.sh
 sh ./tools/run-text-scale-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
+python3 ./tools/check-browser-catalog.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
+bash ./tools/check-release-identity.sh
 python3 ./tools/check-merged-manifests.py "$ROOT"
 python3 "$ROOT/tools/check-slsa-workflow.py"
 python3 - "$ROOT" <<'PY'
@@ -265,8 +269,11 @@ for expected in (
 ):
     assert expected in address, f"missing browser input rule: {expected}"
 assert "https://" + "example" not in address  # Search/address behavior is covered by executable smoke tests.
-assert "ChatGPT" in activity and "Claude" in activity and "Gemini" in activity and "Perplexity" in activity
-assert "https://chatgpt.com/" in activity and "https://claude.ai/" in activity
+assert "AiSiteCatalog.entries()" in activity, \
+    "browser AI shortcuts must be built from the shared catalog, not duplicated inline"
+ai_catalog = (main / "java/com/cue/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
+assert "ChatGPT" in ai_catalog and "Claude" in ai_catalog and "Gemini" in ai_catalog and "Perplexity" in ai_catalog
+assert "https://chatgpt.com/" in ai_catalog and "https://claude.ai/" in ai_catalog
 assert "BROWSER_HISTORY_KEY" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity
 clear = re.search(r"private void clearBrowserData\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert clear, "explicit browser data clear action is required"

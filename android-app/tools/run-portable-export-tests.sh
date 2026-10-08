@@ -13,3 +13,4 @@ javac -d "$BUILD" \
     "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
     "$ROOT/tools/PortableExportWriterSmoke.java"
 java -cp "$BUILD" com.cue.daymark.PortableExportWriterSmoke
+python3 "$ROOT/tools/check-portable-export-policy.py" "$ROOT"
