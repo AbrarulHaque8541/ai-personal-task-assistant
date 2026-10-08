@@ -14,6 +14,12 @@ public final class BrowserAddressSmoke {
         assert google.startsWith("https://www.google.com/search?q=") : google;
         String brave = BrowserAddress.resolveInput("weather tomorrow", BrowserAddress.SearchEngine.BRAVE);
         assert brave.startsWith("https://search.brave.com/search?q=") : brave;
+        assert BrowserAddress.resolveInput("privacy search", BrowserAddress.SearchEngine.STARTPAGE)
+                .startsWith("https://www.startpage.com/sp/search?query=");
+        assert BrowserAddress.resolveInput("privacy search", BrowserAddress.SearchEngine.KAGI)
+                .startsWith("https://kagi.com/search?q=");
+        assert BrowserAddress.resolveInput("privacy search", BrowserAddress.SearchEngine.YANDEX)
+                .startsWith("https://yandex.com/search/?text=");
 
         assert BrowserAddress.resolveInput("example.com/path", BrowserAddress.SearchEngine.DUCKDUCKGO)
                 .equals("https://example.com/path");
