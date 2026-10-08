@@ -83,6 +83,7 @@ import com.cue.daymark.updater.UpdaterCore;
 import com.cue.daymark.updater.UpdaterPublisherConfig;
 import com.cue.daymark.updater.UpdaterRecoveryStore;
 
+// Browser workspace + task workspace share one Activity but never share visible controls.
 public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
