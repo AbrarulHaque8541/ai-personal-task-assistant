@@ -4140,7 +4140,7 @@ public final class MainActivity extends Activity {
                 "Permission status: " + permissionStatusLabel(),
                 "Encrypted backup / restore",
                 "Browser & extensions",
-                "Check for updates"
+                "Check now"
         };
         new AlertDialog.Builder(this)
                 .setTitle("More")
