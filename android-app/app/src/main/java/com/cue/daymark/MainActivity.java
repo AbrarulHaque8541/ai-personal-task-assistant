@@ -218,6 +218,10 @@ public final class MainActivity extends Activity {
     private View taskScreen;
     private LinearLayout taskActions;
     private LinearLayout webActions;
+    private LinearLayout sharedComposer;
+    private View appTopBar;
+    private EditText browserAddressInput;
+    private Spinner browserSearchEngineSpinner;
     private LinearLayout browserScreen;
     private FrameLayout browserViewport;
     private View browserHomeView;
@@ -930,9 +934,102 @@ public final class MainActivity extends Activity {
         return card;
     }
 
+    private View buildBrowserAddressBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(dp(10), dp(8), dp(10), dp(6));
+        bar.setBackground(shape(palette.surface, 12, palette.line));
+
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        browserAddressInput = new EditText(this);
+        browserAddressInput.setSingleLine(true);
+        browserAddressInput.setTextSize(15 * textScale);
+        browserAddressInput.setHint("Search or enter HTTPS address");
+        browserAddressInput.setImeOptions(EditorInfo.IME_ACTION_GO);
+        browserAddressInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        browserAddressInput.setPadding(dp(12), 0, dp(8), 0);
+        browserAddressInput.setTextColor(palette.text);
+        browserAddressInput.setHintTextColor(palette.muted);
+        browserAddressInput.setBackground(shape(palette.background, 10, palette.line));
+        browserAddressInput.setContentDescription("Browser address and search field");
+        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(50), 1f));
+
+        webGoButton = primaryButton("Go");
+        webGoButton.setContentDescription("Open the entered web address or search");
+        webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(68), dp(50));
+        goParams.leftMargin = dp(6);
+        top.addView(webGoButton, goParams);
+        bar.addView(top);
+
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setGravity(Gravity.CENTER_VERTICAL);
+        bottom.addView(text("Search", 12, palette.muted, Typeface.BOLD),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        browserSearchEngineSpinner = new Spinner(this);
+        String[] labels = new String[BrowserAddress.SearchEngine.values().length];
+        for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        browserSearchEngineSpinner.setAdapter(adapter);
+        int selected = java.util.Arrays.asList(labels).indexOf(searchEngine.label);
+        browserSearchEngineSpinner.setSelection(Math.max(0, selected));
+        browserSearchEngineSpinner.setContentDescription("Choose search engine");
+        browserSearchEngineSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position < 0 || position >= BrowserAddress.SearchEngine.values().length) return;
+                searchEngine = BrowserAddress.SearchEngine.values()[position];
+                browserPreferences.edit().putString(SEARCH_ENGINE_KEY, searchEngine.name()).apply();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        bottom.addView(browserSearchEngineSpinner, new LinearLayout.LayoutParams(0, dp(44), 1f));
+
+        browserOnlineToggle = new CheckBox(this);
+        browserOnlineToggle.setText("Online");
+        browserOnlineToggle.setTextColor(palette.text);
+        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
+        browserOnlineToggle.setContentDescription("Enable or disable online browsing");
+        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
+            if (suppressBrowserOnlineToggleListener) return;
+            if (checked) confirmBrowserOnlineAccess();
+            else setBrowserOnlineEnabled(false);
+        });
+        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        bar.addView(bottom);
+
+        browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH) {
+                navigateFromBrowserInput();
+                return true;
+            }
+            return false;
+        });
+        return bar;
+    }
+
+    private void navigateFromBrowserInput() {
+        if (browserAddressInput == null) return;
+        String value = browserAddressInput.getText() == null ? "" : browserAddressInput.getText().toString();
+        if (value.trim().isEmpty()) return;
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+            showBrowserOfflineStatus();
+            return;
+        }
+        try {
+            String address = BrowserAddress.resolveInput(value, searchEngine);
+            browserAddressInput.setError(null);
+            navigateBrowserTo(address);
+        } catch (IllegalArgumentException exception) {
+            browserAddressInput.setError(exception.getMessage());
+        }
+    }
+
     private LinearLayout buildBrowserScreen() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
+        panel.addView(buildBrowserAddressBar(), bottomMargin(dp(5)));
         panel.setPadding(dp(8), dp(0), dp(8), dp(2));
 
         HorizontalScrollView toolbarScroll = new HorizontalScrollView(this);
@@ -967,9 +1064,14 @@ public final class MainActivity extends Activity {
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
         browserExpandButton = compactButton("Expand", false);
+        browserExpandButton.setVisibility(View.GONE);
         browserExpandButton.setContentDescription("Open the current web page in a full-screen reader");
         browserExpandButton.setEnabled(false);
         browserExpandButton.setOnClickListener(view -> openFullScreenWebReader());
+        Button tasksButton = compactButton("Tasks", false);
+        tasksButton.setContentDescription("Return to Daymark tasks");
+        tasksButton.setOnClickListener(view -> setWebMode(false));
+        toolbar.addView(tasksButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
         for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
                 browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton, browserOverflowButton)) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -2062,9 +2164,11 @@ public final class MainActivity extends Activity {
         if (sharedComposer != null) sharedComposer.setVisibility(webMode ? View.GONE : View.VISIBLE);
         taskScreen.setVisibility(webMode ? View.GONE : View.VISIBLE);
         browserScreen.setVisibility(webMode ? View.VISIBLE : View.GONE);
-        taskActions.setVisibility(webMode ? View.GONE : View.VISIBLE);
-        webActions.setVisibility(webMode ? View.VISIBLE : View.GONE);
-        pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
+        sharedComposer.setVisibility(webMode ? View.GONE : View.VISIBLE);
+        appTopBar.setVisibility(webMode ? View.GONE : View.VISIBLE);
+        taskActions.setVisibility(View.VISIBLE);
+        webActions.setVisibility(View.GONE);
+        pathButton.setVisibility(View.VISIBLE);
         quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
         quickCaptureInput.setContentDescription(webMode
                 ? "Search the web or enter an HTTPS web address. Browser network access is Offline by default; this is sent only when Online is enabled and you tap Go."
