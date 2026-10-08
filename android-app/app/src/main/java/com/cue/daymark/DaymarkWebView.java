@@ -28,9 +28,12 @@ final class DaymarkWebView extends WebView {
         void onRendererGone();
     }
 
+    private final ExtensionRuntime extensionRuntime;
+
     DaymarkWebView(Activity activity, BrowserNetworkPolicy networkPolicy,
                    boolean safeBrowsingEnabled, Listener listener) {
         super(activity);
+        this.extensionRuntime = ExtensionRuntime.create(activity);
         setFocusable(true);
         setFocusableInTouchMode(true);
         setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
@@ -87,6 +90,10 @@ final class DaymarkWebView extends WebView {
             @Override
             public void onPageFinished(WebView view, String url) {
                 listener.onPageFinished(url);
+                // Local Daymark packs only (CSS/userscript-style). No chrome.* APIs, no request interception.
+                if (extensionRuntime != null && networkPolicy.allowsRemoteLoads()) {
+                    extensionRuntime.onPageFinished(view, url);
+                }
             }
 
             @Override
