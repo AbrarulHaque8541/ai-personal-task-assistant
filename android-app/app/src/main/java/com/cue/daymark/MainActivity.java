@@ -2380,7 +2380,7 @@ public final class MainActivity extends Activity {
                             saveTasksAsync();
                             showToast("Due date cleared.");
                         } else if (which == 3) {
-                            saveTaskTemplate(current.title, current.dueDate, current.priority, null, null);
+                            if (taskTemplates.size() >= TaskTemplateLogic.MAX_TEMPLATES) throw new IllegalStateException("Template limit reached."); taskTemplates.add(TaskTemplateLogic.create(current.title, current.dueDate, current.priority)); saveTasksAsync("Saving templates"); render();
                             showToast("Template saved.");
                         }
                     } catch (Exception exception) {
