@@ -2,28 +2,35 @@
 
 Local-first Android task assistant (`com.cue.daymark`).
 
-## Download (same app — data preserved on update)
+## Download
 
 | Release | APK |
 |---------|-----|
-| **Current stable** | [v1.0.1](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.1) — [Daymark-v1.0.1.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.1/Daymark-v1.0.1.apk) |
-| **Next same-app update** | Tag `v1.0.2` on `main` → Actions builds signed APK with the **same keystore secrets** (versionCode 3). Install over 1.0.1 to keep local data. |
+| **Current production** | [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.2) — [Daymark-v1.0.2.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) |
+| Previous | [v1.0.1](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.1) |
 
-Package ID and production signing identity must stay the same across updates. Uninstalling wipes local encrypted data.
+**Same package + same production signing key + higher versionCode = in-place update (data kept).**  
+Uninstalling the app deletes local encrypted data. Prefer export backup first if you must reinstall.
 
-## Secrets (already in GitHub)
+If install fails with *package conflicts*, the phone has Daymark signed with a **different key** (often a debug build). Uninstall that copy, then install the production APK above. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
-Release builds use: `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+## Secrets (GitHub Actions)
 
-## Publish next version
+`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` — **do not rotate** without a planned migration.
+
+## Publish next production update
+
+1. On `main`, bump `versionCode` and `versionName` in `android-app/app/build.gradle.kts`.
+2. Tag and push:
 
 ```bash
-# after main has versionName 1.0.2 / versionCode 3
-git tag -a v1.0.2 -m "Daymark 1.0.2 same-app update"
-git push origin v1.0.2
+git tag -a v1.0.3 -m "Daymark 1.0.3"
+git push origin v1.0.3
 ```
 
-Workflow: `.github/workflows/android-production-release.yml`
+3. Workflow **Android production release** attaches `Daymark-v1.0.3.apk`.
+
+Full rules for humans and agents: **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** · **[AGENTS.md](AGENTS.md)**
 
 ## License
 
