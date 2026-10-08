@@ -1332,7 +1332,7 @@ public final class MainActivity extends Activity {
                             openDownloadsFolder();
                             break;
                         case 7:
-                            showExtensionManagerDialog();
+                            showBrowserExtensionsManager();
                             break;
                         case 8:
                             showBrowserSettingsDialog();
@@ -1341,63 +1341,6 @@ public final class MainActivity extends Activity {
                             break;
                     }
                 }).show();
-    }
-
-    private void showExtensionManagerDialog() {
-        ExtensionStore store = new ExtensionStore(this);
-        List<BrowserExtension> extensions = store.listAll();
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(8), dp(4), dp(8), dp(4));
-
-        TextView intro = text("Local extensions only. Daymark supports CSS/JavaScript packs and a limited userscript subset. Chrome Web Store packages and privileged APIs are not executed.", 12, palette.muted, Typeface.NORMAL);
-        content.addView(intro, bottomMargin(dp(10)));
-
-        for (BrowserExtension ext : extensions) {
-            LinearLayout row = new LinearLayout(this);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            TextView name = text(ext.name + "  v" + ext.version, 14, palette.text, Typeface.BOLD);
-            row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            CheckBox enabled = new CheckBox(this);
-            enabled.setChecked(ext.enabled);
-            enabled.setContentDescription("Enable or disable extension " + ext.name);
-            enabled.setOnCheckedChangeListener((button, checked) -> {
-                if (ext.builtIn) {
-                    store.setBuiltinEnabled(ext.id, checked);
-                } else {
-                    try {
-                        store.installUserPack(ext.withEnabled(checked));
-                    } catch (Exception exception) {
-                        showToast("Could not update extension.");
-                    }
-                }
-                if (browserWebView != null && browserWebView.getUrl() != null) {
-                    browserWebView.reload();
-                }
-            });
-            row.addView(enabled);
-            if (!ext.builtIn) {
-                Button remove = compactButton("Remove", false);
-                remove.setOnClickListener(view -> {
-                    store.uninstallUserPack(ext.id);
-                    showExtensionManagerDialog();
-                });
-                row.addView(remove);
-            }
-            content.addView(row, bottomMargin(dp(7)));
-        }
-
-        Button importButton = compactButton("Add extension pack / userscript", true);
-        importButton.setOnClickListener(view -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            startActivityForResult(intent, REQUEST_EXTENSION_IMPORT);
-        });
-        content.addView(importButton, topMargin(dp(6)));
-
-        new AlertDialog.Builder(this).setTitle("Extensions").setView(content)
-                .setPositiveButton("Done", null).show();
     }
 
     private void importExtensionFromUri(Uri uri) {
