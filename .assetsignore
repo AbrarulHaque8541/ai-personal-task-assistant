@@ -1,17 +1,44 @@
-# Only the web prototype should be published as static assets.
-# Everything below is source, tooling, or the Android project.
+# Only the web prototype static files may be published.
+# Prefer an allowlist mindset: everything not needed for the static site is excluded.
+
+# Android project and binaries
 android-app/
+artifacts/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Tests, tooling, VCS
 tests/
 .git/
 .gitignore
+.gitattributes
+.github/
 .assetsignore
+
+# Node / build outputs not part of the static site
 package.json
 package-lock.json
-README.md
-wrangler.jsonc
 node_modules/
 .wrangler/
 dist/
 *.log
+
+# Config and docs that must not ship as static assets
+wrangler.jsonc
+README.md
+LICENSE
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+PROJECT_PLAN.md
+DOCUMENTATION_TRUTH_AUDIT.md
+V1_ACCEPTANCE.md
+TASK_TEMPLATES.md
+docs/
+*.md
+
+# OS junk
 .DS_Store
 Thumbs.db

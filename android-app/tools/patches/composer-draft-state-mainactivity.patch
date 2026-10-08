@@ -1,0 +1,23 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -86,6 +86,7 @@ public final class MainActivity extends Activity {
+     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
+     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
+     private static final String STATE_WEB_MODE = WebModeState.KEY;
++    private static final String STATE_TASK_DRAFT = ComposerDraftState.KEY;
+     private static final String PENDING_SAVE_STATE_KEY = "updater.pending_save_transaction.v1";
+ 
+@@ -271,6 +272,7 @@ public final class MainActivity extends Activity {
+         if (savedInstanceState != null) {
+             // ... existing restores ...
+             webMode = WebModeState.restore(savedInstanceState.getBoolean(STATE_WEB_MODE, false));
++            taskDraft = ComposerDraftState.restore(savedInstanceState);
+         }
+ 
+@@ -399,6 +401,7 @@ public final class MainActivity extends Activity {
+         if (pendingAttachmentTaskId != null) {
+             outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
+         }
+         outState.putBoolean(STATE_WEB_MODE, webMode);
++        ComposerDraftState.save(outState, taskDraft);
+         PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
