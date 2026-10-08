@@ -342,6 +342,11 @@ public final class MainActivity extends Activity {
             closeFullScreenWebReader();
             return;
         }
+        if (browserWebView != null && browserWebView.canGoBack()) {
+            browserWebView.goBack();
+            syncBrowserButtons();
+            return;
+        }
         super.onBackPressed();
     }
 
