@@ -1999,6 +1999,52 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private SmartTaskDraft parseSmartTaskDraft(String raw) {
+        String title = raw.trim();
+        String lower = title.toLowerCase(Locale.ROOT);
+        String dueDate = null;
+        LocalDate today = LocalDate.now();
+        if (lower.matches(".*\\b(today)\\b.*")) {
+            dueDate = today.toString();
+            title = title.replaceAll("(?i)\\b(today)\\b", "").trim();
+        } else if (lower.matches(".*\\b(tomorrow)\\b.*")) {
+            dueDate = today.plusDays(1).toString();
+            title = title.replaceAll("(?i)\\b(tomorrow)\\b", "").trim();
+        } else if (lower.matches(".*\\b(next week)\\b.*")) {
+            dueDate = today.plusWeeks(1).toString();
+            title = title.replaceAll("(?i)\\b(next week)\\b", "").trim();
+        }
+        String priority = "medium";
+        if (lower.matches(".*\\b(high|urgent|important)\\b.*")) {
+            priority = "high";
+            title = title.replaceAll("(?i)\\b(high|urgent|important)\\b", "").trim();
+        } else if (lower.matches(".*\\b(low)\\b.*")) {
+            priority = "low";
+            title = title.replaceAll("(?i)\\blow\\b", "").trim();
+        }
+        title = title.replaceAll("\\s{2,}", " ").replaceAll("^[,.:;\\-]+|[,.:;\\-]+$", "").trim();
+        return new SmartTaskDraft(title, dueDate, priority);
+    }
+
+    private String dueLabelForDate(String date) {
+        if (date == null) return "no due date";
+        LocalDate due = LocalDate.parse(date);
+        if (due.equals(LocalDate.now())) return "due today";
+        if (due.equals(LocalDate.now().plusDays(1))) return "due tomorrow";
+        return "due " + TaskLogic.formatDate(due);
+    }
+
+    private static final class SmartTaskDraft {
+        final String title;
+        final String dueDate;
+        final String priority;
+        SmartTaskDraft(String title, String dueDate, String priority) {
+            this.title = title;
+            this.dueDate = dueDate;
+            this.priority = priority;
+        }
+    }
+
     private void renderTaskList() {
         renderTaskList(LocalDate.now());
     }
@@ -2079,7 +2125,15 @@ public final class MainActivity extends Activity {
 
     private void addQuickTask() {
         if (webMode || !canEdit()) return;
-        String title = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString().trim();
+        String rawTitle = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString().trim();
+        if (rawTitle.isEmpty()) {
+            quickCaptureInput.setError("Type a task first");
+            captureFeedback.setText("Type a task in the box above, or choose Add with a date or priority.");
+            quickCaptureInput.requestFocus();
+            return;
+        }
+        SmartTaskDraft draft = parseSmartTaskDraft(rawTitle);
+        String title = draft.title;
         if (title.isEmpty()) {
             quickCaptureInput.setError("Type a task first");
             captureFeedback.setText("Type a task in the box above, or choose Add with a date or priority.");
@@ -2087,10 +2141,10 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-            tasks.add(TaskLogic.create(title, null, "medium"));
+            tasks.add(TaskLogic.create(title, draft.dueDate, draft.priority));
             quickCaptureInput.setText("");
             quickCaptureInput.setError(null);
-            captureFeedback.setText("Task added. It has no due date and medium priority; tap Edit to change either.");
+            captureFeedback.setText("Task added" + (draft.dueDate == null ? "" : " with " + dueLabelForDate(draft.dueDate)) + " and " + draft.priority + " priority. Tap Edit for more options.");
             render();
             saveTasksAsync();
             showToast("Task added.");
