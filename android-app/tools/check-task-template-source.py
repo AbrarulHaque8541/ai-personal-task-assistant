@@ -5,6 +5,7 @@ import sys
 root = Path(sys.argv[1])
 activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
 store = (root / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
+codec = (root / "app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
 template_logic = (root / "app/src/main/java/com/cue/daymark/TaskTemplateLogic.java").read_text(encoding="utf-8")
 checks = 0
 
@@ -43,12 +44,16 @@ check("saveTasksAsync(\"Saving encrypted templates…\")" in activity,
 check("taskStore.saveSnapshot(snapshot, templateSnapshot)" in activity,
       "task and template changes commit together")
 
-check('document.put("version", 3)' in store and 'document.put("templates", templateArray)' in store,
-      "schema v3 serializes templates into the protected snapshot")
-check("TaskSnapshotSchema.isVersionThree(version)" in store and "TaskSnapshotSchema.isVersionTwo(version)" in store,
-      "the decoder retains schema-v1/v2 migration paths")
-check("TaskTemplateLogic.isValidList(templates)" in store,
-      "decoded template records pass strict shared validation")
+check('out.name("version").value(CURRENT_VERSION)' in codec and 'CURRENT_VERSION = 4' in codec
+      and 'out.name("templates").beginArray()' in codec,
+      "schema v4 serializes tasks (with extended fields) and templates into the protected snapshot")
+check("TaskSnapshotSchema.isVersionThree(version)" in codec and "TaskSnapshotSchema.isVersionTwo(version)" in codec
+      and "TaskSnapshotSchema.isVersionFour(version)" in codec,
+      "the decoder retains schema-v1/v2/v3 migration paths and reads v4")
+check("TaskTemplateLogic.isValidList(templates)" in codec and "TaskLogic.isValidTaskList(result)" in codec,
+      "decoded task and template records pass strict shared validation")
+check("TaskSnapshotCodec.decode(" in store and "TaskSnapshotCodec.encode(" in store,
+      "the encrypted store delegates snapshot coding to the shared codec")
 check("TaskLogic.create(reviewedTitle, reviewedDueDate, reviewedPriority)" in template_logic,
       "confirmed template conversion creates a new task from reviewed fields")
 check("SharedPreferences" not in template_logic and "SharedPreferences" not in store,

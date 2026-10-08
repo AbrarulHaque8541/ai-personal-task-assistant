@@ -8,6 +8,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentBlobStore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/Subtask.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
   "$ROOT/tools/AttachmentBlobStoreSmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.AttachmentBlobStoreSmoke

@@ -35,7 +35,9 @@ final class PortableBackupCodec {
     static final int MAX_RECORDS = AttachmentLogic.MAX_TOTAL_COUNT + 1;
     static final int MAX_TASKS = 10_000;
     private static final int MAGIC = 0x444d424b; // DMBK
-    private static final int MANIFEST_MAGIC = 0x444d4d31; // DMM1
+    private static final int MANIFEST_MAGIC_V1 = 0x444d4d31; // DMM1
+    private static final int MANIFEST_MAGIC_V2 = 0x444d4d32; // DMM2 (adds notes, due time, reminder, subtasks)
+    private static final int MANIFEST_MAGIC = MANIFEST_MAGIC_V2;
     private static final int VERSION = 1;
     private static final int SUITE_AES_256_GCM_HKDF_SHA256 = 1;
     private static final byte RECORD_MANIFEST = 1;
@@ -330,16 +332,49 @@ final class PortableBackupCodec {
                 writeString(out, attachment.reference.displayName, AttachmentLogic.MAX_NAME_CHARS, 480);
                 writeString(out, attachment.reference.mimeType, 129, 516);
             }
+            // Manifest v2 extension: notes, due time, reminder, and subtasks travel with the task.
+            writeString(out, task.notes == null ? "" : task.notes, TaskLogic.MAX_NOTES_CHARS,
+                    TaskLogic.MAX_NOTES_CHARS * 4);
+            out.writeByte(task.dueTime == null ? 0 : 1);
+            if (task.dueTime != null) writeString(out, task.dueTime, 5, 8);
+            out.writeByte(reminderLeadCode(task.reminderLeadMinutes));
+            out.writeByte(task.reminderShownFire == null ? 0 : 1);
+            if (task.reminderShownFire != null) writeString(out, task.reminderShownFire, 64, 256);
+            out.writeByte(task.subtasks.size());
+            for (Subtask subtask : task.subtasks) {
+                writeString(out, subtask.title, TaskLogic.MAX_SUBTASK_TITLE, 480);
+                out.writeByte(subtask.done ? 1 : 0);
+            }
         }
         out.flush();
         return bytes.toByteArray();
+    }
+
+    private static int reminderLeadCode(Integer leadMinutes) {
+        if (leadMinutes == null) return 0;
+        for (int index = 0; index < TaskLogic.REMINDER_LEADS.length; index++) {
+            if (TaskLogic.REMINDER_LEADS[index] == leadMinutes) return index + 1;
+        }
+        return 0;
+    }
+
+    private static Integer reminderLeadFromCode(int code) throws IOException {
+        if (code == 0) return null;
+        if (code < 1 || code > TaskLogic.REMINDER_LEADS.length) {
+            throw new IOException("The manifest contains an invalid reminder setting.");
+        }
+        return TaskLogic.REMINDER_LEADS[code - 1];
     }
 
     static Manifest decodeManifest(byte[] plaintext, byte[] manifestRecordToken,
                                    int recordCount, String backupId) throws IOException {
         preflightManifestAttachmentCount(plaintext);
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
-        if (in.readInt() != MANIFEST_MAGIC) throw new IOException("The task manifest format is not recognized.");
+        int manifestMagic = in.readInt();
+        if (manifestMagic != MANIFEST_MAGIC_V1 && manifestMagic != MANIFEST_MAGIC_V2) {
+            throw new IOException("The task manifest format is not recognized.");
+        }
+        boolean manifestV2 = manifestMagic == MANIFEST_MAGIC_V2;
         int taskCount = in.readInt();
         if (taskCount < 0 || taskCount > MAX_TASKS) throw new IOException("The task manifest has an invalid task count.");
         List<PortableTask> tasks = new ArrayList<>(taskCount);
@@ -396,6 +431,32 @@ final class PortableBackupCodec {
                 task.attachments.add(attachment);
                 attachments.add(attachment);
             }
+            if (manifestV2) {
+                String notes = readString(in, TaskLogic.MAX_NOTES_CHARS, TaskLogic.MAX_NOTES_CHARS * 4);
+                int dueTimeFlag = in.readUnsignedByte();
+                if (dueTimeFlag > 1) throw new IOException("The manifest due-time flag is invalid.");
+                String dueTime = dueTimeFlag == 0 ? null : readString(in, 5, 8);
+                if (dueTime != null && !TaskDuePresets.isTimeOnly(dueTime)) {
+                    throw new IOException("The manifest contains an invalid due time.");
+                }
+                Integer reminderLead = reminderLeadFromCode(in.readUnsignedByte());
+                int reminderShownFlag = in.readUnsignedByte();
+                if (reminderShownFlag > 1) throw new IOException("The manifest reminder-state flag is invalid.");
+                String reminderShownFire = reminderShownFlag == 0 ? null : readString(in, 64, 256);
+                if (reminderShownFire != null) requireTimestamp(reminderShownFire);
+                int subtaskCount = in.readUnsignedByte();
+                if (subtaskCount > TaskLogic.MAX_SUBTASKS) {
+                    throw new IOException("The manifest exceeds the per-task subtask limit.");
+                }
+                for (int subtaskIndex = 0; subtaskIndex < subtaskCount; subtaskIndex++) {
+                    String subtaskTitle = readString(in, TaskLogic.MAX_SUBTASK_TITLE, 480);
+                    requireSafeText(subtaskTitle, TaskLogic.MAX_SUBTASK_TITLE, false);
+                    int doneFlag = in.readUnsignedByte();
+                    if (doneFlag > 1) throw new IOException("The manifest subtask state is invalid.");
+                    task.subtasks.add(new PortableSubtask(subtaskTitle, doneFlag == 1));
+                }
+                task.setExtendedFields(notes, dueTime, reminderLead, reminderShownFire);
+            }
             tasks.add(task);
         }
         if (in.read() != -1) throw new IOException("The task manifest contains trailing data.");
@@ -419,7 +480,11 @@ final class PortableBackupCodec {
             throw new IOException("The task manifest is missing or oversized.");
         }
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
-        if (in.readInt() != MANIFEST_MAGIC) throw new IOException("The task manifest format is not recognized.");
+        int manifestMagic = in.readInt();
+        if (manifestMagic != MANIFEST_MAGIC_V1 && manifestMagic != MANIFEST_MAGIC_V2) {
+            throw new IOException("The task manifest format is not recognized.");
+        }
+        boolean manifestV2 = manifestMagic == MANIFEST_MAGIC_V2;
         int taskCount = in.readInt();
         if (taskCount < 0 || taskCount > MAX_TASKS) throw new IOException("The task manifest has an invalid task count.");
         int totalAttachments = 0;
@@ -444,6 +509,27 @@ final class PortableBackupCodec {
                 skipManifestBytes(in, TOKEN_BYTES + 8L);
                 skipManifestString(in, AttachmentLogic.MAX_NAME_CHARS * 4);
                 skipManifestString(in, 516);
+            }
+            if (manifestV2) {
+                skipManifestString(in, TaskLogic.MAX_NOTES_CHARS * 4);
+                int dueTimeFlag = in.readUnsignedByte();
+                if (dueTimeFlag > 1) throw new IOException("The manifest due-time flag is invalid.");
+                if (dueTimeFlag == 1) skipManifestString(in, 8);
+                int reminderLeadCode = in.readUnsignedByte();
+                if (reminderLeadCode > TaskLogic.REMINDER_LEADS.length) {
+                    throw new IOException("The manifest contains an invalid reminder setting.");
+                }
+                int reminderShownFlag = in.readUnsignedByte();
+                if (reminderShownFlag > 1) throw new IOException("The manifest reminder-state flag is invalid.");
+                if (reminderShownFlag == 1) skipManifestString(in, 256);
+                int subtaskCount = in.readUnsignedByte();
+                if (subtaskCount > TaskLogic.MAX_SUBTASKS) {
+                    throw new IOException("The manifest exceeds the per-task subtask limit.");
+                }
+                for (int subtaskIndex = 0; subtaskIndex < subtaskCount; subtaskIndex++) {
+                    skipManifestString(in, 480);
+                    skipManifestBytes(in, 1);
+                }
             }
         }
         if (in.read() != -1) throw new IOException("The task manifest contains trailing data.");
@@ -493,8 +579,13 @@ final class PortableBackupCodec {
                 refs.add(new AttachmentRef(randomUuidForValidation(), attachment.displayName,
                         attachment.mimeType, attachment.sizeBytes));
             }
+            List<Subtask> subtasks = new ArrayList<>(task.subtasks.size());
+            for (PortableSubtask subtask : task.subtasks) {
+                subtasks.add(new Subtask(randomUuidForValidation(), subtask.title, subtask.done));
+            }
             tasks.add(new Task(randomUuidForValidation(), task.title, task.dueDate, task.priority,
-                    task.completed, task.createdAt, task.updatedAt, refs));
+                    task.completed, task.createdAt, task.updatedAt, refs,
+                    task.notes, task.dueTime, task.reminderLeadMinutes, task.reminderShownFire, subtasks));
         }
         return tasks;
     }
@@ -799,6 +890,20 @@ final class PortableBackupCodec {
         if (task.attachments == null || task.attachments.size() > AttachmentLogic.MAX_PER_TASK) {
             throw new IOException("A task has an invalid attachment list.");
         }
+        requireSafeText(task.notes == null ? "" : task.notes, TaskLogic.MAX_NOTES_CHARS, true);
+        if (task.dueTime != null && (task.dueDate == null || !TaskDuePresets.isTimeOnly(task.dueTime))) {
+            throw new IOException("A task has an invalid due time.");
+        }
+        if (task.reminderLeadMinutes != null && !TaskLogic.isReminderLead(task.reminderLeadMinutes)) {
+            throw new IOException("A task has an invalid reminder setting.");
+        }
+        if (task.reminderShownFire != null) requireTimestamp(task.reminderShownFire);
+        if (task.subtasks == null || task.subtasks.size() > TaskLogic.MAX_SUBTASKS) {
+            throw new IOException("A task has an invalid subtask list.");
+        }
+        for (Subtask subtask : task.subtasks) {
+            requireSafeText(subtask.title, TaskLogic.MAX_SUBTASK_TITLE, false);
+        }
     }
 
     private static void requireTimestamp(String timestamp) throws IOException {
@@ -945,10 +1050,22 @@ final class PortableBackupCodec {
         final boolean completed;
         final String createdAt;
         final String updatedAt;
+        String notes;
+        String dueTime;
+        Integer reminderLeadMinutes;
+        String reminderShownFire;
+        final List<PortableSubtask> subtasks = new ArrayList<>();
         final List<PortableAttachment> attachments = new ArrayList<>();
 
         PortableTask(byte[] taskToken, String title, String dueDate, String priority,
                      boolean completed, String createdAt, String updatedAt) {
+            this(taskToken, title, dueDate, priority, completed, createdAt, updatedAt,
+                    "", null, null, null);
+        }
+
+        PortableTask(byte[] taskToken, String title, String dueDate, String priority,
+                     boolean completed, String createdAt, String updatedAt,
+                     String notes, String dueTime, Integer reminderLeadMinutes, String reminderShownFire) {
             this.taskToken = taskToken;
             this.title = title;
             this.dueDate = dueDate;
@@ -956,6 +1073,26 @@ final class PortableBackupCodec {
             this.completed = completed;
             this.createdAt = createdAt;
             this.updatedAt = updatedAt;
+            setExtendedFields(notes, dueTime, reminderLeadMinutes, reminderShownFire);
+        }
+
+        void setExtendedFields(String notes, String dueTime, Integer reminderLeadMinutes,
+                               String reminderShownFire) {
+            this.notes = notes == null ? "" : notes;
+            this.dueTime = dueTime == null || dueTime.isEmpty() ? null : dueTime;
+            this.reminderLeadMinutes = reminderLeadMinutes;
+            this.reminderShownFire = reminderShownFire == null || reminderShownFire.isEmpty()
+                    ? null : reminderShownFire;
+        }
+    }
+
+    static final class PortableSubtask {
+        final String title;
+        final boolean done;
+
+        PortableSubtask(String title, boolean done) {
+            this.title = title;
+            this.done = done;
         }
     }
 

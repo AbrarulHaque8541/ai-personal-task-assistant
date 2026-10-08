@@ -8,7 +8,9 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/Subtask.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/PortableBackupCodec.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/PortableImportGrantRecovery.java" \
   "$ROOT/tools/PortableBackupSmoke.java"

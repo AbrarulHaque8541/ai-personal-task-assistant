@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVITY = (ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text()
 STORE = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text()
+CODEC = (ROOT / "app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java").read_text()
 BLOB_STORE = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedBlobStore.java").read_text()
 checks = 0
 
@@ -71,12 +72,12 @@ check("synchronized (FILE_ACCESS_LOCK)" in STORE,
       "file load/save operations are serialized across Activity instances")
 check("verifyLoadedSnapshotUnchanged()" in BLOB_STORE,
       "a stale Activity cannot overwrite a newer encrypted snapshot")
-check('Object version = document.opt("version")' in STORE
-      and "TaskSnapshotSchema.isSupportedVersion(version)" in STORE
-      and "optInt(" not in STORE,
+check('Object version = document.get("version")' in CODEC
+      and "TaskSnapshotSchema.isSupportedVersion(version)" in CODEC
+      and "optInt(" not in CODEC,
       "snapshot versions are validated without numeric coercion")
-check("TaskSnapshotSchema.requireString(object.opt(\"title\"))" in STORE
-      and "optString(" not in STORE,
+check('requiredString(object, "title")' in CODEC
+      and "optString(" not in CODEC,
       "required task strings are validated without string coercion")
 
 print(f"PASS storage failure UI/source checks: {checks} assertions")

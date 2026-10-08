@@ -5,10 +5,6 @@ import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.AtomicFile;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -51,7 +47,7 @@ final class EncryptedTaskStore {
                 return new ArrayList<>();
             }
             try {
-                Snapshot snapshot = decodeSnapshot(loaded.plaintext());
+                TaskSnapshotCodec.Snapshot snapshot = TaskSnapshotCodec.decode(loaded.plaintext());
                 loadedTemplates = new ArrayList<>(snapshot.templates);
                 loadReady = true;
                 return new ArrayList<>(snapshot.tasks);
@@ -82,7 +78,7 @@ final class EncryptedTaskStore {
                 throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
                         "Task storage must load successfully before it can be changed.");
             }
-            byte[] plaintext = encodeSnapshot(tasks, templates);
+            byte[] plaintext = TaskSnapshotCodec.encode(tasks, templates);
             try {
                 encryptedStore.save(plaintext);
                 loadedTemplates = new ArrayList<>(templates);
@@ -224,122 +220,6 @@ final class EncryptedTaskStore {
         @Override
         public void failWrite(OutputStream output) {
             atomicFile.failWrite((FileOutputStream) output);
-        }
-    }
-
-    private byte[] encodeSnapshot(List<Task> tasks, List<TaskTemplate> templates) throws JSONException {
-        if (!TaskLogic.isValidTaskList(tasks) || !TaskTemplateLogic.isValidList(templates)) {
-            throw new JSONException("Refusing to save invalid or duplicate task or template data.");
-        }
-        JSONArray array = new JSONArray();
-        for (Task task : tasks) {
-            JSONObject object = new JSONObject();
-            object.put("id", task.id);
-            object.put("title", task.title);
-            object.put("dueDate", task.dueDate == null ? JSONObject.NULL : task.dueDate);
-            object.put("priority", task.priority);
-            object.put("completed", task.completed);
-            object.put("createdAt", task.createdAt);
-            object.put("updatedAt", task.updatedAt);
-            JSONArray attachments = new JSONArray();
-            for (AttachmentRef attachment : task.attachments) {
-                JSONObject reference = new JSONObject();
-                reference.put("id", attachment.id);
-                reference.put("displayName", attachment.displayName);
-                reference.put("mimeType", attachment.mimeType);
-                reference.put("sizeBytes", attachment.sizeBytes);
-                attachments.put(reference);
-            }
-            object.put("attachments", attachments);
-            array.put(object);
-        }
-        JSONArray templateArray = new JSONArray();
-        for (TaskTemplate template : templates) {
-            JSONObject object = new JSONObject();
-            object.put("id", template.id);
-            object.put("title", template.title);
-            object.put("dueDate", template.dueDate == null ? JSONObject.NULL : template.dueDate);
-            object.put("priority", template.priority);
-            templateArray.put(object);
-        }
-        JSONObject document = new JSONObject();
-        document.put("version", 3);
-        document.put("tasks", array);
-        document.put("templates", templateArray);
-        return document.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private Snapshot decodeSnapshot(byte[] plaintext) throws Exception {
-        JSONObject document = new JSONObject(new String(plaintext, java.nio.charset.StandardCharsets.UTF_8));
-        Object version = document.opt("version");
-        if (!TaskSnapshotSchema.isSupportedVersion(version)) {
-            throw new IOException("Task data schema version is not supported.");
-        }
-        boolean hasAttachments = TaskSnapshotSchema.isVersionTwo(version)
-                || TaskSnapshotSchema.isVersionThree(version);
-        JSONArray array = document.optJSONArray("tasks");
-        if (array == null) throw new IOException("Task data is missing its task list.");
-
-        List<Task> result = new ArrayList<>(array.length());
-        for (int index = 0; index < array.length(); index++) {
-            JSONObject object = array.optJSONObject(index);
-            if (object == null) throw new IOException("Task record is malformed.");
-            Object completedValue = object.opt("completed");
-            if (!(completedValue instanceof Boolean)) throw new IOException("Task completion value is malformed.");
-            Object dueValue = object.opt("dueDate");
-            String dueDate = dueValue == JSONObject.NULL ? null : TaskSnapshotSchema.requireString(dueValue);
-            List<AttachmentRef> attachments = new ArrayList<>();
-            if (hasAttachments) {
-                JSONArray references = object.optJSONArray("attachments");
-                if (references == null) throw new IOException("Task attachment list is malformed.");
-                for (int attachmentIndex = 0; attachmentIndex < references.length(); attachmentIndex++) {
-                    JSONObject reference = references.optJSONObject(attachmentIndex);
-                    if (reference == null) throw new IOException("Task attachment metadata is malformed.");
-                    Object sizeValue = reference.opt("sizeBytes");
-                    if (!(sizeValue instanceof Number)) throw new IOException("Task attachment size is malformed.");
-                    Number number = (Number) sizeValue;
-                    long sizeBytes = number.longValue();
-                    if (number.doubleValue() != (double) sizeBytes || sizeBytes < 0) {
-                        throw new IOException("Task attachment size is malformed.");
-                    }
-                    attachments.add(new AttachmentRef(TaskSnapshotSchema.requireString(reference.opt("id")),
-                            TaskSnapshotSchema.requireString(reference.opt("displayName")),
-                            TaskSnapshotSchema.requireString(reference.opt("mimeType")), sizeBytes));
-                }
-            }
-            Task task = new Task(TaskSnapshotSchema.requireString(object.opt("id")),
-                    TaskSnapshotSchema.requireString(object.opt("title")), dueDate,
-                    TaskSnapshotSchema.requireString(object.opt("priority")), (Boolean) completedValue,
-                    TaskSnapshotSchema.requireString(object.opt("createdAt")),
-                    TaskSnapshotSchema.requireString(object.opt("updatedAt")), attachments);
-            result.add(task);
-        }
-        if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");
-        List<TaskTemplate> templates = new ArrayList<>();
-        if (TaskSnapshotSchema.isVersionThree(version)) {
-            JSONArray templateArray = document.optJSONArray("templates");
-            if (templateArray == null) throw new IOException("Task template list is malformed.");
-            for (int index = 0; index < templateArray.length(); index++) {
-                JSONObject object = templateArray.optJSONObject(index);
-                if (object == null) throw new IOException("Task template record is malformed.");
-                Object dueValue = object.opt("dueDate");
-                String dueDate = dueValue == JSONObject.NULL ? null : TaskSnapshotSchema.requireString(dueValue);
-                templates.add(new TaskTemplate(TaskSnapshotSchema.requireString(object.opt("id")),
-                        TaskSnapshotSchema.requireString(object.opt("title")), dueDate,
-                        TaskSnapshotSchema.requireString(object.opt("priority"))));
-            }
-        }
-        if (!TaskTemplateLogic.isValidList(templates)) throw new IOException("Task template data failed validation.");
-        return new Snapshot(result, templates);
-    }
-
-    private static final class Snapshot {
-        final List<Task> tasks;
-        final List<TaskTemplate> templates;
-
-        Snapshot(List<Task> tasks, List<TaskTemplate> templates) {
-            this.tasks = new ArrayList<>(tasks);
-            this.templates = new ArrayList<>(templates);
         }
     }
 

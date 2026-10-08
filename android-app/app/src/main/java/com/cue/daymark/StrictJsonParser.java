@@ -1,4 +1,4 @@
-package com.cue.daymark.updater;
+package com.cue.daymark;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -7,13 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Small strict JSON reader for the bounded GitHub release response; it has no runtime dependencies. */
-final class StrictJsonParser {
+/** Small strict JSON reader with no runtime dependencies; used by the updater and the task snapshot codec. */
+public final class StrictJsonParser {
     private static final int MAX_DEPTH = 64;
 
     private StrictJsonParser() { }
 
-    static Object parse(String json) {
+    public static Object parse(String json) {
         if (json == null) throw new IllegalArgumentException("JSON input is missing.");
         Parser parser = new Parser(json);
         Object value = parser.readValue(0);
@@ -23,37 +23,37 @@ final class StrictJsonParser {
     }
 
     @SuppressWarnings("unchecked")
-    static Map<String, Object> object(Object value, String description) {
+    public static Map<String, Object> object(Object value, String description) {
         if (!(value instanceof Map)) throw new IllegalArgumentException(description + " must be an object.");
         return (Map<String, Object>) value;
     }
 
     @SuppressWarnings("unchecked")
-    static List<Object> array(Object value, String description) {
+    public static List<Object> array(Object value, String description) {
         if (!(value instanceof List)) throw new IllegalArgumentException(description + " must be an array.");
         return (List<Object>) value;
     }
 
-    static String requiredString(Map<String, Object> values, String key) {
+    public static String requiredString(Map<String, Object> values, String key) {
         Object value = values.get(key);
         if (!(value instanceof String)) throw new IllegalArgumentException(key + " must be a string.");
         return (String) value;
     }
 
-    static String optionalString(Map<String, Object> values, String key, String fallback) {
+    public static String optionalString(Map<String, Object> values, String key, String fallback) {
         if (!values.containsKey(key) || values.get(key) == null) return fallback;
         Object value = values.get(key);
         if (!(value instanceof String)) throw new IllegalArgumentException(key + " must be a string or null.");
         return (String) value;
     }
 
-    static boolean requiredBoolean(Map<String, Object> values, String key) {
+    public static boolean requiredBoolean(Map<String, Object> values, String key) {
         Object value = values.get(key);
         if (!(value instanceof Boolean)) throw new IllegalArgumentException(key + " must be a boolean.");
         return (Boolean) value;
     }
 
-    static long requiredLong(Map<String, Object> values, String key) {
+    public static long requiredLong(Map<String, Object> values, String key) {
         Object value = values.get(key);
         if (!(value instanceof BigInteger)) throw new IllegalArgumentException(key + " must be an integer.");
         BigInteger integer = (BigInteger) value;
@@ -66,7 +66,7 @@ final class StrictJsonParser {
         return integer.longValue();
     }
 
-    static int requiredInt(Map<String, Object> values, String key) {
+    public static int requiredInt(Map<String, Object> values, String key) {
         long value = requiredLong(values, key);
         if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
             throw new IllegalArgumentException(key + " is outside the supported integer range.");

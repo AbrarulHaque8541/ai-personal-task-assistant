@@ -25,13 +25,17 @@ assert any(task["completed"] for task in fixture["tasks"]), "fixture should cove
 assert any(not task["completed"] for task in fixture["tasks"]), "fixture should cover open tasks"
 
 store = (root / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
-assert "TaskSnapshotSchema.isSupportedVersion(version)" in store, "decoder must reject unsupported schema versions"
-assert "TaskSnapshotSchema.isVersionTwo(version)" in store and "TaskSnapshotSchema.isVersionThree(version)" in store, \
+codec = (root / "app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
+assert "TaskSnapshotCodec.decode(" in store, "the encrypted store delegates snapshot decoding to the shared codec"
+assert "TaskSnapshotSchema.isSupportedVersion(version)" in codec, "decoder must reject unsupported schema versions"
+assert "TaskSnapshotSchema.isVersionTwo(version)" in codec and "TaskSnapshotSchema.isVersionThree(version)" in codec, \
     "schemas v2 and v3 decode attachment metadata"
-assert "TaskSnapshotSchema.isVersionThree(version)" in store, "schema v3 decodes template metadata"
-assert "TaskTemplateLogic.isValidList(templates)" in store, "template snapshots use shared validation"
-assert "TaskSnapshotSchema.requireString(object.opt(\"title\"))" in store, "legacy scalar decoding must remain strict"
-assert "if (!TaskLogic.isValidTaskList(result))" in store, "imported snapshots must pass shared task-list validation"
+assert "TaskSnapshotSchema.isVersionThree(version)" in codec and "TaskSnapshotSchema.isVersionFour(version)" in codec, \
+    "schemas v3 and v4 decode template and extended task metadata"
+assert "TaskSnapshotSchema.isVersionFour(version)" in codec, "schema v4 decodes notes, due time, reminders, and subtasks"
+assert "TaskTemplateLogic.isValidList(templates)" in codec, "template snapshots use shared validation"
+assert 'requiredString(object, "title")' in codec, "legacy scalar decoding must remain strict"
+assert "if (!TaskLogic.isValidTaskList(result))" in codec, "imported snapshots must pass shared task-list validation"
 
 gradle = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
 assert 'testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"' in gradle

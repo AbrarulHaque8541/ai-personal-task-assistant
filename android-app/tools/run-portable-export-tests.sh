@@ -10,6 +10,8 @@ javac -d "$BUILD" \
     "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
     "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
     "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/Subtask.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
     "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
     "$ROOT/tools/PortableExportWriterSmoke.java"
 java -cp "$BUILD" com.cue.daymark.PortableExportWriterSmoke

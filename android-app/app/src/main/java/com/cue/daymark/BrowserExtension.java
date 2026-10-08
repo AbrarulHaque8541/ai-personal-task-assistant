@@ -24,6 +24,8 @@ final class BrowserExtension {
     final String runAt;
     /** Human-readable import warnings (unsupported grants, etc.). */
     final String warnings;
+    /** Normalized hosts where this pack is paused (host or any subdomain). */
+    final List<String> disabledSites;
 
     BrowserExtension(String id, String name, String version, String description,
                      boolean enabled, boolean builtIn, List<String> matches,
@@ -35,6 +37,13 @@ final class BrowserExtension {
     BrowserExtension(String id, String name, String version, String description,
                      boolean enabled, boolean builtIn, List<String> matches, List<String> excludes,
                      String css, String js, String runAt, String warnings) {
+        this(id, name, version, description, enabled, builtIn, matches, excludes,
+                css, js, runAt, warnings, Collections.<String>emptyList());
+    }
+
+    BrowserExtension(String id, String name, String version, String description,
+                     boolean enabled, boolean builtIn, List<String> matches, List<String> excludes,
+                     String css, String js, String runAt, String warnings, List<String> disabledSites) {
         this.id = id == null ? "" : id.trim();
         this.name = name == null ? "Extension" : name.trim();
         this.version = version == null ? "0" : version.trim();
@@ -56,11 +65,20 @@ final class BrowserExtension {
         String at = runAt == null ? "document_end" : runAt.trim().toLowerCase(Locale.ROOT);
         this.runAt = "document_start".equals(at) ? "document_start" : "document_end";
         this.warnings = warnings == null ? "" : warnings.trim();
+        List<String> sites = new ArrayList<>();
+        if (disabledSites != null) {
+            for (String site : disabledSites) {
+                String host = normalizeSiteHost(site);
+                if (host != null && !sites.contains(host)) sites.add(host);
+            }
+        }
+        this.disabledSites = Collections.unmodifiableList(sites);
     }
 
     boolean matchesUrl(String url) {
         if (url == null || url.isEmpty() || matches.isEmpty()) return false;
         if (!BrowserAddress.isAllowedWebUrl(url)) return false;
+        if (isSiteDisabled(url)) return false;
         for (String pattern : excludes) {
             if (MatchRules.matches(pattern, url)) return false;
         }
@@ -70,9 +88,85 @@ final class BrowserExtension {
         return false;
     }
 
+    boolean isSiteDisabled(String url) {
+        if (disabledSites.isEmpty() || url == null) return false;
+        String host;
+        try {
+            host = new java.net.URI(url).getHost();
+        } catch (Exception exception) {
+            return false;
+        }
+        if (host == null) return false;
+        host = host.toLowerCase(Locale.ROOT);
+        for (String site : disabledSites) {
+            if (host.equals(site) || host.endsWith("." + site)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Normalizes a user-entered site to a lowercase host for the disabled-sites list.
+     * Accepts a bare host ("example.com") or a full HTTPS URL ("https://example.com/page").
+     * Returns null for anything that is not a safe HTTPS host (cleartext, file, credentials,
+     * empty host, or free-form text).
+     */
+    static String normalizeSiteHost(String input) {
+        if (input == null) return null;
+        String value = input.trim().toLowerCase(Locale.ROOT);
+        if (value.endsWith(".")) value = value.substring(0, value.length() - 1);
+        if (value.isEmpty()) return null;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c) || Character.isISOControl(c)
+                    || c == '/' || c == '\\' || c == '@' || c == ':' || c == '?' || c == '#') {
+                // A full URL is allowed below only when it parses as a safe HTTPS URL;
+                // bare hosts must not contain any of these characters.
+                if (value.contains("://")) break;
+                return null;
+            }
+        }
+        if (value.contains("://")) {
+            try {
+                java.net.URI uri = new java.net.URI(value);
+                if (!"https".equalsIgnoreCase(uri.getScheme())) return null;
+                if (uri.getRawUserInfo() != null) return null;
+                String host = uri.getHost();
+                if (host == null || host.isEmpty()) return null;
+                host = host.toLowerCase(Locale.ROOT);
+                if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
+                return isPlausibleHost(host) ? host : null;
+            } catch (Exception exception) {
+                return null;
+            }
+        }
+        return isPlausibleHost(value) ? value : null;
+    }
+
+    private static boolean isPlausibleHost(String host) {
+        if (host.isEmpty() || host.length() > 253) return false;
+        if (host.startsWith(".") || host.endsWith(".") || host.contains("..")) return false;
+        boolean hasDot = false;
+        for (int i = 0; i < host.length(); i++) {
+            char c = host.charAt(i);
+            if (c == '.') {
+                hasDot = true;
+            } else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+                // allowed hostname characters
+            } else {
+                return false;
+            }
+        }
+        return hasDot;
+    }
+
     BrowserExtension withEnabled(boolean value) {
         return new BrowserExtension(id, name, version, description, value, builtIn,
-                matches, excludes, css, js, runAt, warnings);
+                matches, excludes, css, js, runAt, warnings, disabledSites);
+    }
+
+    BrowserExtension withDisabledSites(List<String> sites) {
+        return new BrowserExtension(id, name, version, description, enabled, builtIn,
+                matches, excludes, css, js, runAt, warnings, sites);
     }
 
     static final class MatchRules {
@@ -87,8 +181,10 @@ final class BrowserExtension {
             }
             try {
                 java.net.URI uri = new java.net.URI(url);
+                String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
                 String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
                 String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+                if (p.startsWith("https://") && !"https".equals(scheme)) return false;
                 if (p.startsWith("*://")) {
                     String rest = p.substring(4);
                     int slash = rest.indexOf('/');

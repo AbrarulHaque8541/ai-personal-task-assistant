@@ -41,8 +41,8 @@ assert len(title) == 160 and len(title.encode("utf-8")) == 480
 assert len(display_name) == MAX_NAME_CHARS and len(display_name.encode("utf-8")) == 360
 assert len(mime_type.encode("ascii")) == 129 and len(timestamp.encode("ascii")) == 41
 
-# Match EncryptedTaskStore.encodeTasks field names and compact JSON shape. The
-# chosen strings require no JSON escaping; Android JSONObject retains U+0800.
+# Match TaskSnapshotCodec.encode field names/order and compact JSON shape (schema v4).
+# The chosen strings require no JSON escaping; the codec's writer retains U+0800 raw.
 def uuid_like(prefix: str, serial: int) -> str:
     return f"{prefix}-0000-4000-8000-{serial:012x}"
 
@@ -66,15 +66,20 @@ for index in range(MAX_TASKS):
             "completed": False,
             "createdAt": timestamp,
             "updatedAt": timestamp,
+            "notes": "",
+            "dueTime": None,
+            "reminderLeadMinutes": None,
+            "reminderShownFire": None,
+            "subtasks": [],
             "attachments": references[index * MAX_PER_TASK:(index + 1) * MAX_PER_TASK]
             if index < MAX_TOTAL_COUNT // MAX_PER_TASK
             else [],
         }
     )
 snapshot_bytes = len(
-    json.dumps({"version": 2, "tasks": tasks}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    json.dumps({"version": 4, "tasks": tasks}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 )
-assert snapshot_bytes == 7_328_603, f"unexpected maximum-profile task JSON size: {snapshot_bytes}"
+assert snapshot_bytes == 8_248_603, f"unexpected maximum-profile task JSON size: {snapshot_bytes}"
 assert snapshot_bytes <= MAX_STORE_BYTES - STORE_CRYPTO_OVERHEAD_BYTES
 
 per_task_manifest = (
@@ -85,6 +90,11 @@ per_task_manifest = (
     + 4 + len(timestamp.encode("ascii"))
     + 4 + len(timestamp.encode("ascii"))
     + 1  # attachment count
+    + 4  # v2 extension: empty notes string (length prefix only)
+    + 1  # due-time flag
+    + 1  # reminder lead code
+    + 1  # reminder-shown flag
+    + 1  # subtask count
 )
 per_attachment_manifest = (
     16 + 8
@@ -92,14 +102,14 @@ per_attachment_manifest = (
     + 4 + len(mime_type.encode("ascii"))
 )
 manifest_bytes = 8 + MAX_TASKS * per_task_manifest + MAX_TOTAL_COUNT * per_attachment_manifest
-assert per_task_manifest == 608
+assert per_task_manifest == 616
 assert per_attachment_manifest == 521
-assert manifest_bytes == 6_132_108 and manifest_bytes < MAX_MANIFEST_BYTES
+assert manifest_bytes == 6_212_108 and manifest_bytes < MAX_MANIFEST_BYTES
 frame_bytes = 28 + (MAX_TOTAL_COUNT + 1) * (57 + 16)
 archive_bytes = MAX_TOTAL_BYTES + manifest_bytes + frame_bytes
 archive_gap = MAX_ARCHIVE_BYTES - archive_bytes
 assert frame_bytes == 7_401
-assert archive_bytes == 110_997_109 and 0 < archive_gap
+assert archive_bytes == 111_077_109 and 0 < archive_gap
 
 print(
     "PASS portable archive bounds: "
