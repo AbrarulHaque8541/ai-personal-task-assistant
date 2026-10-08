@@ -717,7 +717,8 @@ public final class MainActivity extends Activity {
                 ? "Switch to Simple mode. Your tasks will stay the same."
                 : "Switch to Power mode for search, filters, and suggestions. Your tasks will stay the same.");
         pathButton.setOnClickListener(view -> toggleExperienceMode());
-        bar.addView(pathButton);
+        // Keep the main header focused; advanced task mode remains available from More.
+        pathButton.setVisibility(View.GONE);
         Button moreButton = plainButton("More");
         moreButton.setContentDescription("Open appearance, accessibility, and permission settings");
         moreButton.setOnClickListener(view -> showSettingsDialog());
@@ -2127,13 +2128,12 @@ public final class MainActivity extends Activity {
         if (taskScreen == null || browserScreen == null || quickCaptureInput == null) return;
         // Web mode is a dedicated browser workspace. Hide the task composer/dashboard
         // instead of stacking Task + Web controls and wasting the viewport.
+        // Web is a dedicated workspace: Task dashboard, Task/Web switcher, and app header
+        // must not remain stacked above the browser.
         if (appTopBar != null) appTopBar.setVisibility(webMode ? View.GONE : View.VISIBLE);
         if (sharedComposer != null) sharedComposer.setVisibility(webMode ? View.GONE : View.VISIBLE);
         taskScreen.setVisibility(webMode ? View.GONE : View.VISIBLE);
         browserScreen.setVisibility(webMode ? View.VISIBLE : View.GONE);
-        // Browser mode owns its own address bar and controls; never stack Task UI above it.
-        sharedComposer.setVisibility(View.GONE);
-        appTopBar.setVisibility(webMode ? View.GONE : View.VISIBLE);
         taskActions.setVisibility(webMode ? View.GONE : View.VISIBLE);
         webActions.setVisibility(View.GONE);
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
