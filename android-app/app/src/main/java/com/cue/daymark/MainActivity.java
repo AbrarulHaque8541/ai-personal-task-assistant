@@ -2267,8 +2267,19 @@ public final class MainActivity extends Activity {
         AlertDialog settingsDialog = new AlertDialog.Builder(this)
                 .setTitle("Browser Settings")
                 .setView(content)
+                .setNeutralButton("Clear site data", null)
                 .setPositiveButton("Done", null)
                 .create();
+        settingsDialog.setOnShowListener(ignored -> settingsDialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                .setOnClickListener(view -> {
+                    settingsDialog.dismiss();
+                    new AlertDialog.Builder(this)
+                            .setTitle("Clear site data?")
+                            .setMessage("This clears Daymark's HTTPS site history, WebView cache, cookies, storage, form data, and current page history. It can sign you out of websites opened in Daymark. Android Autofill and password-manager data are not changed.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Clear", (d, w) -> clearBrowserData())
+                            .show();
+                }));
 
         safeBrowsingToggle.setOnCheckedChangeListener((button, enabled) -> {
             if (suppressSafeBrowsingToggleListener) return;
