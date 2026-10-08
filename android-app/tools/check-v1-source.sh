@@ -9,6 +9,7 @@ sh ./tools/run-portable-backup-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-merged-manifests.py "$ROOT"
+python3 "$ROOT/tools/check-slsa-workflow.py"
 python3 - "$ROOT" <<'PY'
 import pathlib
 import re
