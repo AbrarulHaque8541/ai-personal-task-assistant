@@ -2891,10 +2891,10 @@ public final class MainActivity extends Activity {
             dateButton.setText(dateButtonLabel(selectedDate[0]));
         });
         quickDates.addView(todayButton, new LinearLayout.LayoutParams(0, dp(44), 1f));
-        LinearLayout tomorrowParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        LinearLayout.LayoutParams tomorrowParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
         tomorrowParams.leftMargin = dp(5);
         quickDates.addView(tomorrowButton, tomorrowParams);
-        LinearLayout nextWeekParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        LinearLayout.LayoutParams nextWeekParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
         nextWeekParams.leftMargin = dp(5);
         quickDates.addView(nextWeekButton, nextWeekParams);
         form.addView(quickDates, bottomMargin(dp(14)));
