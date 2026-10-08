@@ -78,8 +78,8 @@ final class ExtensionPackageParser {
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory()) continue;
                 if (++fileCount > 128) throw new IllegalArgumentException("Extension archive contains too many files.");
-                String path = entry.getName().replace('\\\\', '/');
-                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\\\') >= 0) continue;
+                String path = entry.getName().replace('\\', '/');
+                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\') >= 0) continue;
                 if (!path.equals("manifest.json") && !path.endsWith(".js") && !path.endsWith(".css")) continue;
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 byte[] buffer = new byte[8192];
