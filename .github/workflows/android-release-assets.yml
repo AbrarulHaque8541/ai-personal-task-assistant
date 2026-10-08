@@ -36,6 +36,29 @@ jobs:
           cache: gradle
           cache-dependency-path: android-app/**/*.gradle*
 
+      - name: Validate required release secrets
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${KEYSTORE_BASE64:-}" ]] || missing+=("KEYSTORE_BASE64")
+          [[ -n "${KEYSTORE_PASSWORD:-}" ]] || missing+=("KEYSTORE_PASSWORD")
+          [[ -n "${KEY_ALIAS:-}" ]] || missing+=("KEY_ALIAS")
+          [[ -n "${KEY_PASSWORD:-}" ]] || missing+=("KEY_PASSWORD")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Required release signing secret(s) missing: ${missing[*]}" >&2
+            echo "Release build requires KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD configured in repository secrets." >&2
+            exit 1
+          fi
+          echo "All required release signing secrets are present."
+
       - name: Verify exact tag commit is on main
         shell: bash
         run: |
@@ -125,7 +148,8 @@ jobs:
             echo "aapt or apksigner is missing from the installed Android build-tools" >&2
             exit 1
           }
-          "$apksigner" verify --verbose "$source_apk"
+          echo "Verifying APK signature and certificate details with apksigner..."
+          "$apksigner" verify --verbose --print-certs "$source_apk" 
           badging="$RUNNER_TEMP/daymark-apk-badging.txt"
           "$aapt" dump badging "$source_apk" > "$badging"
           package_line="$(grep '^package: ' "$badging")"
