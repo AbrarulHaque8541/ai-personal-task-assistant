@@ -448,9 +448,9 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);        if (requestCode != REQUEST_IMPORT_EXTENSION || resultCode != RESULT_OK || data == null || data.getData() == null) {
-            return;
-        }
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMPORT_EXTENSION) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         try {
             String raw;
@@ -494,8 +494,8 @@ public final class MainActivity extends Activity {
         } catch (Exception exception) {
             showToast("Invalid or unsupported extension file.");
         }
-    }
-
+            return;
+        }
 
         UpdaterActivityResultRouter.Route updaterRoute = UpdaterActivityResultRouter.route(
                 requestCode, resultCode == RESULT_OK, data != null && data.getData() != null);
