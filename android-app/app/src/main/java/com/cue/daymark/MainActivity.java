@@ -714,10 +714,10 @@ public final class MainActivity extends Activity {
         brand.addView(brandCaption);
         bar.addView(brand, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        pathButton = plainButton(powerMode ? "Simple path" : "Power path");
+        pathButton = plainButton(powerMode ? "Simple mode" : "Power mode");
         pathButton.setContentDescription(powerMode
-                ? "Switch to Simple path. Your tasks will stay the same."
-                : "Switch to Power path for search, filters, and suggestions. Your tasks will stay the same.");
+                ? "Switch to Simple mode. Your tasks will stay the same."
+                : "Switch to Power mode for search, filters, and suggestions. Your tasks will stay the same.");
         pathButton.setOnClickListener(view -> toggleExperienceMode());
         bar.addView(pathButton);
         Button moreButton = plainButton("More");
@@ -820,7 +820,23 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setTextColor(palette.text);
         quickCaptureInput.setHintTextColor(palette.muted);
         quickCaptureInput.setBackground(shape(palette.background, 10, palette.line));
-        card.addView(quickCaptureInput, bottomMargin(dp(9)));
+        card.addView(quickCaptureInput, bottomMargin(dp(7)));
+
+        LinearLayout smartChips = new LinearLayout(this);
+        smartChips.setGravity(Gravity.CENTER_VERTICAL);
+        Button todayChip = compactButton("Today", false);
+        Button tomorrowChip = compactButton("Tomorrow", false);
+        Button highChip = compactButton("High", false);
+        Button detailsChip = compactButton("Details", false);
+        todayChip.setOnClickListener(v -> appendSmartToken(" today"));
+        tomorrowChip.setOnClickListener(v -> appendSmartToken(" tomorrow"));
+        highChip.setOnClickListener(v -> appendSmartToken(" high"));
+        detailsChip.setOnClickListener(v -> showTaskEditor(null, quickCaptureInput.getText().toString()));
+        smartChips.addView(todayChip, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        LinearLayout.LayoutParams chip2 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip2.leftMargin = dp(5); smartChips.addView(tomorrowChip, chip2);
+        LinearLayout.LayoutParams chip3 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip3.leftMargin = dp(5); smartChips.addView(highChip, chip3);
+        LinearLayout.LayoutParams chip4 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip4.leftMargin = dp(5); smartChips.addView(detailsChip, chip4);
+        card.addView(smartChips, bottomMargin(dp(7)));
 
         taskActions = new LinearLayout(this);
         taskActions.setOrientation(LinearLayout.VERTICAL);
@@ -2450,6 +2466,15 @@ public final class MainActivity extends Activity {
         searchClear.setVisibility(searchQuery.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
+    private void appendSmartToken(String token) {
+        if (webMode || quickCaptureInput == null) return;
+        String current = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString().trim();
+        String next = (current + token).trim().replaceAll("\\s{2,}", " ");
+        quickCaptureInput.setText(next);
+        quickCaptureInput.setSelection(next.length());
+        quickCaptureInput.requestFocus();
+    }
+
     private void addQuickTask() {
         if (webMode || !canEdit()) return;
         String rawTitle = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString().trim();
@@ -3488,7 +3513,7 @@ public final class MainActivity extends Activity {
         pathButton.setText(powerMode ? "Simple path" : "Power path");
         pathButton.setContentDescription(powerMode
                 ? "Switch to Simple path. Your tasks will stay the same."
-                : "Switch to Power path for search, filters, and suggestions. Your tasks will stay the same.");
+                : "Switch to Power mode for search, filters, and suggestions. Your tasks will stay the same.");
         captureFeedback.setText(powerMode
                 ? "Power path adds search, filters, and ranked demo suggestions. It uses the same tasks."
                 : "Simple path shows your tasks without extra filters. Your tasks are unchanged.");
@@ -4076,27 +4101,25 @@ public final class MainActivity extends Activity {
                 "Appearance: " + themeLabel(),
                 "Text size: " + textSizeLabel(),
                 "High contrast: " + (highContrast ? "On" : "Off"),
-                "Language: English only",
-                "Screen reader support",
-                "Reduced motion",
+                "Accessibility",
                 "Permission status: " + permissionStatusLabel(),
-                "Advanced details",
                 "Encrypted backup / restore",
-                "Check now"
+                "Browser & extensions",
+                "Check for updates"
         };
         new AlertDialog.Builder(this)
-                .setTitle("More settings")
+                .setTitle("More")
                 .setItems(options, (dialog, selected) -> {
                     if (selected == 0) showThemePicker();
                     else if (selected == 1) showTextSizePicker();
                     else if (selected == 2) toggleHighContrast();
-                    else if (selected == 3) showLanguageInfo();
-                    else if (selected == 4) showScreenReaderInfo();
-                    else if (selected == 5) showReducedMotionInfo();
-                    else if (selected == 6) showPermissionStatus();
-                    else if (selected == 7) showAdvancedDetails();
-                    else if (selected == 8) showPortableBackupDialog();
-                    else checkForUpdates(true);
+                    else if (selected == 3) showScreenReaderInfo();
+                    else if (selected == 4) showPermissionStatus();
+                    else if (selected == 5) showPortableBackupDialog();
+                    else if (selected == 6) {
+                        if (webMode) showBrowserExtensionsManager();
+                        else setWebMode(true);
+                    } else checkForUpdates(true);
                 })
                 .setNegativeButton("Close", null)
                 .show();
