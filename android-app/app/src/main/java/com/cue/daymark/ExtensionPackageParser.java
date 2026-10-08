@@ -83,8 +83,8 @@ final class ExtensionPackageParser {
             int totalText = 0;
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory() || ++fileCount > 128) continue;
-                String path = entry.getName().replace('\\\\', '/');
-                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\\\') >= 0) continue;
+                String path = entry.getName().replace('\\', '/');
+                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\') >= 0) continue;
                 if (!path.equals("manifest.json") && !path.endsWith(".js") && !path.endsWith(".css")) continue;
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 byte[] buffer = new byte[8192];
