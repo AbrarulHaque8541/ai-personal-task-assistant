@@ -132,12 +132,25 @@ final class ExtensionStore {
     }
 
     private static String readFile(File file) throws Exception {
-        byte[] buf = new byte[(int) Math.min(file.length(), 200_000)];
+        int max = (int) Math.min(file.length(), 200_000);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(max);
         try (FileInputStream in = new FileInputStream(file)) {
-            int n = in.read(buf);
-            if (n <= 0) return "";
-            return new String(buf, 0, n, StandardCharsets.UTF_8);
+            byte[] buffer = new byte[8192];
+            int read;
+            int total = 0;
+            while ((read = in.read(buffer)) != -1) {
+                if (total + read > max) {
+                    read = max - total;
+                    if (read <= 0) break;
+                }
+                out.write(buffer, 0, read);
+                total += read;
+                if (total >= max) break;
+            }
         }
+        byte[] bytes = out.toByteArray();
+        if (bytes.length == 0) return "";
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     private static void writeFile(File file, String content) throws Exception {
