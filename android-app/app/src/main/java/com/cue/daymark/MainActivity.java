@@ -1176,7 +1176,7 @@ public final class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(8), dp(4), dp(8), dp(4));
 
-        TextView intro = text("Local extensions only. Daymark supports CSS/JavaScript packs and a limited userscript subset. Chrome Web Store packages and privileged APIs are not executed.", 12, palette.muted, Typeface.NORMAL);
+        TextView intro = text("Local extensions only. Daymark supports CSS/JavaScript packs, userscripts, and a compatibility importer for ZIP/CRX3 WebExtensions content scripts. Privileged browser APIs are never granted.", 12, palette.muted, Typeface.NORMAL);
         content.addView(intro, bottomMargin(dp(10)));
 
         for (BrowserExtension ext : extensions) {
@@ -1234,20 +1234,31 @@ public final class MainActivity extends Activity {
             byte[] buffer = new byte[8192];
             int read;
             while ((read = input.read(buffer)) != -1) {
-                if (output.size() + read > 200_000) throw new IOException("Extension is too large.");
+                if (output.size() + read > 5 * 1024 * 1024) throw new IOException("Extension archive is too large (5 MB max).");
                 output.write(buffer, 0, read);
             }
-            String raw = output.toString("UTF-8");
-            ExtensionPackageParser parser = null;
+            byte[] bytes = output.toByteArray();
+            String raw = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
             BrowserExtension ext;
             String name = uri.toString().toLowerCase(Locale.ROOT);
             if (name.endsWith(".user.js") || raw.contains("==UserScript==")) {
                 ext = ExtensionPackageParser.parseUserScript(raw);
+            } else if (name.endsWith(".zip") || name.endsWith(".xpi") || name.endsWith(".crx")
+                    || (bytes.length >= 2 && bytes[0] == 'P' && bytes[1] == 'K')
+                    || (bytes.length >= 4 && bytes[0] == 'C' && bytes[1] == 'r' && bytes[2] == '2' && bytes[3] == '4')) {
+                ext = ExtensionPackageParser.parseWebExtensionArchive(bytes);
             } else {
-                ext = ExtensionPackageParser.parseDaymarkJson(raw, false);
+                JSONObject probe = new JSONObject(raw);
+                if (probe.has("content_scripts") || probe.has("manifest_version")) {
+                    ext = ExtensionPackageParser.parseWebExtensionManifest(raw);
+                } else {
+                    ext = ExtensionPackageParser.parseDaymarkJson(raw, false);
+                }
             }
             new ExtensionStore(this).installUserPack(ext);
-            showToast("Extension added: " + ext.name);
+            showToast(ext.warnings == null || ext.warnings.isEmpty()
+                    ? "Extension added: " + ext.name
+                    : "Added in compatibility mode: " + ext.name);
             showExtensionManagerDialog();
         } catch (Exception exception) {
             showToast("Extension rejected: " + exception.getMessage());
