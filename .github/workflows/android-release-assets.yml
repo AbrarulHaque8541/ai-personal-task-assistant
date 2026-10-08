@@ -114,20 +114,20 @@ jobs:
       - name: Build and check both Android flavors
         working-directory: android-app
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          RAW_KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RAW_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RAW_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RAW_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
             echo "Decoding release keystore..."
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            export KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
-            export KEYSTORE_PASSWORD
-            export KEY_ALIAS
-            export KEY_PASSWORD
+            echo "$RAW_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
 
+            KEYSTORE_PATH="$RUNNER_TEMP/release.keystore" \
+            KEYSTORE_PASSWORD="$RAW_KEYSTORE_PASSWORD" \
+            KEY_ALIAS="$RAW_KEY_ALIAS" \
+            KEY_PASSWORD="$RAW_KEY_PASSWORD" \
             ./gradlew --no-daemon --continue \
               assembleGithubSideloadRelease \
               assemblePlayRelease \
