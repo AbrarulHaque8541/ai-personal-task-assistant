@@ -1246,6 +1246,7 @@ public final class MainActivity extends Activity {
             @Override public void onPageFinished(String url) {
                 if (extensionRuntime != null) extensionRuntime.onPageFinished(browserWebView, url);
                 if (!isActivityCallbackCurrent()) return;
+                if (browserAddressInput != null) browserAddressInput.setText(url);
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
                     String current = browserPreferences.getString(BROWSER_HISTORY_KEY, "");
@@ -2212,6 +2213,16 @@ public final class MainActivity extends Activity {
                     : "Website access is Offline. Turn Online on, then tap Go or a site.");
         }
         syncModeUi();
+        animateModeTransition(enabled);
+    }
+
+    private void animateModeTransition(boolean enteringWeb) {
+        View target = enteringWeb ? browserScreen : taskScreen;
+        if (target == null) return;
+        target.setAlpha(0f);
+        target.setTranslationY(enteringWeb ? dp(10) : -dp(6));
+        target.animate().alpha(1f).translationY(0f)
+                .setDuration(180L).start();
     }
 
     private void setBrowserOnlineEnabled(boolean enabled) {
