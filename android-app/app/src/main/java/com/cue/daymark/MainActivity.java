@@ -342,6 +342,13 @@ public final class MainActivity extends Activity {
             closeFullScreenWebReader();
             return;
         }
+        // Match normal browser behavior: consume Back inside the WebView history
+        // before allowing Android to leave the screen/activity.
+        if (browserWebView != null && browserWebView.getVisibility() == View.VISIBLE
+                && browserWebView.canGoBack()) {
+            browserWebView.goBack();
+            return;
+        }
         super.onBackPressed();
     }
 
