@@ -59,6 +59,7 @@ import java.time.format.DateTimeFormatter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -86,6 +87,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
     private static final int REQUEST_PORTABLE_IMPORT = 7343;
+    private static final int REQUEST_EXTENSION_IMPORT = 7344;
     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
@@ -1124,7 +1126,7 @@ public final class MainActivity extends Activity {
     private void showBrowserOverflowMenu(View anchor) {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
-                "Open in external browser", "Desktop site", "Downloads", "Browser settings"
+                "Open in external browser", "Desktop site", "Downloads", "Extensions", "Browser settings"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -1152,12 +1154,100 @@ public final class MainActivity extends Activity {
                             openDownloadsFolder();
                             break;
                         case 7:
+                            showExtensionManagerDialog();
+                            break;
+                        case 8:
                             showBrowserSettingsDialog();
                             break;
                         default:
                             break;
                     }
                 }).show();
+    }
+
+    private void showExtensionManagerDialog() {
+        ExtensionStore store = new ExtensionStore(this);
+        List<BrowserExtension> extensions = store.listAll();
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(8), dp(4), dp(8), dp(4));
+
+        TextView intro = text("Local extensions only. Daymark supports CSS/JavaScript packs and a limited userscript subset. Chrome Web Store packages and privileged APIs are not executed.", 12, palette.muted, Typeface.NORMAL);
+        content.addView(intro, bottomMargin(dp(10)));
+
+        for (BrowserExtension ext : extensions) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            TextView name = text(ext.name + "  v" + ext.version, 14, palette.text, Typeface.BOLD);
+            row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            CheckBox enabled = new CheckBox(this);
+            enabled.setChecked(ext.enabled);
+            enabled.setContentDescription("Enable or disable extension " + ext.name);
+            enabled.setOnCheckedChangeListener((button, checked) -> {
+                if (ext.builtIn) {
+                    store.setBuiltinEnabled(ext.id, checked);
+                } else {
+                    try {
+                        store.installUserPack(ext.withEnabled(checked));
+                    } catch (Exception exception) {
+                        showToast("Could not update extension.");
+                    }
+                }
+                if (browserWebView != null && browserWebView.getUrl() != null) {
+                    browserWebView.reload();
+                }
+            });
+            row.addView(enabled);
+            if (!ext.builtIn) {
+                Button remove = compactButton("Remove", false);
+                remove.setOnClickListener(view -> {
+                    store.uninstallUserPack(ext.id);
+                    showExtensionManagerDialog();
+                });
+                row.addView(remove);
+            }
+            content.addView(row, bottomMargin(dp(7)));
+        }
+
+        Button importButton = compactButton("Add extension pack / userscript", true);
+        importButton.setOnClickListener(view -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivityForResult(intent, REQUEST_EXTENSION_IMPORT);
+        });
+        content.addView(importButton, topMargin(dp(6)));
+
+        new AlertDialog.Builder(this).setTitle("Extensions").setView(content)
+                .setPositiveButton("Done", null).show();
+    }
+
+    private void importExtensionFromUri(Uri uri) {
+        if (uri == null) return;
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (input == null) throw new IOException("Unable to open extension.");
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (output.size() + read > 200_000) throw new IOException("Extension is too large.");
+                output.write(buffer, 0, read);
+            }
+            String raw = output.toString("UTF-8");
+            ExtensionPackageParser parser = null;
+            BrowserExtension ext;
+            String name = uri.toString().toLowerCase(Locale.ROOT);
+            if (name.endsWith(".user.js") || raw.contains("==UserScript==")) {
+                ext = ExtensionPackageParser.parseUserScript(raw);
+            } else {
+                ext = ExtensionPackageParser.parseDaymarkJson(raw, false);
+            }
+            new ExtensionStore(this).installUserPack(ext);
+            showToast("Extension added: " + ext.name);
+            showExtensionManagerDialog();
+        } catch (Exception exception) {
+            showToast("Extension rejected: " + exception.getMessage());
+        }
     }
 
     private void showFindInPageDialog() {
