@@ -115,7 +115,8 @@ public final class MainActivity extends Activity {
     private final List<TaskTemplate> taskTemplates = new ArrayList<>();
     private final List<String> filterKeys = Arrays.asList(
             TaskLogic.FILTER_ALL, TaskLogic.FILTER_TODAY,
-            TaskLogic.FILTER_UPCOMING, TaskLogic.FILTER_COMPLETED);
+            TaskLogic.FILTER_UPCOMING, TaskLogic.FILTER_OVERDUE,
+            TaskLogic.FILTER_NO_DATE, TaskLogic.FILTER_COMPLETED);
     private final List<Button> filterButtons = new ArrayList<>();
     private final List<View> powerOnlyViews = new ArrayList<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -2068,12 +2069,17 @@ public final class MainActivity extends Activity {
                         || (TaskLogic.FILTER_TODAY.equals(key) && today.toString().equals(task.dueDate))
                         || (TaskLogic.FILTER_UPCOMING.equals(key) && task.dueDate != null
                             && LocalDate.parse(task.dueDate).isAfter(today))
+                        || (TaskLogic.FILTER_OVERDUE.equals(key) && !task.completed && task.dueDate != null
+                            && LocalDate.parse(task.dueDate).isBefore(today))
+                        || (TaskLogic.FILTER_NO_DATE.equals(key) && task.dueDate == null)
                         || (TaskLogic.FILTER_COMPLETED.equals(key) && task.completed)) count++;
             }
             String label;
             if (TaskLogic.FILTER_ALL.equals(key)) label = "All";
             else if (TaskLogic.FILTER_TODAY.equals(key)) label = "Today";
             else if (TaskLogic.FILTER_UPCOMING.equals(key)) label = "Upcoming";
+            else if (TaskLogic.FILTER_OVERDUE.equals(key)) label = "Overdue";
+            else if (TaskLogic.FILTER_NO_DATE.equals(key)) label = "No date";
             else label = "Completed";
             button.setEnabled(!storageLoading && !storageLoadFailed);
             button.setText(label + "  " + (storageLoading || storageLoadFailed ? "—" : count));
