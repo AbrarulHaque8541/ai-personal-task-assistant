@@ -1,17 +1,21 @@
-# Only the web prototype should be published as static assets.
-# Everything below is source, tooling, or the Android project.
+# Only web prototype static files should be publishable.
 android-app/
+artifacts/
+*.apk
+*.aab
 tests/
 .git/
 .gitignore
+.github/
 .assetsignore
 package.json
 package-lock.json
-README.md
-wrangler.jsonc
 node_modules/
 .wrangler/
 dist/
 *.log
+wrangler.jsonc
+docs/
+*.md
 .DS_Store
 Thumbs.db
