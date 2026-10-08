@@ -156,7 +156,10 @@ jobs:
           test "${#expected_signer}" -eq 64
           actual_signer="$(keytool -exportcert -rfc -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | openssl dgst -sha256 -binary | od -An -tx1 | tr -d " \n" | tr "A-F" "a-f")"
           test -n "$actual_signer"
-          test "${actual_signer,,}" = "${expected_signer,,}"
+          if [[ "${actual_signer,,}" != "${expected_signer,,}" ]]; then
+            echo "::error::Release signer mismatch. Keystore certificate SHA-256=${actual_signer}; pinned publisher SHA-256=${expected_signer}"
+            exit 1
+          fi
           echo "Release signer fingerprint matches the pinned publisher certificate."
           test "$(stat -c '%s' release-artifacts/app-release.apk)" -gt 0
           test "$(stat -c '%s' release-artifacts/app-release.aab)" -gt 0
