@@ -24,7 +24,7 @@ final class DaymarkWebView extends WebView {
         void onOfflineNavigationBlocked();
         void onHttpNavigationBlocked(String url, boolean redirect);
         void onLoadError();
-        void onDownloadRequested();
+        void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength);
         void onRendererGone();
     }
 
@@ -137,6 +137,6 @@ final class DaymarkWebView extends WebView {
             }
         });
         setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) ->
-                listener.onDownloadRequested());
+                listener.onDownloadRequested(url, userAgent, contentDisposition, mimeType, contentLength));
     }
 }
