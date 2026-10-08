@@ -9,7 +9,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Parses Daymark JSON packs and a minimal userscript header subset. */
+/** Parses Daymark JSON packs and a minimal userscript header subset (@grant none only). */
 final class ExtensionPackageParser {
     private static final int MAX_PACK_CHARS = 200_000;
     private static final Pattern USERSCRIPT_HEADER = Pattern.compile(
@@ -35,14 +35,8 @@ final class ExtensionPackageParser {
         if (!id.matches("[A-Za-z0-9._-]{1,80}")) {
             throw new IllegalArgumentException("Extension id must be 1–80 safe characters.");
         }
-        List<String> matches = new ArrayList<>();
-        JSONArray arr = o.optJSONArray("matches");
-        if (arr != null) {
-            for (int i = 0; i < arr.length() && i < 32; i++) {
-                String m = arr.optString(i, "").trim();
-                if (!m.isEmpty()) matches.add(m);
-            }
-        }
+        List<String> matches = readStringList(o.optJSONArray("matches"), 32);
+        List<String> excludes = readStringList(o.optJSONArray("excludes"), 32);
         if (matches.isEmpty()) matches.add("*://*/*");
         String css = o.optString("css", "");
         String js = o.optString("js", "");
@@ -50,21 +44,14 @@ final class ExtensionPackageParser {
             throw new IllegalArgumentException("Extension script/css too large.");
         }
         return new BrowserExtension(
-                id,
-                name,
-                o.optString("version", "1.0.0"),
-                o.optString("description", ""),
-                o.optBoolean("enabled", true),
-                builtIn,
-                matches,
-                css,
-                js,
-                o.optString("runAt", "document_end"));
+                id, name, o.optString("version", "1.0.0"), o.optString("description", ""),
+                o.optBoolean("enabled", true), builtIn, matches, excludes, css, js,
+                o.optString("runAt", "document_end"), o.optString("warnings", ""));
     }
 
     /**
-     * Minimal userscript import: reads @name @match @version @description and body after header.
-     * Does not implement GM_* APIs.
+     * Userscript import: @name @match @exclude @run-at @grant none only.
+     * Unsupported grants become warnings; body still imported for DOM-only use at user risk.
      */
     static BrowserExtension parseUserScript(String raw) throws Exception {
         if (raw == null || raw.trim().isEmpty()) {
@@ -76,11 +63,16 @@ final class ExtensionPackageParser {
         Matcher header = USERSCRIPT_HEADER.matcher(raw);
         String name = "Imported script";
         String version = "1.0.0";
-        String description = "Imported userscript (no GM APIs)";
+        String description = "Imported userscript";
+        String runAt = "document_end";
         List<String> matches = new ArrayList<>();
+        List<String> excludes = new ArrayList<>();
+        List<String> grants = new ArrayList<>();
         String id = "userscript." + Integer.toHexString(raw.hashCode());
+        String body = raw.trim();
         if (header.find()) {
             String block = header.group(1);
+            body = raw.substring(header.end()).trim();
             Matcher meta = META.matcher(block);
             while (meta.find()) {
                 String key = meta.group(1).toLowerCase(Locale.ROOT);
@@ -93,18 +85,43 @@ final class ExtensionPackageParser {
                     case "include":
                         if (matches.size() < 32) matches.add(value);
                         break;
+                    case "exclude":
+                        if (excludes.size() < 32) excludes.add(value);
+                        break;
+                    case "run-at":
+                    case "runat":
+                        if (value.contains("start")) runAt = "document_start";
+                        else runAt = "document_end";
+                        break;
+                    case "grant":
+                        grants.add(value);
+                        break;
                     default: break;
                 }
             }
         }
         if (matches.isEmpty()) matches.add("*://*/*");
-        String body = header.find() ? raw.substring(header.end()).trim() : raw.trim();
-        // reset matcher — header already consumed; body extraction redo:
-        Matcher header2 = USERSCRIPT_HEADER.matcher(raw);
-        if (header2.find()) {
-            body = raw.substring(header2.end()).trim();
+
+        StringBuilder warnings = new StringBuilder();
+        boolean unsafeGrant = false;
+        for (String g : grants) {
+            String gl = g.toLowerCase(Locale.ROOT);
+            if ("none".equals(gl) || "gm_addstyle".equals(gl)) continue;
+            unsafeGrant = true;
+            if (warnings.length() > 0) warnings.append(';');
+            warnings.append("unsupported @grant ").append(g);
         }
-        return new BrowserExtension(id, name, version, description, true, false, matches, "", body, "document_end");
+        if (unsafeGrant) {
+            description = description + " [Daymark: only @grant none / GM_addStyle; other GM APIs are not provided.]";
+        }
+        // Remote @require is refused by policy — strip nothing, but warn if present in header block.
+        if (raw.contains("@require") || raw.contains("@resource")) {
+            if (warnings.length() > 0) warnings.append(';');
+            warnings.append("@require/@resource not fetched (offline packs only)");
+        }
+
+        return new BrowserExtension(id, name, version, description, true, false,
+                matches, excludes, "", body, runAt, warnings.toString());
     }
 
     static String toDaymarkJson(BrowserExtension ext) throws Exception {
@@ -117,9 +134,23 @@ final class ExtensionPackageParser {
         JSONArray matches = new JSONArray();
         for (String m : ext.matches) matches.put(m);
         o.put("matches", matches);
+        JSONArray excludes = new JSONArray();
+        for (String m : ext.excludes) excludes.put(m);
+        o.put("excludes", excludes);
         o.put("css", ext.css);
         o.put("js", ext.js);
         o.put("runAt", ext.runAt);
+        if (ext.warnings != null && !ext.warnings.isEmpty()) o.put("warnings", ext.warnings);
         return o.toString(2);
+    }
+
+    private static List<String> readStringList(JSONArray arr, int max) {
+        List<String> out = new ArrayList<>();
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length() && out.size() < max; i++) {
+            String m = arr.optString(i, "").trim();
+            if (!m.isEmpty()) out.add(m);
+        }
+        return out;
     }
 }

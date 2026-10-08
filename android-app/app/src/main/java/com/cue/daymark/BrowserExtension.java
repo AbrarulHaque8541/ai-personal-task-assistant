@@ -7,6 +7,10 @@ import java.util.Locale;
 
 /** Local Daymark extension pack (userscript/CSS). Not a Chrome Web Store add-on. */
 final class BrowserExtension {
+    static final int MAX_ENABLED_PER_PAGE = 8;
+    static final int MAX_CSS_CHARS = 120_000;
+    static final int MAX_JS_CHARS = 80_000;
+
     final String id;
     final String name;
     final String version;
@@ -14,13 +18,23 @@ final class BrowserExtension {
     final boolean enabled;
     final boolean builtIn;
     final List<String> matches;
+    final List<String> excludes;
     final String css;
     final String js;
     final String runAt;
+    /** Human-readable import warnings (unsupported grants, etc.). */
+    final String warnings;
 
     BrowserExtension(String id, String name, String version, String description,
                      boolean enabled, boolean builtIn, List<String> matches,
                      String css, String js, String runAt) {
+        this(id, name, version, description, enabled, builtIn, matches,
+                Collections.<String>emptyList(), css, js, runAt, "");
+    }
+
+    BrowserExtension(String id, String name, String version, String description,
+                     boolean enabled, boolean builtIn, List<String> matches, List<String> excludes,
+                     String css, String js, String runAt, String warnings) {
         this.id = id == null ? "" : id.trim();
         this.name = name == null ? "Extension" : name.trim();
         this.version = version == null ? "0" : version.trim();
@@ -30,15 +44,26 @@ final class BrowserExtension {
         this.matches = matches == null
                 ? Collections.<String>emptyList()
                 : Collections.unmodifiableList(new ArrayList<String>(matches));
-        this.css = css == null ? "" : css;
-        this.js = js == null ? "" : js;
+        this.excludes = excludes == null
+                ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(new ArrayList<String>(excludes));
+        String c = css == null ? "" : css;
+        String j = js == null ? "" : js;
+        if (c.length() > MAX_CSS_CHARS) c = c.substring(0, MAX_CSS_CHARS);
+        if (j.length() > MAX_JS_CHARS) j = j.substring(0, MAX_JS_CHARS);
+        this.css = c;
+        this.js = j;
         String at = runAt == null ? "document_end" : runAt.trim().toLowerCase(Locale.ROOT);
         this.runAt = "document_start".equals(at) ? "document_start" : "document_end";
+        this.warnings = warnings == null ? "" : warnings.trim();
     }
 
     boolean matchesUrl(String url) {
         if (url == null || url.isEmpty() || matches.isEmpty()) return false;
         if (!BrowserAddress.isAllowedWebUrl(url)) return false;
+        for (String pattern : excludes) {
+            if (MatchRules.matches(pattern, url)) return false;
+        }
         for (String pattern : matches) {
             if (MatchRules.matches(pattern, url)) return true;
         }
@@ -46,10 +71,10 @@ final class BrowserExtension {
     }
 
     BrowserExtension withEnabled(boolean value) {
-        return new BrowserExtension(id, name, version, description, value, builtIn, matches, css, js, runAt);
+        return new BrowserExtension(id, name, version, description, value, builtIn,
+                matches, excludes, css, js, runAt, warnings);
     }
 
-    /** Simple host/path matchers used by Daymark packs and limited userscript @match lines. */
     static final class MatchRules {
         private MatchRules() { }
 
@@ -64,7 +89,6 @@ final class BrowserExtension {
                 java.net.URI uri = new java.net.URI(url);
                 String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
                 String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
-                // *://host/*
                 if (p.startsWith("*://")) {
                     String rest = p.substring(4);
                     int slash = rest.indexOf('/');
@@ -90,7 +114,7 @@ final class BrowserExtension {
             String p = pattern.toLowerCase(Locale.ROOT);
             if ("*".equals(p)) return true;
             if (p.startsWith("*.")) {
-                String suffix = p.substring(1); // .example.com
+                String suffix = p.substring(1);
                 return host.endsWith(suffix) || host.equals(p.substring(2));
             }
             return host.equals(p);
