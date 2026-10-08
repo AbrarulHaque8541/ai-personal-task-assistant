@@ -15,7 +15,7 @@ final class ExtensionPackageParser {
     private static final Pattern USERSCRIPT_HEADER = Pattern.compile(
             "(?s)==UserScript==\\s*(.*?)==/UserScript==");
     private static final Pattern META = Pattern.compile(
-            "@(\\\\w+)\\\\s+(.+)");
+            "@(\\w+)\\s+(.+)");
 
     private ExtensionPackageParser() { }
 
