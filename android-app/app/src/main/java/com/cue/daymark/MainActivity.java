@@ -3,6 +3,7 @@ package com.cue.daymark;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.app.TimePickerDialog;
 import android.app.DownloadManager;
 import android.Manifest;
 import android.content.ClipData;
@@ -54,7 +55,9 @@ import android.webkit.CookieManager;
 import android.webkit.WebStorage;
 import android.webkit.URLUtil;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.io.File;
 import java.io.FileInputStream;
@@ -451,6 +454,7 @@ public final class MainActivity extends Activity {
                 && !recoverPendingVerifiedUpdate()) {
             checkForUpdates(false);
         }
+        checkDueReminders();
     }
 
     @Override
@@ -1985,6 +1989,7 @@ public final class MainActivity extends Activity {
                     pendingPortableImportNeedsRepick = true;
                 }
                 render();
+                checkDueReminders();
                 if (pendingPortableImportNeedsRepick) {
                     pendingPortableImportNeedsRepick = false;
                     showToast("Access to the selected backup was not retained. Choose the backup again to restore it.");
@@ -2571,12 +2576,38 @@ public final class MainActivity extends Activity {
         TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT),
                 12, dueColor(task), Typeface.NORMAL);
         copy.addView(details, topMargin(dp(4)));
+        LinearLayout chips = new LinearLayout(this);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
         Button attachments = compactButton("Files · " + task.attachments.size(), false);
         attachments.setContentDescription("Manage " + task.attachments.size()
                 + " attachments for task: " + task.title);
         attachments.setEnabled(canEdit());
         attachments.setOnClickListener(view -> showAttachmentManager(task));
-        copy.addView(attachments, topMargin(dp(4)));
+        chips.addView(attachments, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
+        if (!task.subtasks.isEmpty()) {
+            int doneCount = TaskLogic.completedSubtaskCount(task);
+            Button subtasksChip = compactButton("Subtasks · " + doneCount + "/" + task.subtasks.size(), false);
+            subtasksChip.setContentDescription("Checklist for task: " + task.title
+                    + ". " + doneCount + " of " + task.subtasks.size() + " done. Open to update.");
+            subtasksChip.setEnabled(canEdit());
+            subtasksChip.setOnClickListener(view -> showSubtasksDialog(task));
+            chips.addView(subtasksChip, chipMargin());
+        }
+        if (!task.notes.isEmpty()) {
+            Button notesChip = compactButton("Note", false);
+            notesChip.setContentDescription("Show the note for task: " + task.title);
+            notesChip.setOnClickListener(view -> showNotesDialog(task));
+            chips.addView(notesChip, chipMargin());
+        }
+        String reminder = reminderLabel(task);
+        if (reminder != null && !task.completed) {
+            Button reminderChip = compactButton(reminder, false);
+            reminderChip.setContentDescription(reminder + " for task: " + task.title);
+            reminderChip.setEnabled(false);
+            chips.addView(reminderChip, chipMargin());
+        }
+        copy.addView(chips, topMargin(dp(4)));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         Button edit = compactButton("Edit", false);
@@ -2603,6 +2634,38 @@ public final class MainActivity extends Activity {
             saveTasksAsync();
         });
         return row;
+    }
+
+    private void checkDueReminders() {
+        if (!storageReady || webMode) return;
+        Instant now = Instant.now();
+        ZoneId zone = ZoneId.systemDefault();
+        List<Task> due = new ArrayList<>();
+        for (Task task : tasks) {
+            if (task.completed || task.reminderLeadMinutes == null) continue;
+            Instant fire = TaskLogic.reminderFireInstant(task, zone);
+            if (fire == null || now.isBefore(fire)) continue;
+            if (fire.toString().equals(task.reminderShownFire)) continue;
+            due.add(task);
+        }
+        if (due.isEmpty()) return;
+        for (Task task : due) {
+            Instant fire = TaskLogic.reminderFireInstant(task, zone);
+            if (fire != null) {
+                replaceTask(task.withReminderShown(fire.toString(), Instant.now().toString()));
+            }
+        }
+        saveTasksAsync();
+        StringBuilder message = new StringBuilder();
+        for (Task task : due) {
+            if (message.length() > 0) message.append("\n\n");
+            message.append("• ").append(task.title).append(" — ").append(dueLabel(task));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(due.size() == 1 ? "Reminder" : "Reminders (" + due.size() + ")")
+                .setMessage(message.toString())
+                .setPositiveButton("Done", null)
+                .show();
     }
 
     private void showTaskActions(Task task) {
@@ -2671,9 +2734,20 @@ public final class MainActivity extends Activity {
         if (task.dueDate == null) return "No due date";
         LocalDate due = LocalDate.parse(task.dueDate);
         LocalDate today = LocalDate.now();
-        if (due.isBefore(today)) return "Overdue · " + TaskLogic.formatDate(due);
-        if (due.equals(today)) return "Due today";
-        return "Due " + TaskLogic.formatDate(due);
+        String label;
+        if (due.isBefore(today)) label = "Overdue · " + TaskLogic.formatDate(due);
+        else if (due.equals(today)) label = "Due today";
+        else label = "Due " + TaskLogic.formatDate(due);
+        if (task.dueTime != null) label += " · " + TaskLogic.formatTime(task.dueTime);
+        return label;
+    }
+
+    private String reminderLabel(Task task) {
+        if (task.reminderLeadMinutes == null) return null;
+        if (task.reminderLeadMinutes == 0) return "Reminder at due time";
+        if (task.reminderLeadMinutes % 1440 == 0) return "Reminder 1 day before";
+        if (task.reminderLeadMinutes % 60 == 0) return "Reminder " + (task.reminderLeadMinutes / 60) + " hour before";
+        return "Reminder " + task.reminderLeadMinutes + " minutes before";
     }
 
     private int dueColor(Task task) {
@@ -2687,6 +2761,110 @@ public final class MainActivity extends Activity {
 
     private boolean canEdit() {
         return storageReady && !attachmentBusy && !portableBusy;
+    }
+
+    private void showSubtasksDialog(Task task) {
+        if (task == null || !canEdit()) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        content.addView(list);
+        final Runnable[] rerender = new Runnable[1];
+        rerender[0] = () -> {
+            list.removeAllViews();
+            Task current = findTask(task.id);
+            if (current == null || current.subtasks.isEmpty()) {
+                list.addView(text("No subtasks yet.", 12, palette.muted, Typeface.NORMAL));
+                return;
+            }
+            for (Subtask subtask : current.subtasks) {
+                CheckBox subtaskCheck = new CheckBox(this);
+                subtaskCheck.setText(subtask.title);
+                subtaskCheck.setTextColor(subtask.done ? palette.muted : palette.text);
+                subtaskCheck.setTextSize(14 * textScale);
+                subtaskCheck.setChecked(subtask.done);
+                subtaskCheck.setContentDescription((subtask.done ? "Mark subtask as not done: " : "Mark subtask as done: ")
+                        + subtask.title);
+                subtaskCheck.setOnCheckedChangeListener((button, checked) -> {
+                    if (!canEdit() || checked == subtask.done) return;
+                    Task latest = findTask(task.id);
+                    if (latest == null) return;
+                    try {
+                        replaceTask(TaskLogic.toggleSubtask(latest, subtask.id));
+                        render();
+                        saveTasksAsync();
+                    } catch (IllegalArgumentException exception) {
+                        showToast("Could not update this subtask.");
+                    }
+                    rerender[0].run();
+                });
+                list.addView(subtaskCheck, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+            }
+        };
+        rerender[0].run();
+        Button addSubtask = compactButton("Add subtask", false);
+        addSubtask.setContentDescription("Add a subtask to task: " + task.title);
+        addSubtask.setOnClickListener(view -> {
+            Task current = findTask(task.id);
+            if (current == null || !canEdit()) return;
+            if (current.subtasks.size() >= TaskLogic.MAX_SUBTASKS) {
+                showToast("A task can have at most " + TaskLogic.MAX_SUBTASKS + " subtasks.");
+                return;
+            }
+            EditText input = new EditText(this);
+            input.setHint("Subtask name");
+            input.setSingleLine(true);
+            input.setFilters(new InputFilter[] { new InputFilter.LengthFilter(TaskLogic.MAX_SUBTASK_TITLE) });
+            input.setContentDescription("New subtask name");
+            new AlertDialog.Builder(this)
+                    .setTitle("Add subtask")
+                    .setView(input)
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Add", (dialog, which) -> {
+                        String title = input.getText() == null ? "" : input.getText().toString().trim();
+                        Task latest = findTask(task.id);
+                        if (latest == null || !canEdit()) return;
+                        try {
+                            replaceTask(TaskLogic.addSubtask(latest, title));
+                            render();
+                            saveTasksAsync();
+                            rerender[0].run();
+                        } catch (IllegalArgumentException exception) {
+                            showToast(exception.getMessage());
+                        }
+                    })
+                    .show();
+        });
+        content.addView(addSubtask, topMargin(dp(6)));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Subtasks · " + task.title)
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
+    private void showNotesDialog(Task task) {
+        if (task == null) return;
+        TextView notes = text(task.notes, 14, palette.text, Typeface.NORMAL);
+        notes.setLineSpacing(dp(2), 1f);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+        content.addView(notes);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Note · " + task.title)
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .show();
     }
 
     private void showAttachmentManager(Task task) {
@@ -3195,6 +3373,15 @@ public final class MainActivity extends Activity {
             @Override public void afterTextChanged(Editable s) { }
         });
 
+        EditText notesInput = new EditText(this);
+        notesInput.setTextSize(14 * textScale);
+        notesInput.setHint("Notes (optional)");
+        notesInput.setContentDescription("Optional notes for this task, up to 4000 characters");
+        notesInput.setFilters(new InputFilter[] { new InputFilter.LengthFilter(TaskLogic.MAX_NOTES_CHARS) });
+        notesInput.setMinLines(2);
+        notesInput.setGravity(Gravity.TOP | Gravity.START);
+        if (editing != null) notesInput.setText(editing.notes);
+
         TextView fieldLabel = text("Due date (optional)", 13, palette.muted, Typeface.BOLD);
         fieldLabel.setLetterSpacing(0.08f);
         form.addView(fieldLabel, bottomMargin(dp(4)));
@@ -3206,10 +3393,6 @@ public final class MainActivity extends Activity {
         dateButton.setOnClickListener(view -> showDatePicker(selectedDate, dateButton));
         dateActions.addView(dateButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
         Button clearDate = compactButton("Clear", false);
-        clearDate.setOnClickListener(view -> {
-            selectedDate[0] = null;
-            dateButton.setText("Choose a date");
-        });
         dateActions.addView(clearDate, new LinearLayout.LayoutParams(dp(76), dp(48)));
         form.addView(dateActions, bottomMargin(dp(6)));
 
@@ -3239,6 +3422,41 @@ public final class MainActivity extends Activity {
         quickDates.addView(nextWeekButton, nextWeekParams);
         form.addView(quickDates, bottomMargin(dp(14)));
 
+        if (!templateOnly) form.addView(notesInput, bottomMargin(dp(10)));
+
+        final String[] selectedTime = { editing == null ? null : editing.dueTime };
+        LinearLayout timeActions = new LinearLayout(this);
+        timeActions.setGravity(Gravity.CENTER_VERTICAL);
+        Button timeButton = compactButton(selectedTime[0] == null
+                ? "No time" : TaskLogic.formatTime(selectedTime[0]), false);
+        timeButton.setContentDescription("Choose an optional due time");
+        timeButton.setOnClickListener(view -> showTimePicker(selectedTime, timeButton));
+        timeActions.addView(timeButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        Button clearTime = compactButton("Clear", false);
+        clearTime.setContentDescription("Clear the optional due time");
+        clearTime.setOnClickListener(view -> {
+            selectedTime[0] = null;
+            timeButton.setText("No time");
+        });
+        timeActions.addView(clearTime, new LinearLayout.LayoutParams(dp(76), dp(48)));
+        Runnable syncTimeWithDate = () -> {
+            if (selectedDate[0] == null && selectedTime[0] != null) {
+                selectedTime[0] = null;
+                timeButton.setText("No time");
+            }
+        };
+        clearDate.setOnClickListener(view -> {
+            selectedDate[0] = null;
+            dateButton.setText("Choose a date");
+            syncTimeWithDate.run();
+        });
+        if (!templateOnly) {
+            TextView timeLabel = text("Due time (optional)", 13, palette.muted, Typeface.BOLD);
+            timeLabel.setLetterSpacing(0.08f);
+            form.addView(timeLabel, bottomMargin(dp(4)));
+            form.addView(timeActions, bottomMargin(dp(6)));
+        }
+
         TextView priorityLabel = text("Priority", 13, palette.muted, Typeface.BOLD);
         form.addView(priorityLabel, bottomMargin(dp(4)));
         Spinner prioritySpinner = new Spinner(this);
@@ -3267,6 +3485,71 @@ public final class MainActivity extends Activity {
         prioritySpinner.setMinimumHeight(dp(48));
         prioritySpinner.setSelection(priorityIndex(initialPriority));
         form.addView(prioritySpinner, bottomMargin(dp(8)));
+
+        Spinner reminderSpinner = new Spinner(this);
+        reminderSpinner.setContentDescription("Choose when Daymark should remind you about this task");
+        String[] reminderOptions = { "No reminder", "At due time", "30 minutes before", "1 hour before", "1 day before" };
+        ArrayAdapter<String> reminderAdapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_spinner_item, reminderOptions) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView item = (TextView) super.getView(position, convertView, parent);
+                item.setTextSize(14 * textScale);
+                item.setTextColor(palette.text);
+                return item;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView item = (TextView) super.getDropDownView(position, convertView, parent);
+                item.setTextSize(14 * textScale);
+                item.setTextColor(palette.text);
+                return item;
+            }
+        };
+        reminderAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        reminderSpinner.setAdapter(reminderAdapter);
+        reminderSpinner.setMinimumHeight(dp(48));
+        reminderSpinner.setSelection(reminderIndex(editing == null ? null : editing.reminderLeadMinutes));
+        TextView reminderHint = text(
+                "Daymark shows a reminder when you open the app after the reminder time. It does not post notifications.",
+                11, palette.muted, Typeface.NORMAL);
+        reminderHint.setLineSpacing(dp(2), 1f);
+        if (!templateOnly) {
+            TextView reminderLabel = text("Reminder", 13, palette.muted, Typeface.BOLD);
+            reminderLabel.setLetterSpacing(0.08f);
+            form.addView(reminderLabel, bottomMargin(dp(4)));
+            form.addView(reminderSpinner, bottomMargin(dp(4)));
+            form.addView(reminderHint, bottomMargin(dp(8)));
+        }
+
+        final List<Subtask> draftSubtasks = new ArrayList<>();
+        if (editing != null) draftSubtasks.addAll(editing.subtasks);
+        LinearLayout subtasksList = new LinearLayout(this);
+        subtasksList.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout subtasksSection = new LinearLayout(this);
+        subtasksSection.setOrientation(LinearLayout.VERTICAL);
+        TextView subtasksLabel = text("Subtasks", 13, palette.muted, Typeface.BOLD);
+        subtasksLabel.setLetterSpacing(0.08f);
+        subtasksSection.addView(subtasksLabel, bottomMargin(dp(4)));
+        subtasksSection.addView(subtasksList);
+        Button addSubtaskButton = compactButton("Add subtask", false);
+        addSubtaskButton.setContentDescription("Add a subtask to this task");
+        addSubtaskButton.setOnClickListener(view -> showAddSubtaskDialog(draftSubtasks, subtasksList));
+        subtasksSection.addView(addSubtaskButton, topMargin(dp(6)));
+        renderDraftSubtasks(subtasksList, draftSubtasks);
+        subtasksSection.setVisibility(View.GONE);
+        CheckBox moreOptions = new CheckBox(this);
+        moreOptions.setText("More options (subtasks)");
+        moreOptions.setTextColor(palette.text);
+        moreOptions.setTextSize(14 * textScale);
+        moreOptions.setContentDescription("Show the optional subtask checklist editor");
+        moreOptions.setOnCheckedChangeListener((button, checked) ->
+                subtasksSection.setVisibility(checked ? View.VISIBLE : View.GONE));
+        if (!templateOnly) {
+            form.addView(moreOptions, bottomMargin(dp(6)));
+            form.addView(subtasksSection, bottomMargin(dp(4)));
+        }
 
         TextView validation = text("Please enter a task title.", 12, palette.danger, Typeface.NORMAL);
         validation.setVisibility(View.GONE);
@@ -3315,7 +3598,11 @@ public final class MainActivity extends Activity {
                                     .setMessage("A task with the same title already exists. Add another one anyway?")
                                     .setNegativeButton("Cancel", null)
                                     .setPositiveButton("Add anyway", (d, w) ->
-                                            saveTaskFromEditor(dialog, editing, normalized, selectedDate[0], priority, sourceTemplate))
+                                            saveTaskFromEditor(dialog, editing, normalized, selectedDate[0], priority, sourceTemplate,
+                                                    notesInput.getText() == null ? "" : notesInput.getText().toString(),
+                                                    selectedTime[0],
+                                                    reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
+                                                    draftSubtasks))
                                     .show();
                             return;
                         }
@@ -3330,14 +3617,22 @@ public final class MainActivity extends Activity {
                 try {
                     if (editing == null) {
                         tasks.add(sourceTemplate == null
-                                ? TaskLogic.create(normalized, selectedDate[0], priority)
+                                ? TaskLogic.create(normalized, selectedDate[0], priority,
+                                        notesInput.getText() == null ? "" : notesInput.getText().toString(),
+                                        selectedTime[0],
+                                        reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
+                                        draftSubtasks)
                                 : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate[0], priority));
                         if (sourceTemplate == null) quickCaptureInput.setText("");
                         captureFeedback.setText(sourceTemplate == null
                                 ? "Task added. You can edit it later in your list."
                                 : "Task created from the reviewed template. You can edit it later in your list.");
                     } else {
-                        replaceTask(TaskLogic.update(editing, normalized, selectedDate[0], priority));
+                        replaceTask(TaskLogic.update(editing, normalized,
+                                notesInput.getText() == null ? "" : notesInput.getText().toString(),
+                                selectedDate[0], selectedTime[0], priority,
+                                reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
+                                draftSubtasks));
                     }
                     dialog.dismiss();
                     render();
@@ -3377,18 +3672,22 @@ public final class MainActivity extends Activity {
     }
 
     private void saveTaskFromEditor(AlertDialog dialog, Task editing, String normalized,
-                                    String selectedDate, String priority, TaskTemplate sourceTemplate) {
+                                    String selectedDate, String priority, TaskTemplate sourceTemplate,
+                                    String notes, String selectedTime, Integer reminderLead,
+                                    List<Subtask> subtasks) {
         try {
             if (editing == null) {
                 tasks.add(sourceTemplate == null
-                        ? TaskLogic.create(normalized, selectedDate, priority)
+                        ? TaskLogic.create(normalized, selectedDate, priority, notes,
+                                selectedTime, reminderLead, subtasks)
                         : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate, priority));
                 if (sourceTemplate == null) quickCaptureInput.setText("");
                 captureFeedback.setText(sourceTemplate == null
                         ? "Task added. You can edit it later in your list."
                         : "Task created from the reviewed template. You can edit it later in your list.");
             } else {
-                replaceTask(TaskLogic.update(editing, normalized, selectedDate, priority));
+                replaceTask(TaskLogic.update(editing, normalized, notes, selectedDate,
+                        selectedTime, priority, reminderLead, subtasks));
             }
             dialog.dismiss();
             render();
@@ -3413,6 +3712,95 @@ public final class MainActivity extends Activity {
     private String dateButtonLabel(String isoDate) {
         if (isoDate == null) return "Choose a date";
         return DateTimeFormatter.ofPattern("EEE, MMM d, yyyy", Locale.getDefault()).format(LocalDate.parse(isoDate));
+    }
+
+    private void showTimePicker(String[] selectedTime, Button timeButton) {
+        java.time.LocalTime initial = TaskDuePresets.isTimeOnly(selectedTime[0])
+                ? java.time.LocalTime.parse(selectedTime[0]) : java.time.LocalTime.now();
+        TimePickerDialog picker = new TimePickerDialog(this, (view, hour, minute) -> {
+            selectedTime[0] = String.format(Locale.ROOT, "%02d:%02d", hour, minute);
+            timeButton.setText(TaskLogic.formatTime(selectedTime[0]));
+        }, initial.getHour(), initial.getMinute(), false);
+        picker.show();
+    }
+
+    private int reminderIndex(Integer leadMinutes) {
+        if (leadMinutes == null) return 0;
+        for (int index = 0; index < TaskLogic.REMINDER_LEADS.length; index++) {
+            if (TaskLogic.REMINDER_LEADS[index] == leadMinutes) return index + 1;
+        }
+        return 0;
+    }
+
+    private Integer reminderLeadValue(int spinnerIndex) {
+        if (spinnerIndex <= 0 || spinnerIndex > TaskLogic.REMINDER_LEADS.length) return null;
+        return TaskLogic.REMINDER_LEADS[spinnerIndex - 1];
+    }
+
+    private void renderDraftSubtasks(LinearLayout subtasksList, List<Subtask> draftSubtasks) {
+        subtasksList.removeAllViews();
+        if (draftSubtasks.isEmpty()) {
+            subtasksList.addView(text("No subtasks yet.", 12, palette.muted, Typeface.NORMAL));
+            return;
+        }
+        for (int index = 0; index < draftSubtasks.size(); index++) {
+            final Subtask subtask = draftSubtasks.get(index);
+            final int position = index;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            CheckBox subtaskCheck = new CheckBox(this);
+            subtaskCheck.setText(subtask.title);
+            subtaskCheck.setTextColor(subtask.done ? palette.muted : palette.text);
+            subtaskCheck.setTextSize(14 * textScale);
+            subtaskCheck.setChecked(subtask.done);
+            subtaskCheck.setContentDescription((subtask.done ? "Mark subtask as not done: " : "Mark subtask as done: ")
+                    + subtask.title);
+            subtaskCheck.setOnCheckedChangeListener((button, checked) -> {
+                if (checked == subtask.done) return;
+                draftSubtasks.set(position, subtask.withDone(checked));
+                renderDraftSubtasks(subtasksList, draftSubtasks);
+            });
+            row.addView(subtaskCheck, new LinearLayout.LayoutParams(0, dp(48), 1f));
+            Button removeSubtask = compactButton("Remove", true);
+            removeSubtask.setContentDescription("Remove subtask " + subtask.title);
+            removeSubtask.setOnClickListener(view -> {
+                draftSubtasks.remove(position);
+                renderDraftSubtasks(subtasksList, draftSubtasks);
+            });
+            row.addView(removeSubtask, new LinearLayout.LayoutParams(dp(96), dp(48)));
+            subtasksList.addView(row, bottomMargin(dp(4)));
+        }
+    }
+
+    private void showAddSubtaskDialog(List<Subtask> draftSubtasks, LinearLayout subtasksList) {
+        if (draftSubtasks.size() >= TaskLogic.MAX_SUBTASKS) {
+            showToast("A task can have at most " + TaskLogic.MAX_SUBTASKS + " subtasks.");
+            return;
+        }
+        EditText input = new EditText(this);
+        input.setHint("Subtask name");
+        input.setSingleLine(true);
+        input.setFilters(new InputFilter[] { new InputFilter.LengthFilter(TaskLogic.MAX_SUBTASK_TITLE) });
+        input.setContentDescription("New subtask name");
+        new AlertDialog.Builder(this)
+                .setTitle("Add subtask")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Add", (dialog, which) -> {
+                    String title = input.getText() == null ? "" : input.getText().toString().trim();
+                    if (title.isEmpty()) {
+                        showToast("Enter a subtask name.");
+                        return;
+                    }
+                    if (title.length() > TaskLogic.MAX_SUBTASK_TITLE) {
+                        showToast("Subtasks can be at most " + TaskLogic.MAX_SUBTASK_TITLE + " characters.");
+                        return;
+                    }
+                    draftSubtasks.add(new Subtask(UUID.randomUUID().toString(), title, false));
+                    renderDraftSubtasks(subtasksList, draftSubtasks);
+                })
+                .show();
     }
 
     private int priorityIndex(String priority) {
@@ -4830,6 +5218,13 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.bottomMargin = value;
+        return params;
+    }
+
+    private LinearLayout.LayoutParams chipMargin() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+        params.leftMargin = dp(5);
         return params;
     }
 

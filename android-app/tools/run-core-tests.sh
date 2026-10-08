@@ -12,9 +12,13 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/ActivityCallbackGate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplateLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotSchema.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/Subtask.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserExtension.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserAddress.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java" \
@@ -24,10 +28,12 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterRecoveryStore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/PendingSaveTransaction.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/SafApkSaver.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/StrictJsonParser.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/StrictJsonParser.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubReleaseClient.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubApkDownloader.java" \
   "$ROOT/tools/TaskLogicSmoke.java" \
+  "$ROOT/tools/TaskSnapshotCodecSmoke.java" \
+  "$ROOT/tools/BrowserExtensionSmoke.java" \
   "$ROOT/tools/ActivityCallbackGateSmoke.java" \
   "$ROOT/tools/UpdaterSmoke.java" \
   "$ROOT/tools/GitHubTransportSmoke.java" \
@@ -36,6 +42,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/BrowserSettingsPolicySmoke.java" \
   "$ROOT/tools/BrowserViewportPolicySmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskSnapshotCodecSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserExtensionSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.ActivityCallbackGateSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.UpdaterSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.GitHubTransportSmoke

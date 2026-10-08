@@ -82,3 +82,72 @@ test('demo suggestions are deterministic, prioritize nearest dates, and skip com
   assert.match(results[0].reason, /^Overdue/);
   assert.deepEqual(logic.getSuggestions(tasks, TODAY, (date) => date), results);
 });
+
+test('due times are strict HH:mm values that require a due date', () => {
+  assert.equal(logic.isTimeOnly('14:30'), true);
+  assert.equal(logic.isTimeOnly('00:00'), true);
+  assert.equal(logic.isTimeOnly('23:59'), true);
+  assert.equal(logic.isTimeOnly('24:00'), false);
+  assert.equal(logic.isTimeOnly('9:30'), false);
+  assert.equal(logic.isTimeOnly('14:3'), false);
+  assert.equal(logic.isTimeOnly('14:60'), false);
+  assert.equal(logic.isTimeOnly(1430), false);
+
+  const base = task('t', 'Task', { dueDate: TODAY });
+  assert.equal(logic.isValidTask({ ...base, dueTime: '14:30' }), true);
+  assert.equal(logic.isValidTask({ ...base, dueTime: null }), true);
+  assert.equal(logic.isValidTask({ ...base, dueTime: '8:15' }), false);
+  assert.equal(logic.isValidTask({ ...base, dueTime: '14:30', dueDate: null }), false);
+});
+
+test('notes, reminders, and subtasks validate with bounded fields', () => {
+  const base = task('t', 'Task');
+  assert.equal(logic.isValidTask({ ...base, notes: 'remember this' }), true);
+  assert.equal(logic.isValidTask({ ...base, notes: 'x'.repeat(4000) }), true);
+  assert.equal(logic.isValidTask({ ...base, notes: 'x'.repeat(4001) }), false);
+  assert.equal(logic.isValidTask({ ...base, notes: 42 }), false);
+
+  for (const lead of [0, 30, 60, 1440]) {
+    assert.equal(logic.isValidTask({ ...base, reminderLeadMinutes: lead }), true);
+  }
+  assert.equal(logic.isValidTask({ ...base, reminderLeadMinutes: null }), true);
+  assert.equal(logic.isValidTask({ ...base, reminderLeadMinutes: 45 }), false);
+  assert.equal(logic.isValidTask({ ...base, reminderShownFire: '2026-10-05T13:30:00.000Z' }), true);
+  assert.equal(logic.isValidTask({ ...base, reminderShownFire: 'not a date' }), false);
+
+  const subtasks = [
+    { id: 's1', title: 'Step one', done: false },
+    { id: 's2', title: 'Step two', done: true }
+  ];
+  assert.equal(logic.isValidTask({ ...base, subtasks }), true);
+  assert.equal(logic.isValidSubtasks(subtasks), true);
+  assert.equal(logic.isValidSubtasks([...subtasks, { id: 's1', title: 'Duplicate', done: false }]), false);
+  assert.equal(logic.isValidSubtasks([...subtasks, { id: 's3', title: '   ', done: false }]), false);
+  assert.equal(logic.isValidSubtasks([...subtasks, { id: 's3', title: 'x'.repeat(121), done: false }]), false);
+  assert.equal(logic.isValidSubtasks([...subtasks, { id: 's3', title: 'No state' }]), false);
+  assert.equal(logic.isValidSubtasks(Array.from({ length: 21 }, (_, i) => ({ id: `s${i}`, title: `Step ${i}`, done: false }))), false);
+  assert.equal(logic.isValidTask({ ...base, subtasks: [{ id: 's1', title: 'Only', done: false }] }), true);
+});
+
+test('legacy tasks without extended fields stay valid', () => {
+  const legacy = task('legacy', 'Old task', { dueDate: TODAY });
+  assert.equal(logic.isValidTask(legacy), true);
+  const stored = logic.validateStoredTasks([legacy]);
+  assert.equal(stored.tasks.length, 1);
+  assert.equal(stored.rejectedCount, 0);
+});
+
+test('search also matches notes and same-date tasks order by due time', () => {
+  const withNotes = { ...task('n', 'Plain title'), notes: 'remember the éclair receipt' };
+  const tasks = [task('a', 'Write report'), withNotes];
+  assert.deepEqual(logic.getFilteredTasks(tasks, 'all', 'ÉCLAIR', TODAY).map((item) => item.id), ['n']);
+  assert.deepEqual(logic.getFilteredTasks(tasks, 'all', 'plain', TODAY).map((item) => item.id), ['n']);
+
+  const timed = [
+    { ...task('late', 'Late today', { dueDate: TODAY }), dueTime: '18:00' },
+    { ...task('early', 'Early today', { dueDate: TODAY }), dueTime: '08:00' },
+    task('untimed', 'Untimed today', { dueDate: TODAY })
+  ];
+  assert.deepEqual(logic.getFilteredTasks(timed, 'all', '', TODAY).map((item) => item.id),
+    ['early', 'late', 'untimed']);
+});

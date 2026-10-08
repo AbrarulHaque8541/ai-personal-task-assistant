@@ -299,8 +299,15 @@ final class PortableBackupManager {
                             references.add(new AttachmentRef(attachmentId, portableAttachment.displayName,
                                     portableAttachment.mimeType, portableAttachment.sizeBytes));
                         }
+                        List<Subtask> restoredSubtasks = new ArrayList<>(portable.subtasks.size());
+                        for (PortableBackupCodec.PortableSubtask portableSubtask : portable.subtasks) {
+                            restoredSubtasks.add(new Subtask(freshId(usedIds),
+                                    portableSubtask.title, portableSubtask.done));
+                        }
                         additions.add(new Task(taskId, portable.title, portable.dueDate, portable.priority,
-                                portable.completed, portable.createdAt, portable.updatedAt, references));
+                                portable.completed, portable.createdAt, portable.updatedAt, references,
+                                portable.notes, portable.dueTime, portable.reminderLeadMinutes,
+                                portable.reminderShownFire, restoredSubtasks));
                     }
                     List<Task> combined = new ArrayList<>(latest.size() + additions.size());
                     combined.addAll(latest);

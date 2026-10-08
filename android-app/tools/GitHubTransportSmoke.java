@@ -1,5 +1,7 @@
 package com.cue.daymark.updater;
 
+import com.cue.daymark.StrictJsonParser;
+
 import android.content.Context;
 
 import java.io.ByteArrayInputStream;

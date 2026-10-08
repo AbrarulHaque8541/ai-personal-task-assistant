@@ -10,6 +10,11 @@
     return `${year}-${month}-${day}`;
   }
 
+  const MAX_NOTES_CHARS = 4000;
+  const MAX_SUBTASKS = 20;
+  const MAX_SUBTASK_TITLE = 120;
+  const REMINDER_LEADS = [0, 30, 60, 1440];
+
   function isDateOnly(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const [year, month, day] = value.split('-').map(Number);
@@ -17,6 +22,27 @@
     parsed.setHours(0, 0, 0, 0);
     parsed.setFullYear(year, month - 1, day);
     return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  }
+
+  function isTimeOnly(value) {
+    if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) return false;
+    const [hour, minute] = value.split(':').map(Number);
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
+      && value === `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+
+  function isReminderLead(value) {
+    return value === null || REMINDER_LEADS.includes(value);
+  }
+
+  function isValidSubtasks(subtasks) {
+    if (!Array.isArray(subtasks) || subtasks.length > MAX_SUBTASKS) return false;
+    const ids = new Set();
+    return subtasks.every((subtask) => Boolean(subtask && typeof subtask === 'object'
+      && typeof subtask.id === 'string' && subtask.id.trim().length > 0 && !ids.has(subtask.id) && ids.add(subtask.id)
+      && typeof subtask.title === 'string' && subtask.title.trim().length > 0
+      && subtask.title.trim().length <= MAX_SUBTASK_TITLE
+      && typeof subtask.done === 'boolean'));
   }
 
   function isValidTask(task) {
@@ -28,7 +54,14 @@
       && ['low', 'medium', 'high'].includes(task.priority)
       && typeof task.completed === 'boolean'
       && typeof task.createdAt === 'string' && !Number.isNaN(Date.parse(task.createdAt))
-      && typeof task.updatedAt === 'string' && !Number.isNaN(Date.parse(task.updatedAt)));
+      && typeof task.updatedAt === 'string' && !Number.isNaN(Date.parse(task.updatedAt))
+      && (task.notes === undefined || (typeof task.notes === 'string' && task.notes.length <= MAX_NOTES_CHARS))
+      && (task.dueTime === undefined || task.dueTime === null
+        || (isTimeOnly(task.dueTime) && task.dueDate !== null && isDateOnly(task.dueDate)))
+      && (task.reminderLeadMinutes === undefined || isReminderLead(task.reminderLeadMinutes))
+      && (task.reminderShownFire === undefined || task.reminderShownFire === null
+        || (typeof task.reminderShownFire === 'string' && !Number.isNaN(Date.parse(task.reminderShownFire))))
+      && (task.subtasks === undefined || isValidSubtasks(task.subtasks)));
   }
 
   function validateStoredTasks(value) {
@@ -47,11 +80,20 @@
     return { tasks, rejectedCount };
   }
 
+  function dueTimeOf(task) {
+    return isTimeOnly(task.dueTime) ? task.dueTime : null;
+  }
+
   function compareTasks(a, b) {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     if (a.dueDate === null && b.dueDate !== null) return 1;
     if (a.dueDate !== null && b.dueDate === null) return -1;
     if (a.dueDate !== b.dueDate) return (a.dueDate || '').localeCompare(b.dueDate || '');
+    const timeA = dueTimeOf(a);
+    const timeB = dueTimeOf(b);
+    if (timeA === null && timeB !== null) return 1;
+    if (timeA !== null && timeB === null) return -1;
+    if (timeA !== timeB) return (timeA || '').localeCompare(timeB || '');
     return (PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
       || a.createdAt.localeCompare(b.createdAt);
   }
@@ -62,7 +104,9 @@
       if (filter === 'completed' && !task.completed) return false;
       if (filter === 'today' && task.dueDate !== today) return false;
       if (filter === 'upcoming' && !(task.dueDate !== null && task.dueDate > today)) return false;
-      return !normalizedQuery || task.title.toLowerCase().includes(normalizedQuery);
+      if (!normalizedQuery) return true;
+      const notes = typeof task.notes === 'string' ? task.notes.toLowerCase() : '';
+      return task.title.toLowerCase().includes(normalizedQuery) || notes.includes(normalizedQuery);
     }).slice().sort(compareTasks);
   }
 
@@ -78,12 +122,31 @@
       if (a.dueDate === null && b.dueDate !== null) return 1;
       if (a.dueDate !== null && b.dueDate === null) return -1;
       if (a.dueDate !== b.dueDate) return (a.dueDate || '').localeCompare(b.dueDate || '');
+      const timeA = dueTimeOf(a);
+      const timeB = dueTimeOf(b);
+      if (timeA === null && timeB !== null) return 1;
+      if (timeA !== null && timeB === null) return -1;
+      if (timeA !== timeB) return (timeA || '').localeCompare(timeB || '');
       return (PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
         || a.createdAt.localeCompare(b.createdAt);
     }).slice(0, 3).map((task) => ({ task, reason: suggestionReason(task, today, formatDate) }));
   }
 
-  const api = { localDateString, isDateOnly, isValidTask, validateStoredTasks, getFilteredTasks, getSuggestions };
+  const api = {
+    localDateString,
+    isDateOnly,
+    isTimeOnly,
+    isReminderLead,
+    isValidSubtasks,
+    isValidTask,
+    validateStoredTasks,
+    getFilteredTasks,
+    getSuggestions,
+    MAX_NOTES_CHARS,
+    MAX_SUBTASKS,
+    MAX_SUBTASK_TITLE,
+    REMINDER_LEADS
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.DaymarkLogic = api;
 })(globalThis);

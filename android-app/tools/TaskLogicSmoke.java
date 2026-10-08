@@ -2,8 +2,10 @@ package com.cue.daymark;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +22,8 @@ public final class TaskLogicSmoke {
         templateListsRejectDuplicatesAndExcess();
         storedTaskSnapshotsMatchWriterRules();
         snapshotSchemaRejectsCoercibleWrongTypes();
+        notesDueTimeAndReminderValidate();
+        subtasksValidateAndToggle();
         attachmentMetadataAndQuotasAreStrict();
         filtersAndSearchCompose();
         suggestionsUseOnlyTransparentLocalRules();
@@ -74,7 +78,9 @@ public final class TaskLogicSmoke {
         check(TaskSnapshotSchema.isVersionThree(3) && TaskSnapshotSchema.isSupportedVersion(1)
                         && TaskSnapshotSchema.isSupportedVersion(2),
                 "new template schema is supported without dropping v1 or v2 readers");
-        check(!TaskSnapshotSchema.isSupportedVersion(4), "unknown future snapshot schema is rejected");
+        check(TaskSnapshotSchema.isVersionFour(4) && TaskSnapshotSchema.isSupportedVersion(4),
+                "schema v4 (notes, due time, reminders, subtasks) is supported");
+        check(!TaskSnapshotSchema.isSupportedVersion(5), "unknown future snapshot schema is rejected");
     }
 
     private static void templateListsRejectDuplicatesAndExcess() {
@@ -110,7 +116,9 @@ public final class TaskLogicSmoke {
         check(TaskSnapshotSchema.isVersionOne(1), "numeric schema version one is accepted");
         check(TaskSnapshotSchema.isVersionTwo(2) && TaskSnapshotSchema.isSupportedVersion(1),
                 "v1 remains readable and v2 is supported for attachment metadata");
-        check(!TaskSnapshotSchema.isSupportedVersion(4), "unknown future schema versions are rejected");
+        check(TaskSnapshotSchema.isVersionFour(4) && TaskSnapshotSchema.isSupportedVersion(4),
+                "schema v4 is supported for notes, due time, reminders, and subtasks");
+        check(!TaskSnapshotSchema.isSupportedVersion(5), "unknown future schema versions are rejected");
         check(!TaskSnapshotSchema.isVersionOne("1"), "string schema version is not coerced to a number");
         check(!TaskSnapshotSchema.isVersionOne(1.5), "fractional schema version is not truncated to one");
         check("title".equals(TaskSnapshotSchema.requireString("title")), "actual JSON string values are accepted");
@@ -118,6 +126,101 @@ public final class TaskLogicSmoke {
                 "numeric task fields are not coerced to strings");
         expectIllegalArgument(() -> TaskSnapshotSchema.requireString(null),
                 "missing required task strings are rejected");
+    }
+
+    private static void notesDueTimeAndReminderValidate() {
+        Task withTime = TaskLogic.create("Call clinic", "2026-10-05", "high",
+                "Bring insurance card", "14:30", 30, Collections.<Subtask>emptyList());
+        check(TaskLogic.isValid(withTime), "notes, due time, and reminder create a valid task");
+        check("Bring insurance card".equals(withTime.notes) && "14:30".equals(withTime.dueTime)
+                && Integer.valueOf(30).equals(withTime.reminderLeadMinutes),
+                "extended create keeps the provided values");
+        expectIllegalArgument(() -> TaskLogic.create("No date time", null, "medium", "", "14:30", null, null),
+                "due time without a due date is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("Bad time", "2026-10-05", "medium", "", "9:30", null, null),
+                "non-padded due time is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("Bad time 2", "2026-10-05", "medium", "", "24:00", null, null),
+                "out-of-range due time is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("Bad reminder", "2026-10-05", "medium", "", null, 45, null),
+                "unsupported reminder lead is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("Long notes", null, "medium",
+                "x".repeat(TaskLogic.MAX_NOTES_CHARS + 1), null, null, null),
+                "overlong notes are rejected");
+        Task longNotes = task("notes", "Notes", null, "medium", false, 30);
+        check(!TaskLogic.isValid(longNotes.withFullDetails(longNotes.title, "x".repeat(4001),
+                null, null, "medium", null, Collections.<Subtask>emptyList(), longNotes.updatedAt)),
+                "persisted overlong notes fail validation");
+
+        Task existing = TaskLogic.create("Edit me", "2026-10-05", "medium", "note", "09:00", 60,
+                Collections.<Subtask>emptyList());
+        Task cleared = TaskLogic.update(existing, "Edit me", null, "medium");
+        check(cleared.dueDate == null && cleared.dueTime == null && cleared.reminderLeadMinutes == null,
+                "clearing the due date also clears due time and reminder");
+        check("note".equals(cleared.notes), "simple edits keep existing notes");
+        Task fullEdit = TaskLogic.update(existing, "Edited", "extra notes", "2026-10-06", "18:45",
+                "low", 1440, Collections.<Subtask>emptyList());
+        check("Edited".equals(fullEdit.title) && "extra notes".equals(fullEdit.notes)
+                && "18:45".equals(fullEdit.dueTime) && "low".equals(fullEdit.priority)
+                && Integer.valueOf(1440).equals(fullEdit.reminderLeadMinutes),
+                "full edits update every extended field");
+
+        ZoneId zone = ZoneId.of("UTC");
+        Instant atDue = TaskLogic.reminderFireInstant(
+                TaskLogic.create("Fire", "2026-10-05", "medium", "", "14:30", 0, null), zone);
+        check(Instant.parse("2026-10-05T14:30:00Z").equals(atDue), "reminder at due time fires at the due moment");
+        Instant before = TaskLogic.reminderFireInstant(
+                TaskLogic.create("Fire", "2026-10-05", "medium", "", "14:30", 60, null), zone);
+        check(Instant.parse("2026-10-05T13:30:00Z").equals(before), "reminder lead shifts the fire moment earlier");
+        Instant defaultTime = TaskLogic.reminderFireInstant(
+                TaskLogic.create("Fire", "2026-10-05", "medium", "", null, 1440, null), zone);
+        check(Instant.parse("2026-10-04T09:00:00Z").equals(defaultTime),
+                "reminder without a due time uses the 09:00 default and a day lead");
+        check(TaskLogic.reminderFireInstant(
+                TaskLogic.create("No reminder", "2026-10-05", "medium"), zone) == null,
+                "tasks without a reminder have no fire moment");
+        check(TaskLogic.reminderFireInstant(
+                TaskLogic.create("No date", null, "medium", "", null, 30, null), zone) == null,
+                "reminders without a due date never fire");
+        check("2:30 PM".equals(TaskLogic.formatTime("14:30")), "due time formats for display");
+        check("".equals(TaskLogic.formatTime(null)), "missing due time formats as empty");
+    }
+
+    private static void subtasksValidateAndToggle() {
+        Task base = TaskLogic.create("Checklist", "2026-10-05", "medium");
+        check(base.subtasks.isEmpty() && TaskLogic.completedSubtaskCount(base) == 0,
+                "new tasks start without subtasks");
+        Task withSubs = TaskLogic.create("Checklist", "2026-10-05", "medium", "",
+                null, null, Arrays.asList(new Subtask("s1", "Step one", false),
+                        new Subtask("s2", "Step two", true)));
+        check(TaskLogic.isValid(withSubs) && TaskLogic.completedSubtaskCount(withSubs) == 1,
+                "subtask completion counts are computed");
+        Task toggled = TaskLogic.toggleSubtask(withSubs, "s1");
+        check(toggled.subtasks.get(0).done && toggled.subtasks.get(1).done
+                && TaskLogic.completedSubtaskCount(toggled) == 2, "toggling flips one subtask and keeps the other");
+        check(withSubs.subtasks.get(0).done == false, "toggling does not mutate the source task");
+        expectIllegalArgument(() -> TaskLogic.toggleSubtask(withSubs, "missing"), "unknown subtask toggle is rejected");
+        Task added = TaskLogic.addSubtask(withSubs, "  Step three  ");
+        check(added.subtasks.size() == 3 && "Step three".equals(added.subtasks.get(2).title),
+                "subtasks can be added with trimmed titles");
+        expectIllegalArgument(() -> TaskLogic.addSubtask(withSubs, "   "), "blank subtask names are rejected");
+        expectIllegalArgument(() -> TaskLogic.addSubtask(withSubs, "x".repeat(121)),
+                "overlong subtask names are rejected");
+        Task removed = TaskLogic.removeSubtask(withSubs, "s1");
+        check(removed.subtasks.size() == 1 && "s2".equals(removed.subtasks.get(0).id),
+                "subtasks can be removed by id");
+        List<Subtask> tooMany = new ArrayList<>();
+        for (int index = 0; index <= TaskLogic.MAX_SUBTASKS; index++) {
+            tooMany.add(new Subtask("s" + index, "Step " + index, false));
+        }
+        expectIllegalArgument(() -> TaskLogic.create("Too many", null, "medium", "", null, null, tooMany),
+                "more than the subtask limit is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("Dup ids", null, "medium", "", null, null,
+                Arrays.asList(new Subtask("same", "One", false), new Subtask("same", "Two", false))),
+                "duplicate subtask ids are rejected");
+        check(!TaskLogic.isValid(task("bad-sub", "Bad", null, "medium", false, 31)
+                        .withSubtasks(Arrays.asList(new Subtask("s1", "   ", false)),
+                                "2026-10-05T00:00:00Z")),
+                "persisted blank subtask titles fail validation");
     }
 
     private static void attachmentMetadataAndQuotasAreStrict() {
@@ -199,6 +302,28 @@ public final class TaskLogicSmoke {
         check(TaskLogic.filter(tasks, TaskLogic.FILTER_COMPLETED, "", TODAY).size() == 1, "Completed filter isolates completed tasks");
         check(TaskLogic.filter(tasks, TaskLogic.FILTER_ALL, "  REPORT ", TODAY).size() == 2, "search is trimmed and case-insensitive");
         check("Write report".equals(tasks.get(0).title), "queries leave the shared task records unchanged");
+
+        Task withNotes = task("notes-search", "Plain title", null, "medium", false, 5)
+                .withFullDetails("Plain title", "remember the \u00e9clair receipt", null, null,
+                        "medium", null, Collections.<Subtask>emptyList(), "2026-10-05T00:00:05Z");
+        List<Task> searchable = Arrays.asList(tasks.get(0), withNotes);
+        check(TaskLogic.filter(searchable, TaskLogic.FILTER_ALL, "éclair", TODAY).size() == 1,
+                "search also matches task notes");
+        check(TaskLogic.filter(searchable, TaskLogic.FILTER_ALL, "plain", TODAY).size() == 1,
+                "search still matches titles when notes differ");
+
+        List<Task> timed = Arrays.asList(
+                task("late", "Late today", TODAY.toString(), "low", false, 6)
+                        .withFullDetails("Late today", "", TODAY.toString(), "18:00", "low", null,
+                                Collections.<Subtask>emptyList(), "2026-10-05T00:00:06Z"),
+                task("early", "Early today", TODAY.toString(), "low", false, 7)
+                        .withFullDetails("Early today", "", TODAY.toString(), "08:00", "low", null,
+                                Collections.<Subtask>emptyList(), "2026-10-05T00:00:07Z"),
+                task("untimed", "Untimed today", TODAY.toString(), "low", false, 8));
+        List<Task> ordered = TaskLogic.filter(timed, TaskLogic.FILTER_ALL, "", TODAY);
+        check("early".equals(ordered.get(0).id) && "late".equals(ordered.get(1).id)
+                && "untimed".equals(ordered.get(2).id),
+                "same-date tasks order by due time, untimed last");
     }
 
     private static void suggestionsUseOnlyTransparentLocalRules() {

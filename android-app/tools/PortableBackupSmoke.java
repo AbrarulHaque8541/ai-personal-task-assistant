@@ -2,6 +2,7 @@ package com.cue.daymark;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -31,6 +32,9 @@ public final class PortableBackupSmoke {
     public static void main(String[] args) throws Exception {
         recoveryKeyEncodingRoundTripsAndChecksErrors();
         archiveRoundTripsWithoutExposingTaskData();
+        manifestV2RoundTripsExtendedTaskFields();
+        legacyV1ManifestStillDecodesWithDefaults();
+        manifestV2RejectsMalformedExtendedFields();
         rejectsWrongKeyTamperAndMalformedFraming();
         rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation();
         rejectsManifestTaskAndAttachmentBounds();
@@ -358,7 +362,8 @@ public final class PortableBackupSmoke {
             check(tasks.size() == PortableBackupCodec.MAX_TASKS && TaskLogic.isValidTaskList(tasks),
                     "maximum-metadata archive fixture respects all task and attachment schema limits");
             long expectedManifestBytes = 8L
-                    + (long) PortableBackupCodec.MAX_TASKS * (16 + 4 + 480 + 1 + 4 + 10 + 1 + 1 + 4 + 41 + 4 + 41 + 1)
+                    + (long) PortableBackupCodec.MAX_TASKS * (16 + 4 + 480 + 1 + 4 + 10 + 1 + 1 + 4 + 41 + 4 + 41 + 1
+                            + 4 + 1 + 1 + 1 + 1) // v2 extension: empty notes, due-time/reminder flags, subtask count
                     + (long) AttachmentLogic.MAX_TOTAL_COUNT * (16 + 8 + 4 + 360 + 4 + 129);
             try (OutputStream output = new java.io.FileOutputStream(archive)) {
                 PortableBackupCodec.writeArchive(output, key, tasks,
@@ -784,6 +789,197 @@ public final class PortableBackupSmoke {
         } catch (IOException expected) {
             // Expected fail-closed path.
         }
+    }
+
+    private static void manifestV2RoundTripsExtendedTaskFields() throws Exception {
+        byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
+        String taskId = UUID.randomUUID().toString();
+        String attachmentId = UUID.randomUUID().toString();
+        byte[] payload = "extended field payload".getBytes(StandardCharsets.UTF_8);
+        Task task = new Task(taskId, "Extended task", "2026-10-06", "high", false,
+                "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z",
+                Collections.singletonList(new AttachmentRef(attachmentId, "notes.txt", "text/plain", payload.length)),
+                "Remember the \"umbrella\" — café ☕",
+                "14:30", 60, "2026-10-06T13:30:00Z",
+                Arrays.asList(new Subtask("s1", "Book venue", true), new Subtask("s2", "Send invites", false)));
+        ByteArrayOutputStream archiveBytes = new ByteArrayOutputStream();
+        String backupId = PortableBackupCodec.writeArchive(archiveBytes, key,
+                Collections.singletonList(task), (sourceTask, reference) -> new ByteArrayInputStream(payload),
+                new SecureRandom(), () -> false);
+        byte[] archive = archiveBytes.toByteArray();
+        check(!contains(archive, "Remember the".getBytes(StandardCharsets.UTF_8)), "task notes are encrypted in the archive");
+        check(!contains(archive, "Book venue".getBytes(StandardCharsets.UTF_8)), "subtask titles are encrypted in the archive");
+        check(!contains(archive, "14:30".getBytes(StandardCharsets.UTF_8)), "due times are encrypted in the archive");
+
+        File stage = Files.createTempDirectory("portable-backup-v2-roundtrip").toFile();
+        PortableBackupCodec.VerifiedArchive opened = PortableBackupCodec.readArchive(
+                new ByteArrayInputStream(archive), key, stage, id -> { }, () -> false);
+        check(opened.tasks.size() == 1, "v2 manifest restores the task");
+        PortableBackupCodec.PortableTask openedTask = opened.tasks.get(0);
+        check("Extended task".equals(openedTask.title), "v2 task title round-trips");
+        check("Remember the \"umbrella\" — café ☕".equals(openedTask.notes), "notes round-trip exactly");
+        check("14:30".equals(openedTask.dueTime), "due time round-trips");
+        check(Integer.valueOf(60).equals(openedTask.reminderLeadMinutes), "reminder lead round-trips");
+        check("2026-10-06T13:30:00Z".equals(openedTask.reminderShownFire), "reminder shown state round-trips");
+        check(openedTask.subtasks.size() == 2, "subtasks round-trip");
+        check("Book venue".equals(openedTask.subtasks.get(0).title) && openedTask.subtasks.get(0).done
+                && "Send invites".equals(openedTask.subtasks.get(1).title) && !openedTask.subtasks.get(1).done,
+                "subtask titles and states round-trip");
+        check(openedTask.attachments.size() == 1, "attachments still round-trip in v2");
+        opened.clearStagedPlaintext();
+        deleteTree(stage);
+        PortableBackupCodec.clear(key);
+    }
+
+    private static void legacyV1ManifestStillDecodesWithDefaults() throws Exception {
+        // A hand-built DMM1 manifest (the pre-v2 layout) must keep decoding with empty defaults.
+        byte[] manifestToken = randomToken();
+        byte[] taskToken = randomToken();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeInt(0x444d4d31); // DMM1
+        out.writeInt(1);
+        out.write(taskToken);
+        writeManifestString(out, "Legacy task");
+        out.writeByte(1);
+        writeManifestString(out, "2026-10-06");
+        out.writeByte(2); // high
+        out.writeByte(0); // open
+        writeManifestString(out, "2026-10-01T00:00:00Z");
+        writeManifestString(out, "2026-10-02T00:00:00Z");
+        out.writeByte(0); // no attachments
+        out.flush();
+        PortableBackupCodec.Manifest manifest = PortableBackupCodec.decodeManifest(
+                bytes.toByteArray(), manifestToken, 1, "backup-legacy");
+        check(manifest.tasks.size() == 1, "legacy DMM1 manifest decodes its task");
+        PortableBackupCodec.PortableTask task = manifest.tasks.get(0);
+        check("Legacy task".equals(task.title) && "2026-10-06".equals(task.dueDate),
+                "legacy manifest fields are preserved");
+        check("".equals(task.notes) && task.dueTime == null && task.reminderLeadMinutes == null
+                && task.reminderShownFire == null && task.subtasks.isEmpty(),
+                "legacy DMM1 tasks gain empty defaults for v2 fields");
+    }
+
+    private static void manifestV2RejectsMalformedExtendedFields() throws Exception {
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            writeManifestString(manifestTask, "x".repeat(TaskLogic.MAX_NOTES_CHARS + 1));
+            return null;
+        }), "overlong notes are rejected");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(0); // no due time
+            manifestTask.writeByte(0); // no reminder
+            manifestTask.writeByte(0); // no reminder shown
+            manifestTask.writeByte(0); // no subtasks
+            return null;
+        }, "8:15", "2026-10-06"), "malformed due time is rejected");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(1);
+            writeManifestString(manifestTask, "14:30");
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            return null;
+        }, null, null), "due time without a due date fails task validation");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(9); // invalid reminder code
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            return null;
+        }), "invalid reminder code is rejected");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(TaskLogic.MAX_SUBTASKS + 1); // too many subtasks
+            return null;
+        }), "subtask count above the limit is rejected");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(1); // one subtask
+            writeManifestString(manifestTask, "   "); // blank title
+            manifestTask.writeByte(0);
+            return null;
+        }), "blank subtask titles are rejected");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(1); // one subtask
+            writeManifestString(manifestTask, "Step");
+            manifestTask.writeByte(2); // invalid done flag
+            return null;
+        }), "invalid subtask state is rejected");
+        expectManifestFailure(buildV2Manifest(manifestTask -> {
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0);
+            manifestTask.writeByte(0); // extra trailing byte
+            return null;
+        }), "trailing manifest data is rejected");
+    }
+
+    private interface ManifestTaskExtension {
+        Object write(DataOutputStream out) throws IOException;
+    }
+
+    private static byte[] buildV2Manifest(ManifestTaskExtension extension) throws IOException {
+        return buildV2Manifest(extension, "2026-10-06", "2026-10-06");
+    }
+
+    private static byte[] buildV2Manifest(ManifestTaskExtension extension, String dueDate,
+                                          String dueTimeDate) throws IOException {
+        byte[] taskToken = randomToken();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeInt(0x444d4d32); // DMM2
+        out.writeInt(1);
+        out.write(taskToken);
+        writeManifestString(out, "Manifest task");
+        out.writeByte(dueDate == null ? 0 : 1);
+        if (dueDate != null) writeManifestString(out, dueDate);
+        out.writeByte(1); // medium
+        out.writeByte(0); // open
+        writeManifestString(out, "2026-10-01T00:00:00Z");
+        writeManifestString(out, "2026-10-02T00:00:00Z");
+        out.writeByte(0); // no attachments
+        if (extension == null) {
+            writeManifestString(out, "note");
+            out.writeByte(0);
+            out.writeByte(0);
+            out.writeByte(0);
+            out.writeByte(0);
+        } else {
+            extension.write(out);
+        }
+        out.flush();
+        return bytes.toByteArray();
+    }
+
+    private static void expectManifestFailure(byte[] manifest, String message) {
+        assertions++;
+        try {
+            PortableBackupCodec.decodeManifest(manifest, randomToken(), 1, "backup-test");
+            throw new AssertionError(message);
+        } catch (IOException expected) {
+            // Expected manifest rejection.
+        }
+    }
+
+    private static byte[] randomToken() {
+        byte[] token = new byte[16];
+        new SecureRandom().nextBytes(token);
+        token[0] = (byte) (token[0] | 1);
+        return token;
+    }
+
+    private static void writeManifestString(DataOutputStream out, String text) throws IOException {
+        byte[] encoded = text.getBytes(StandardCharsets.UTF_8);
+        out.writeInt(encoded.length);
+        out.write(encoded);
     }
 
     private static void check(boolean condition, String message) {

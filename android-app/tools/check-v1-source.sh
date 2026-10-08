@@ -298,9 +298,9 @@ assert "setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE)" in ac
 assert "screen text is English only" in activity, "language limitations must remain explicit"
 task_logic = (main / "java/com/cue/daymark/TaskLogic.java").read_text(encoding="utf-8")
 assert "Locale.getDefault()" in task_logic, "date formatting should follow the device locale"
-store = (main / "java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
-assert "TaskLogic.isValidTaskList(tasks)" in store, "encrypted writer must reject invalid or duplicate task snapshots"
-assert "TaskLogic.isValidTaskList(result)" in store, "encrypted reader must use the same task-list validation contract"
+codec = (main / "java/com/cue/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
+assert "TaskLogic.isValidTaskList(tasks)" in codec, "encrypted writer must reject invalid or duplicate task snapshots"
+assert "TaskLogic.isValidTaskList(result)" in codec, "encrypted reader must use the same task-list validation contract"
 callback_gate = (main / "java/com/cue/daymark/ActivityCallbackGate.java").read_text(encoding="utf-8")
 assert "AtomicBoolean" in callback_gate and "if (open.get()) callback.run();" in callback_gate
 destroy = activity.split("protected void onDestroy", 1)[1].split("protected void onSaveInstanceState", 1)[0]
