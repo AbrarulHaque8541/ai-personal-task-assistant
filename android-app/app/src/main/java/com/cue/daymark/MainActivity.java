@@ -1227,12 +1227,6 @@ public final class MainActivity extends Activity {
             showToast("Download blocked: HTTPS is required.");
             return;
         }
-        if (Build.VERSION.SDK_INT < 29 &&
-                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 7811);
-            showToast("Allow storage access, then retry the download.");
-            return;
-        }
         DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         if (manager == null) {
             showToast("Downloads are unavailable on this device.");
@@ -1248,9 +1242,15 @@ public final class MainActivity extends Activity {
             String cookies = CookieManager.getInstance().getCookie(url);
             if (cookies != null && !cookies.isEmpty()) request.addRequestHeader("Cookie", cookies);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+            if (Build.VERSION.SDK_INT >= 29) {
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+            } else {
+                request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, filename);
+            }
             manager.enqueue(request);
-            showToast("Download started. Check Downloads for progress.");
+            showToast(Build.VERSION.SDK_INT >= 29
+                    ? "Download started. Check Downloads for progress."
+                    : "Download started. Check Daymark's app Downloads folder.");
         } catch (Exception exception) {
             showToast("Download could not be started.");
         }
