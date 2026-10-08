@@ -1354,12 +1354,15 @@ public final class MainActivity extends Activity {
                 if (output.size() + read > 200_000) throw new IOException("Extension is too large.");
                 output.write(buffer, 0, read);
             }
-            String raw = output.toString("UTF-8");
-            ExtensionPackageParser parser = null;
+            byte[] bytes = output.toByteArray();
             BrowserExtension ext;
             String name = uri.toString().toLowerCase(Locale.ROOT);
+            String raw = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
             if (name.endsWith(".user.js") || raw.contains("==UserScript==")) {
                 ext = ExtensionPackageParser.parseUserScript(raw);
+            } else if (name.endsWith(".crx") || name.endsWith(".xpi") || name.endsWith(".zip")
+                    || (bytes.length >= 2 && bytes[0] == 'P' && bytes[1] == 'K')) {
+                ext = ExtensionPackageParser.parseWebExtensionArchive(bytes);
             } else {
                 ext = ExtensionPackageParser.parseDaymarkJson(raw, false);
             }
