@@ -342,6 +342,13 @@ public final class MainActivity extends Activity {
             closeFullScreenWebReader();
             return;
         }
+        // When a web page has browser history, Back should behave like a browser:
+        // navigate exactly one history entry instead of closing the Activity.
+        if (browserWebView != null && browserWebView.canGoBack()) {
+            browserWebView.goBack();
+            syncBrowserButtons();
+            return;
+        }
         super.onBackPressed();
     }
 
