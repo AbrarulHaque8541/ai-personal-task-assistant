@@ -154,15 +154,25 @@ jobs:
             ""|*[!0-9A-Fa-f]*) echo "::error::Invalid configured publisher signer fingerprint"; exit 1 ;;
           esac
           test "${#expected_signer}" -eq 64
-          cert_file="$RUNNER_TEMP/release-certificate.der"
-          keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" >/dev/null
-          actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr "A-F" "a-f")"
-          test -n "$actual_signer"
-          if [[ "${actual_signer,,}" != "${expected_signer,,}" ]]; then
-            echo "::error::Release signer mismatch. Keystore certificate SHA-256=${actual_signer}; pinned publisher SHA-256=${expected_signer}"
+
+          cert_fingerprint="$( "$apksigner" verify --print-certs release-artifacts/app-release.apk |
+            sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 |
+            tr -d '[:space:]:' | tr 'A-F' 'a-f' )"
+          test "${#cert_fingerprint}" -eq 64
+          if [[ "${cert_fingerprint,,}" != "${expected_signer,,}" ]]; then
+            echo "::error::APK signer mismatch. APK certificate SHA-256=$cert_fingerprint; pinned publisher SHA-256=$expected_signer"
             exit 1
           fi
-          echo "Release signer fingerprint matches the pinned publisher certificate."
+
+          cert_file="$RUNNER_TEMP/release-certificate.der"
+          keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" >/dev/null
+          keystore_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr "A-F" "a-f")"
+          test "${#keystore_signer}" -eq 64
+          if [[ "${keystore_signer,,}" != "${expected_signer,,}" ]]; then
+            echo "::error::Production keystore certificate mismatch. Keystore SHA-256=$keystore_signer; pinned publisher SHA-256=$expected_signer"
+            exit 1
+          fi
+          echo "APK and production keystore signer fingerprints match the pinned publisher certificate."
           test "$(stat -c '%s' release-artifacts/app-release.apk)" -gt 0
           test "$(stat -c '%s' release-artifacts/app-release.aab)" -gt 0
 
