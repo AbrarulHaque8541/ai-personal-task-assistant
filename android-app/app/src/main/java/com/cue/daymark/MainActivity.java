@@ -904,9 +904,21 @@ public final class MainActivity extends Activity {
         sitesScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout sites = new LinearLayout(this);
         sites.setOrientation(LinearLayout.HORIZONTAL);
+        // Primary AI row: ChatGPT, Claude, Gemini first; Perplexity remains last.
         sites.addView(browserSiteButton("ChatGPT", "https://chatgpt.com/"));
         sites.addView(browserSiteButton("Claude", "https://claude.ai/"));
         sites.addView(browserSiteButton("Gemini", "https://gemini.google.com/"));
+        sites.addView(browserSiteButton("Copilot", "https://copilot.microsoft.com/"));
+        sites.addView(browserSiteButton("Grok", "https://grok.com/"));
+        sites.addView(browserSiteButton("DeepSeek", "https://chat.deepseek.com/"));
+        sites.addView(browserSiteButton("Mistral", "https://chat.mistral.ai/"));
+        sites.addView(browserSiteButton("Meta AI", "https://www.meta.ai/"));
+        sites.addView(browserSiteButton("Qwen", "https://chat.qwen.ai/"));
+        sites.addView(browserSiteButton("Kimi", "https://www.kimi.com/"));
+        sites.addView(browserSiteButton("Poe", "https://poe.com/"));
+        sites.addView(browserSiteButton("HuggingChat", "https://huggingface.co/chat/"));
+        sites.addView(browserSiteButton("You.com", "https://you.com/"));
+        sites.addView(browserSiteButton("Character AI", "https://character.ai/"));
         sites.addView(browserSiteButton("Perplexity", "https://www.perplexity.ai/"));
         sitesScroll.addView(sites);
         panel.addView(sitesScroll, bottomMargin(dp(3)));
