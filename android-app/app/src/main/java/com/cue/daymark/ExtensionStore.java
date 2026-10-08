@@ -16,6 +16,8 @@ import java.util.Map;
 final class ExtensionStore {
     private static final String PREFS = "daymark.extensions.v1";
     private static final String KEY_DISABLED_BUILTINS = "disabled_builtin_ids";
+    private static final String KEY_EXTENSIONS_ENABLED = "extensions_enabled";
+    private static final String KEY_DISABLED_SITES_PREFIX = "disabled_sites.";
     private static final String USER_DIR = "browser_extensions";
 
     private final SharedPreferences preferences;
@@ -31,11 +33,75 @@ final class ExtensionStore {
         }
     }
 
+    /** Global kill switch: when off, no pack is injected into any page. */
+    boolean isGloballyEnabled() {
+        return preferences.getBoolean(KEY_EXTENSIONS_ENABLED, true);
+    }
+
+    void setGloballyEnabled(boolean enabled) {
+        preferences.edit().putBoolean(KEY_EXTENSIONS_ENABLED, enabled).apply();
+    }
+
+    /** Hosts where a built-in pack is paused (per-site disable, persisted per pack id). */
+    List<String> disabledSitesForBuiltin(String id) {
+        String csv = preferences.getString(KEY_DISABLED_SITES_PREFIX + id, "");
+        List<String> sites = new ArrayList<>();
+        if (csv != null && !csv.isEmpty()) {
+            for (String part : csv.split(",")) {
+                if (!part.isEmpty() && !sites.contains(part)) sites.add(part);
+            }
+        }
+        return sites;
+    }
+
+    void setSiteDisabled(String id, String host, boolean disabled) {
+        if (id == null || id.trim().isEmpty() || host == null || host.trim().isEmpty()) return;
+        String normalizedHost = BrowserExtension.normalizeSiteHost(host);
+        if (normalizedHost == null) return;
+        if (id.startsWith("daymark.builtin.")) {
+            List<String> sites = new ArrayList<>(disabledSitesForBuiltin(id));
+            if (disabled) {
+                if (!sites.contains(normalizedHost)) sites.add(normalizedHost);
+            } else {
+                sites.remove(normalizedHost);
+            }
+            preferences.edit().putString(KEY_DISABLED_SITES_PREFIX + id, join(sites)).apply();
+            return;
+        }
+        File file = findUserPack(id);
+        if (file == null) return;
+        try {
+            BrowserExtension ext = ExtensionPackageParser.parseDaymarkJson(readFile(file), false);
+            List<String> sites = new ArrayList<>(ext.disabledSites);
+            if (disabled) {
+                if (!sites.contains(normalizedHost)) sites.add(normalizedHost);
+            } else {
+                sites.remove(normalizedHost);
+            }
+            writeFile(file, ExtensionPackageParser.toDaymarkJson(ext.withDisabledSites(sites)));
+        } catch (Exception ignored) {
+            // Corrupt packs remain hidden from the runtime until re-imported.
+        }
+    }
+
+    /** Serialized pack text for user-pack export, or null when the pack is missing. */
+    String userPackJson(String id) {
+        if (id == null || id.startsWith("daymark.builtin.")) return null;
+        File file = findUserPack(id);
+        if (file == null) return null;
+        try {
+            return readFile(file);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
     List<BrowserExtension> listAll() {
         Map<String, BrowserExtension> byId = new LinkedHashMap<>();
         for (BrowserExtension builtIn : BuiltInExtensions.all()) {
             boolean enabled = !isBuiltinDisabled(builtIn.id);
-            byId.put(builtIn.id, builtIn.withEnabled(enabled));
+            byId.put(builtIn.id, builtIn.withEnabled(enabled)
+                    .withDisabledSites(disabledSitesForBuiltin(builtIn.id)));
         }
         File[] files = userDir.listFiles((dir, name) -> name != null && name.endsWith(".daymark-ext.json"));
         if (files != null) {

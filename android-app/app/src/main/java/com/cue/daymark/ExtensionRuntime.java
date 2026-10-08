@@ -23,6 +23,7 @@ final class ExtensionRuntime {
 
     void onPageFinished(WebView webView, String url) {
         if (webView == null || url == null) return;
+        if (!store.isGloballyEnabled()) return;
         List<BrowserExtension> matching = store.enabledMatching(url);
         if (matching.isEmpty()) return;
         ExtensionInjector.apply(webView, url, matching);

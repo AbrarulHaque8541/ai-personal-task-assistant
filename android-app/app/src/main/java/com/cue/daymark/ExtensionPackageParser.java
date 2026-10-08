@@ -43,6 +43,11 @@ final class ExtensionPackageParser {
         }
         List<String> matches = readStringList(o.optJSONArray("matches"), 32);
         List<String> excludes = readStringList(o.optJSONArray("excludes"), 32);
+        List<String> disabledSites = new ArrayList<>();
+        for (String site : readStringList(o.optJSONArray("disabledSites"), 64)) {
+            String host = BrowserExtension.normalizeSiteHost(site);
+            if (host != null && !disabledSites.contains(host)) disabledSites.add(host);
+        }
         if (matches.isEmpty()) matches.add("*://*/*");
         String css = o.optString("css", "");
         String js = o.optString("js", "");
@@ -52,7 +57,7 @@ final class ExtensionPackageParser {
         return new BrowserExtension(
                 id, name, o.optString("version", "1.0.0"), o.optString("description", ""),
                 o.optBoolean("enabled", true), builtIn, matches, excludes, css, js,
-                o.optString("runAt", "document_end"), o.optString("warnings", ""));
+                o.optString("runAt", "document_end"), o.optString("warnings", ""), disabledSites);
     }
 
     /**
@@ -257,6 +262,9 @@ final class ExtensionPackageParser {
         JSONArray excludes = new JSONArray();
         for (String m : ext.excludes) excludes.put(m);
         o.put("excludes", excludes);
+        JSONArray disabledSites = new JSONArray();
+        for (String site : ext.disabledSites) disabledSites.put(site);
+        o.put("disabledSites", disabledSites);
         o.put("css", ext.css);
         o.put("js", ext.js);
         o.put("runAt", ext.runAt);

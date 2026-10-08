@@ -90,6 +90,7 @@ import com.cue.daymark.updater.UpdaterRecoveryStore;
 public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
+    private static final int REQUEST_EXPORT_EXTENSION = 7813;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
     private static final int REQUEST_PORTABLE_IMPORT = 7343;
     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
@@ -149,6 +150,7 @@ public final class MainActivity extends Activity {
     private volatile boolean attachmentCancelRequested;
     private boolean attachmentCanCancel;
     private String pendingAttachmentTaskId;
+    private String pendingExtensionExportId;
     private Uri pendingPickedAttachmentUri;
     private String pendingPickedAttachmentTaskId;
     private boolean storageReady;
@@ -461,6 +463,25 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_EXPORT_EXTENSION) {
+            String exportId = pendingExtensionExportId;
+            pendingExtensionExportId = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            if (extensionRuntime == null || exportId == null) return;
+            String json = extensionRuntime.store().userPackJson(exportId);
+            if (json == null) {
+                showToast("This extension could not be exported.");
+                return;
+            }
+            try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
+                if (out == null) throw new IOException("Could not write the extension file.");
+                out.write(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                showToast("Extension exported.");
+            } catch (Exception exception) {
+                showToast("Extension could not be exported.");
+            }
+            return;
+        }
         if (requestCode == REQUEST_IMPORT_EXTENSION) {
             if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
@@ -1068,7 +1089,12 @@ public final class MainActivity extends Activity {
         browserReloadButton = compactButton("Reload", false);
         browserReloadButton.setContentDescription("Reload the current page");
         browserReloadButton.setOnClickListener(view -> {
-            if (browserWebView != null) browserWebView.reload();
+            if (browserWebView == null) return;
+            if (browserWebView.getUrl() != null && browserWebView.getProgress() < 100) {
+                browserWebView.stopLoading();
+            } else {
+                browserWebView.reload();
+            }
         });
         browserHomeButton = compactButton("Home", false);
         browserHomeButton.setContentDescription("Return to the local browser home screen");
@@ -1320,7 +1346,10 @@ public final class MainActivity extends Activity {
                 .setItems(actions, (dialog, which) -> {
                     switch (which) {
                         case 0:
-                            if (browserWebView != null && browserWebView.getUrl() != null) browserWebView.reload();
+                            if (browserWebView != null && browserWebView.getUrl() != null) {
+                                if (browserWebView.getProgress() < 100) browserWebView.stopLoading();
+                                else browserWebView.reload();
+                            }
                             break;
                         case 1:
                             showFindInPageDialog();
@@ -1403,6 +1432,25 @@ public final class MainActivity extends Activity {
         disclosure.setLineSpacing(dp(2), 1f);
         content.addView(disclosure, bottomMargin(dp(10)));
 
+        CheckBox masterSwitch = new CheckBox(this);
+        masterSwitch.setText("Run extensions in the browser");
+        masterSwitch.setTextColor(palette.text);
+        masterSwitch.setTextSize(14 * textScale);
+        masterSwitch.setChecked(extensionRuntime.store().isGloballyEnabled());
+        masterSwitch.setContentDescription("Global extension switch. When off, no extension is injected into any page.");
+        masterSwitch.setOnCheckedChangeListener((button, checked) -> {
+            extensionRuntime.store().setGloballyEnabled(checked);
+            showToast(checked ? "Extensions enabled."
+                    : "Extensions paused. Nothing will be injected until you turn this back on.");
+        });
+        content.addView(masterSwitch, bottomMargin(dp(6)));
+        if (!extensionRuntime.store().isGloballyEnabled()) {
+            TextView paused = text("Extensions are paused. Nothing is injected into pages until you turn the switch back on.",
+                    12, palette.warning, Typeface.NORMAL);
+            paused.setLineSpacing(dp(2), 1f);
+            content.addView(paused, bottomMargin(dp(8)));
+        }
+
         if (extensions.isEmpty()) {
             content.addView(text("No extensions installed.", 13, palette.muted, Typeface.NORMAL),
                     bottomMargin(dp(8)));
@@ -1435,8 +1483,23 @@ public final class MainActivity extends Activity {
             description.setLineSpacing(dp(2), 1f);
             row.addView(description, topMargin(dp(2)));
 
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            Button details = compactButton("Details", false);
+            details.setContentDescription("Show permissions, match rules, and warnings for " + ext.name);
+            details.setOnClickListener(view -> showExtensionDetailsDialog(ext));
+            actions.addView(details, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
+            Button sites = compactButton("Sites", false);
+            sites.setContentDescription("Choose sites where " + ext.name + " is paused");
+            sites.setOnClickListener(view -> showExtensionSitesDialog(ext));
+            actions.addView(sites, chipMargin());
             if (!ext.builtIn) {
-                Button remove = compactButton("Remove", false);
+                Button export = compactButton("Export", false);
+                export.setContentDescription("Export extension " + ext.name + " as a Daymark pack file");
+                export.setOnClickListener(view -> exportExtensionPack(ext));
+                actions.addView(export, chipMargin());
+                Button remove = compactButton("Remove", true);
                 remove.setContentDescription("Remove extension " + ext.name);
                 remove.setOnClickListener(view -> {
                     new AlertDialog.Builder(this)
@@ -1449,8 +1512,9 @@ public final class MainActivity extends Activity {
                                 showBrowserExtensionsManager();
                             }).show();
                 });
-                row.addView(remove, topMargin(dp(5)));
+                actions.addView(remove, chipMargin());
             }
+            row.addView(actions, topMargin(dp(5)));
             content.addView(row, bottomMargin(dp(7)));
         }
 
@@ -1472,6 +1536,140 @@ public final class MainActivity extends Activity {
                 .setView(scroll)
                 .setPositiveButton("Done", null)
                 .show();
+    }
+
+    private void showExtensionDetailsDialog(BrowserExtension ext) {
+        if (ext == null) return;
+        StringBuilder details = new StringBuilder();
+        details.append("Name: ").append(ext.name).append('\n');
+        details.append("Version: ").append(ext.version).append('\n');
+        details.append("Source: ").append(ext.builtIn ? "Built-in" : "User pack").append('\n');
+        details.append("ID: ").append(ext.id).append('\n');
+        details.append("State: ").append(ext.enabled ? "Enabled" : "Disabled").append('\n');
+        details.append("Runs at: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\n');
+        details.append("CSS: ").append(ext.css.length()).append(" chars · JS: ").append(ext.js.length()).append(" chars").append('\n');
+        details.append('\n');
+        details.append("Match rules (").append(ext.matches.size()).append("):").append('\n');
+        for (String match : ext.matches) details.append("  · ").append(match).append('\n');
+        if (!ext.excludes.isEmpty()) {
+            details.append("Excludes (").append(ext.excludes.size()).append("):").append('\n');
+            for (String exclude : ext.excludes) details.append("  · ").append(exclude).append('\n');
+        }
+        if (!ext.disabledSites.isEmpty()) {
+            details.append("Paused on sites (").append(ext.disabledSites.size()).append("):").append('\n');
+            for (String site : ext.disabledSites) details.append("  · ").append(site).append('\n');
+        }
+        details.append('\n');
+        details.append("Permissions: none. This extension cannot access tasks, encryption keys, or app-private data. " +
+                "Chrome/Firefox privileged APIs, network interception, and GM_* storage are not available.");
+        if (!ext.warnings.isEmpty()) {
+            details.append("\n\nWarnings: ").append(ext.warnings);
+        }
+        TextView body = text(details.toString(), 13, palette.text, Typeface.NORMAL);
+        body.setLineSpacing(dp(2), 1f);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+        content.addView(body);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Extension details · " + ext.name)
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
+    private void showExtensionSitesDialog(BrowserExtension ext) {
+        if (ext == null || extensionRuntime == null) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(8), dp(18), dp(8));
+        TextView explanation = text(
+                "This extension is paused on the sites below (the host and its subdomains). Add a site like example.com or https://example.com/page.",
+                12, palette.muted, Typeface.NORMAL);
+        explanation.setLineSpacing(dp(2), 1f);
+        content.addView(explanation, bottomMargin(dp(8)));
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        content.addView(list);
+        final Runnable[] rerender = new Runnable[1];
+        rerender[0] = () -> {
+            list.removeAllViews();
+            BrowserExtension current = null;
+            for (BrowserExtension candidate : extensionRuntime.store().listAll()) {
+                if (candidate.id.equals(ext.id)) current = candidate;
+            }
+            if (current == null || current.disabledSites.isEmpty()) {
+                list.addView(text("Not paused on any site.", 12, palette.muted, Typeface.NORMAL));
+                return;
+            }
+            for (String site : current.disabledSites) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                TextView host = text(site, 14, palette.text, Typeface.NORMAL);
+                row.addView(host, new LinearLayout.LayoutParams(0, dp(48), 1f));
+                Button remove = compactButton("Remove", true);
+                remove.setContentDescription("Resume " + ext.name + " on " + site);
+                remove.setOnClickListener(view -> {
+                    extensionRuntime.store().setSiteDisabled(ext.id, site, false);
+                    showToast("Extension will run on " + site + " again.");
+                    rerender[0].run();
+                });
+                row.addView(remove, new LinearLayout.LayoutParams(dp(96), dp(48)));
+                list.addView(row, bottomMargin(dp(4)));
+            }
+        };
+        rerender[0].run();
+        LinearLayout addRow = new LinearLayout(this);
+        addRow.setOrientation(LinearLayout.HORIZONTAL);
+        addRow.setGravity(Gravity.CENTER_VERTICAL);
+        EditText siteInput = new EditText(this);
+        siteInput.setHint("example.com");
+        siteInput.setSingleLine(true);
+        siteInput.setTextSize(14 * textScale);
+        siteInput.setContentDescription("Site where this extension should be paused");
+        addRow.addView(siteInput, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        Button addSite = compactButton("Pause", false);
+        addSite.setContentDescription("Pause " + ext.name + " on this site");
+        addSite.setOnClickListener(view -> {
+            String input = siteInput.getText() == null ? "" : siteInput.getText().toString();
+            String host = BrowserExtension.normalizeSiteHost(input);
+            if (host == null) {
+                showToast("Enter a site like example.com or https://example.com/page.");
+                return;
+            }
+            extensionRuntime.store().setSiteDisabled(ext.id, host, true);
+            siteInput.setText("");
+            showToast("Extension paused on " + host + ".");
+            rerender[0].run();
+        });
+        addRow.addView(addSite, chipMargin());
+        content.addView(addRow, topMargin(dp(6)));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Paused sites · " + ext.name)
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
+    private void exportExtensionPack(BrowserExtension ext) {
+        if (ext == null || ext.builtIn || extensionRuntime == null) return;
+        if (extensionRuntime.store().userPackJson(ext.id) == null) {
+            showToast("This extension could not be exported.");
+            return;
+        }
+        pendingExtensionExportId = ext.id;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.putExtra(Intent.EXTRA_TITLE, ext.id.replaceAll("[^A-Za-z0-9._-]", "_") + ".daymark-ext.json");
+        startActivityForResult(intent, REQUEST_EXPORT_EXTENSION);
     }
 
     private void showFindInPageDialog() {
@@ -1577,6 +1775,10 @@ public final class MainActivity extends Activity {
         browserForwardButton.setEnabled(available && browserWebView.canGoForward());
         browserReloadButton.setEnabled(available);
         boolean hasPage = browserWebView != null && browserWebView.getUrl() != null && !browserWebView.getUrl().isEmpty();
+        boolean loading = hasPage && browserWebView.getProgress() < 100;
+        browserReloadButton.setText(loading ? "Stop" : "Reload");
+        browserReloadButton.setContentDescription(loading
+                ? "Stop loading the current page" : "Reload the current page");
         if (browserExpandButton != null) {
             browserExpandButton.setEnabled(available && hasPage);
         }
