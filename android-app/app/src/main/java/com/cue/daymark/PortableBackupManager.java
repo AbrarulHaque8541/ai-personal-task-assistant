@@ -57,6 +57,13 @@ final class PortableBackupManager {
         activeImportUriJournal = new ActiveImportUriJournal(new AtomicFile(
                 new File(noBackup, "portable-import-uri.bin")));
         this.checkpoint = checkpoint == null ? RestoreCheckpoint.NONE : checkpoint;
+        // Sweep abandoned private staging during construction so a failed startup cannot leave
+        // decrypted backup plaintext behind until a later successful launch.
+        try {
+            cleanupTransientFiles();
+        } catch (IOException ignored) {
+            // Non-fatal; the next launch retries the sweep.
+        }
     }
 
     File createExportStageFile() throws IOException {

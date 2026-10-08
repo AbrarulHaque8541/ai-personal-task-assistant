@@ -6,6 +6,7 @@ sh ./tools/run-core-tests.sh
 sh ./tools/run-window-insets-tests.sh
 sh ./tools/run-attachment-tests.sh
 sh ./tools/run-portable-backup-tests.sh
+sh ./tools/run-portable-staging-tests.sh
 sh ./tools/run-updater-picker-routing-tests.sh
 sh ./tools/run-diagnostics-tests.sh
 sh ./tools/run-web-mode-tests.sh
