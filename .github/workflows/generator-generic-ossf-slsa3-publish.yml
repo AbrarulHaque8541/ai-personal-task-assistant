@@ -1,58 +1,66 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# SLSA provenance for the Daymark device-test APK.
+#
+# The round-2 audit found this file was still the untouched upstream template: it
+# fabricated `artifact1` / `artifact2` with `echo` and generated SLSA provenance
+# for those fake files, so the published attestation described nothing that ships.
+# This workflow now builds the real githubSideload APK and generates provenance
+# for that exact binary.
+#
+# The provenance file can be verified with
+# https://github.com/slsa-framework/slsa-verifier.
+# For more information about SLSA visit slsa.dev.
 
-# This workflow lets you generate SLSA provenance file for your project.
-# The generation satisfies level 3 for the provenance requirements - see https://slsa.dev/spec/v0.1/requirements
-# The project is an initiative of the OpenSSF (openssf.org) and is developed at
-# https://github.com/slsa-framework/slsa-github-generator.
-# The provenance file can be verified using https://github.com/slsa-framework/slsa-verifier.
-# For more information about SLSA and how it improves the supply-chain, visit slsa.dev.
-
-name: SLSA generic generator
+name: SLSA provenance for the device-test APK
 on:
   workflow_dispatch:
-  release:
-    types: [created]
+  push:
+    tags:
+      - 'v*-device-test.*'
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build the real APK and hash it
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
     outputs:
       digests: ${{ steps.hash.outputs.digests }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the event ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
 
-      # ========================================================
-      #
-      # Step 1: Build your artifacts.
-      #
-      # ========================================================
-      - name: Build artifacts
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Build the githubSideload APK
+        working-directory: android-app
         run: |
-            # These are some amazing artifacts.
-            echo "artifact1" > artifact1
-            echo "artifact2" > artifact2
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleGithubSideloadDebug
 
-      # ========================================================
-      #
-      # Step 2: Add a step to generate the provenance subjects
-      #         as shown below. Update the sha256 sum arguments
-      #         to include all binaries that you generate
-      #         provenance for.
-      #
-      # ========================================================
-      - name: Generate subject for provenance
+      - name: Generate the provenance subject from the real APK
         id: hash
+        shell: bash
         run: |
           set -euo pipefail
-
-          # List the artifacts the provenance will refer to.
-          files=$(ls artifact*)
-          # Generate the subjects (base64 encoded).
-          echo "hashes=$(sha256sum $files | base64 -w0)" >> "${GITHUB_OUTPUT}"
+          apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          test -s "$apk" || { echo "Built APK is missing or empty: $apk" >&2; exit 1; }
+          unzip -t "$apk" >/dev/null
+          # The provenance subject is the exact APK that ships, not a placeholder.
+          echo "hashes=$(sha256sum "$apk" | base64 -w0)" >> "${GITHUB_OUTPUT}"
 
   provenance:
     needs: [build]
