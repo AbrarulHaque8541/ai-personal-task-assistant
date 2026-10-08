@@ -148,7 +148,7 @@ jobs:
           test -n "$expected_version_name"
           test -n "$expected_version_code"
           "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionName='$expected_version_name'"
-          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionCode=$expected_version_code"
+          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionCode='$expected_version_code'"
           expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
           case "$expected_signer" in
             ""|*[!0-9A-Fa-f]*) echo "::error::Invalid configured publisher signer fingerprint"; exit 1 ;;
