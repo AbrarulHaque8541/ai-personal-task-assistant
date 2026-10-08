@@ -453,22 +453,36 @@ public final class MainActivity extends Activity {
             if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         try {
-            String raw;
+            byte[] bytes;
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IOException("Could not open extension file.");
-                byte[] buffer = new byte[200_001];
-                int total = 0;
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
                 int read;
-                while ((read = in.read(buffer, total, buffer.length - total)) > 0) {
-                    total += read;
-                    if (total >= buffer.length) throw new IOException("Extension file is too large.");
+                while ((read = in.read(buffer)) != -1) {
+                    if (out.size() + read > 5 * 1024 * 1024) throw new IOException("Extension file is too large.");
+                    out.write(buffer, 0, read);
                 }
-                raw = new String(buffer, 0, total, java.nio.charset.StandardCharsets.UTF_8);
+                bytes = out.toByteArray();
             }
             BrowserExtension parsed;
+            String raw = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
             String trimmed = raw.trim();
-            if (trimmed.startsWith("{")) parsed = ExtensionPackageParser.parseDaymarkJson(trimmed, false);
-            else parsed = ExtensionPackageParser.parseUserScript(raw);
+            String lowerName = uri.toString().toLowerCase(Locale.ROOT);
+            if (trimmed.startsWith("{")) {
+                org.json.JSONObject probe = new org.json.JSONObject(trimmed);
+                parsed = (probe.has("content_scripts") || probe.has("manifest_version"))
+                        ? ExtensionPackageParser.parseWebExtensionManifest(trimmed)
+                        : ExtensionPackageParser.parseDaymarkJson(trimmed, false);
+            } else if (trimmed.contains("==UserScript==")) {
+                parsed = ExtensionPackageParser.parseUserScript(raw);
+            } else if (lowerName.endsWith(".zip") || lowerName.endsWith(".xpi") || lowerName.endsWith(".crx")
+                    || (bytes.length >= 2 && bytes[0] == 'P' && bytes[1] == 'K')
+                    || (bytes.length >= 4 && bytes[0] == 'C' && bytes[1] == 'r' && bytes[2] == '2' && bytes[3] == '4')) {
+                parsed = ExtensionPackageParser.parseWebExtensionArchive(bytes);
+            } else {
+                throw new IllegalArgumentException("Unsupported extension format.");
+            }
 
             String warning = parsed.warnings == null || parsed.warnings.isEmpty()
                     ? "No unsupported API warnings."
