@@ -37,9 +37,17 @@ Suggested in-app copy:
 - **v1:** no `GM_getValue` / `GM_setValue`.  
 - **Later (optional):** pure `localStorage` shim, page-visible, not private — only after security review.
 
-## Manager UI (Should — next)
+## Manager UI (shipped in v1.0.3)
 
-List + toggle, paste import (auto-detect), review-before-enable, export, per-site disable, global kill switch.
+- List + enable/disable toggle per pack (built-in vs user pack labeled).
+- **Global kill switch** — "Run extensions in the browser"; when off, nothing is injected into any page (`ExtensionRuntime` checks `ExtensionStore.isGloballyEnabled()` first).
+- Import (auto-detect Daymark JSON / userscript / ZIP-XPI-CRX) with review-before-install and a 5 MB cap.
+- **Details** dialog per pack: source, id, state, run-at, CSS/JS sizes, full match/exclude lists, paused sites, explicit "Permissions: none" statement, and import warnings.
+- **Sites** dialog per pack: pause/resume the pack on specific hosts (host or subdomain); sites are normalized (`example.com`, `https://example.com/page`, case/dot normalization; non-HTTPS/credentialed input rejected).
+- **Export** user packs to a `.daymark-ext.json` document via SAF (`ACTION_CREATE_DOCUMENT`); built-ins are not exportable.
+- **Remove** user packs with confirmation.
+- `disabledSites` persist inside the pack file (user packs) or per-pack preferences (built-ins) and round-trip through `toDaymarkJson`/`parseDaymarkJson`.
+- Match rules are scheme-strict: an `https://…` pattern never matches a cleartext URL (`BrowserExtension.MatchRules`).
 
 ## Signing / release note
 
