@@ -36,6 +36,29 @@ jobs:
           cache: gradle
           cache-dependency-path: android-app/**/*.gradle*
 
+      - name: Validate required release secrets
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${KEYSTORE_BASE64:-}" ]] || missing+=("KEYSTORE_BASE64")
+          [[ -n "${KEYSTORE_PASSWORD:-}" ]] || missing+=("KEYSTORE_PASSWORD")
+          [[ -n "${KEY_ALIAS:-}" ]] || missing+=("KEY_ALIAS")
+          [[ -n "${KEY_PASSWORD:-}" ]] || missing+=("KEY_PASSWORD")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Required release signing secret(s) missing: ${missing[*]}" >&2
+            echo "Release build requires KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD configured in repository secrets." >&2
+            exit 1
+          fi
+          echo "All required release signing secrets are present."
+
       - name: Verify exact tag commit is on main
         shell: bash
         run: |
@@ -73,6 +96,13 @@ jobs:
           sh ./tools/run-attachment-tests.sh
           sh ./tools/run-storage-recovery-tests.sh
           sh ./tools/run-portable-backup-tests.sh
+          sh ./tools/run-diagnostics-tests.sh
+          sh ./tools/run-web-mode-tests.sh
+          sh ./tools/run-text-scale-tests.sh
+          sh ./tools/run-composer-draft-tests.sh
+          sh ./tools/run-portable-staging-tests.sh
+          sh ./tools/run-activity-request-code-tests.sh
+          sh ./tools/run-portable-export-tests.sh
           sh ./tools/check-v1-source.sh
           python3 ./tools/check-accessibility-contrast.py
           python3 ./tools/check-attachment-source.py "$PWD"
@@ -90,16 +120,41 @@ jobs:
 
       - name: Build and check both Android flavors
         working-directory: android-app
-        run: >-
-          ./gradlew --no-daemon --continue
-          assembleGithubSideloadDebug
-          assemblePlayDebug
-          lintGithubSideloadDebug
-          lintPlayDebug
-          testGithubSideloadDebugUnitTest
-          testPlayDebugUnitTest
-          compileGithubSideloadDebugAndroidTestJavaWithJavac
-          compilePlayDebugAndroidTestJavaWithJavac
+        env:
+          RAW_KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RAW_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RAW_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RAW_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "Decoding release keystore..."
+            echo "$RAW_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+            RELEASE_STORE_FILE="$RUNNER_TEMP/release.keystore" \
+            RELEASE_STORE_PASSWORD="$RAW_KEYSTORE_PASSWORD" \
+            RELEASE_KEY_ALIAS="$RAW_KEY_ALIAS" \
+            RELEASE_KEY_PASSWORD="$RAW_KEY_PASSWORD" \
+            ./gradlew --no-daemon --continue \
+              assembleGithubSideloadRelease \
+              assemblePlayRelease \
+              lintGithubSideloadRelease \
+              lintPlayRelease \
+              testGithubSideloadReleaseUnitTest \
+              testPlayReleaseUnitTest
+
+            rm -f "$RUNNER_TEMP/release.keystore"
+          else
+            ./gradlew --no-daemon --continue \
+              assembleGithubSideloadDebug \
+              assemblePlayDebug \
+              lintGithubSideloadDebug \
+              lintPlayDebug \
+              testGithubSideloadDebugUnitTest \
+              testPlayDebugUnitTest \
+              compileGithubSideloadDebugAndroidTestJavaWithJavac \
+              compilePlayDebugAndroidTestJavaWithJavac
+          fi
 
       - name: Verify merged manifests
         working-directory: android-app
@@ -110,7 +165,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            source_apk="android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+          else
+            source_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          fi
           test -s "$source_apk"
           unzip -t "$source_apk"
 
@@ -125,7 +184,8 @@ jobs:
             echo "aapt or apksigner is missing from the installed Android build-tools" >&2
             exit 1
           }
-          "$apksigner" verify --verbose "$source_apk"
+          echo "Verifying APK signature and certificate details with apksigner..."
+          "$apksigner" verify --verbose --print-certs "$source_apk" 
           badging="$RUNNER_TEMP/daymark-apk-badging.txt"
           "$aapt" dump badging "$source_apk" > "$badging"
           package_line="$(grep '^package: ' "$badging")"
@@ -183,9 +243,7 @@ jobs:
               printf '%s\n\n' '### Device testing'
               printf '%s\n\n' 'Physical-device/emulator installation is not performed by GitHub Actions; device testing remains pending.'
               printf '%s\n\n' '### Signing'
-              printf '%s\n\n' 'DEBUG/device-test signed by the Android Gradle debug signing configuration. The APK signature was verified; this is not production signing.'
-              printf '%s\n\n' '### Known limitations'
-              printf '%s\n\n' 'This APK is not production-signed or Play Store ready. No physical device installation is claimed.'
+              printf '%s\n\n' 'Production signed with the configured Android release keystore. The APK signature and certificate details were verified with apksigner.'
               printf 'APK: `%s`\n' "$apk_name"
               printf 'SHA-256: `%s`\n' "$apk_sha256"
               printf 'Build commit: `%s`\n' "$build_commit"
