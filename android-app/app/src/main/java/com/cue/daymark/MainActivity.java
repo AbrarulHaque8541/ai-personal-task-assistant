@@ -2332,6 +2332,12 @@ public final class MainActivity extends Activity {
         edit.setEnabled(canEdit());
         edit.setOnClickListener(view -> showTaskEditor(task));
         row.addView(edit);
+        Button more = compactButton("More", false);
+        more.setContentDescription("More actions for task: " + task.title);
+        more.setEnabled(canEdit());
+        more.setOnClickListener(view -> showTaskActions(task));
+        row.addView(more);
+
         Button delete = compactButton("Delete", true);
         delete.setContentDescription("Delete task: " + task.title);
         delete.setEnabled(canEdit() && pendingDeletedTask == null);
@@ -2345,6 +2351,42 @@ public final class MainActivity extends Activity {
             saveTasksAsync();
         });
         return row;
+    }
+
+    private void showTaskActions(Task task) {
+        if (task == null || !canEdit()) return;
+        String[] actions = {"Duplicate task", "Move due date to today", "Clear due date", "Save as template"};
+        new AlertDialog.Builder(this)
+                .setTitle(task.title)
+                .setItems(actions, (dialog, which) -> {
+                    Task current = findTask(task.id);
+                    if (current == null || !canEdit()) return;
+                    try {
+                        if (which == 0) {
+                            String copyTitle = current.title;
+                            if (!copyTitle.endsWith(" (copy)")) copyTitle += " (copy)";
+                            tasks.add(TaskLogic.create(copyTitle, current.dueDate, current.priority));
+                            render();
+                            saveTasksAsync();
+                            showToast("Task duplicated.");
+                        } else if (which == 1) {
+                            replaceTask(TaskLogic.update(current, current.title, LocalDate.now().toString(), current.priority));
+                            render();
+                            saveTasksAsync();
+                            showToast("Due date moved to today.");
+                        } else if (which == 2) {
+                            replaceTask(TaskLogic.update(current, current.title, null, current.priority));
+                            render();
+                            saveTasksAsync();
+                            showToast("Due date cleared.");
+                        } else if (which == 3) {
+                            saveTaskTemplate(current.title, current.dueDate, current.priority, null, null);
+                            showToast("Template saved.");
+                        }
+                    } catch (Exception exception) {
+                        showToast("Could not update this task.");
+                    }
+                }).show();
     }
 
     private String dueLabel(Task task) {
