@@ -190,6 +190,8 @@ public final class MainActivity extends Activity {
     private Palette palette;
 
     private LinearLayout root;
+    private View appTopBar;
+    private View sharedComposer;
     private LinearLayout taskList;
     private LinearLayout suggestionList;
     private LinearLayout undoBar;
@@ -355,6 +357,10 @@ public final class MainActivity extends Activity {
         if (browserWebView != null && browserWebView.canGoBack()) {
             browserWebView.goBack();
             syncBrowserButtons();
+            return;
+        }
+        if (webMode) {
+            setWebMode(false);
             return;
         }
         super.onBackPressed();
@@ -643,9 +649,11 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(palette.background);
         root.setClipToPadding(false);
 
-        root.addView(buildTopBar(), new LinearLayout.LayoutParams(
+        appTopBar = buildTopBar();
+        root.addView(appTopBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        root.addView(buildSharedComposer(), bottomMargin(dp(8)));
+        sharedComposer = buildSharedComposer();
+        root.addView(sharedComposer, bottomMargin(dp(8)));
 
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(false);
@@ -2048,6 +2056,10 @@ public final class MainActivity extends Activity {
 
     private void syncModeUi() {
         if (taskScreen == null || browserScreen == null || quickCaptureInput == null) return;
+        // Web mode is a dedicated browser workspace. Hide the task composer/dashboard
+        // instead of stacking Task + Web controls and wasting the viewport.
+        if (appTopBar != null) appTopBar.setVisibility(webMode ? View.GONE : View.VISIBLE);
+        if (sharedComposer != null) sharedComposer.setVisibility(webMode ? View.GONE : View.VISIBLE);
         taskScreen.setVisibility(webMode ? View.GONE : View.VISIBLE);
         browserScreen.setVisibility(webMode ? View.VISIBLE : View.GONE);
         taskActions.setVisibility(webMode ? View.GONE : View.VISIBLE);
