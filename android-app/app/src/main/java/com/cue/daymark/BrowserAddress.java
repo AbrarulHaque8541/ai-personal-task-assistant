@@ -19,7 +19,15 @@ final class BrowserAddress {
         DUCKDUCKGO("DuckDuckGo", "https://duckduckgo.com/?q="),
         GOOGLE("Google", "https://www.google.com/search?q="),
         BING("Bing", "https://www.bing.com/search?q="),
-        BRAVE("Brave Search", "https://search.brave.com/search?q=");
+        BRAVE("Brave Search", "https://search.brave.com/search?q="),
+        STARTPAGE("Startpage", "https://www.startpage.com/sp/search?query="),
+        YAHOO("Yahoo", "https://search.yahoo.com/search?p="),
+        ECOSIA("Ecosia", "https://www.ecosia.org/search?q="),
+        QWANT("Qwant", "https://www.qwant.com/?q="),
+        MOJEEK("Mojeek", "https://www.mojeek.com/search?q="),
+        KAGI("Kagi", "https://kagi.com/search?q="),
+        YOU("You.com", "https://you.com/search?q="),
+        YANDEX("Yandex", "https://yandex.com/search/?text=");
 
         final String label;
         private final String searchPrefix;
