@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /** Parses Daymark JSON packs and a minimal userscript header subset (@grant none only). */
 final class ExtensionPackageParser {
@@ -53,6 +55,77 @@ final class ExtensionPackageParser {
      * Userscript import: @name @match @exclude @run-at @grant none only.
      * Unsupported grants become warnings; body still imported for DOM-only use at user risk.
      */
+    /**
+     * Compatibility importer for unpacked Chrome/Firefox-style WebExtension manifests.
+     * Only content_scripts (CSS/JS) are converted into a Daymark page-local pack.
+     * Background/service-worker, action, popup, native messaging, webRequest and other
+     * privileged APIs are intentionally not executed; they are surfaced as warnings.
+     */
+    static BrowserExtension parseWebExtensionManifest(String raw) throws Exception {
+        if (raw == null || raw.trim().isEmpty()) throw new IllegalArgumentException("Empty extension manifest.");
+        if (raw.length() > MAX_PACK_CHARS) throw new IllegalArgumentException("Extension manifest is too large.");
+        JSONObject manifest = new JSONObject(raw);
+        String name = manifest.optString("name", "").trim();
+        String version = manifest.optString("version", "1.0.0").trim();
+        if (name.isEmpty()) throw new IllegalArgumentException("Extension manifest requires a name.");
+        JSONArray scripts = manifest.optJSONArray("content_scripts");
+        if (scripts == null || scripts.length() == 0) {
+            throw new IllegalArgumentException("No content_scripts found. This extension needs privileged browser APIs or UI that Daymark cannot execute.");
+        }
+        List<String> matches = new ArrayList<>();
+        List<String> excludes = new ArrayList<>();
+        StringBuilder css = new StringBuilder();
+        StringBuilder js = new StringBuilder();
+        String runAt = "document_end";
+        StringBuilder warnings = new StringBuilder("Imported in Daymark compatibility mode; only page-local content scripts are supported.");
+        for (int i = 0; i < scripts.length() && i < 32; i++) {
+            JSONObject item = scripts.optJSONObject(i);
+            if (item == null) continue;
+            JSONArray itemMatches = item.optJSONArray("matches");
+            if (itemMatches != null) {
+                for (int j = 0; j < itemMatches.length() && matches.size() < 32; j++) {
+                    String value = itemMatches.optString(j, "").trim();
+                    if (!value.isEmpty()) matches.add(value);
+                }
+            }
+            JSONArray itemExcludes = item.optJSONArray("exclude_matches");
+            if (itemExcludes != null) {
+                for (int j = 0; j < itemExcludes.length() && excludes.size() < 32; j++) {
+                    String value = itemExcludes.optString(j, "").trim();
+                    if (!value.isEmpty()) excludes.add(value);
+                }
+            }
+            String itemRunAt = item.optString("run_at", "document_idle").toLowerCase(Locale.ROOT);
+            if (itemRunAt.contains("start")) runAt = "document_start";
+            else if ("document_end".equals(itemRunAt)) runAt = "document_end";
+            else if ("document_idle".equals(itemRunAt) && "document_end".equals(runAt)) runAt = "document_end";
+            appendPackFiles(css, js, item.optJSONArray("css"), item.optJSONArray("js"), warnings);
+        }
+        if (matches.isEmpty()) matches.add("*://*/*");
+        String id = "webext." + Integer.toHexString(raw.hashCode());
+        if (manifest.has("background")) warnings.append(" Background/service worker was not imported.");
+        if (manifest.has("action") || manifest.has("browser_action") || manifest.has("page_action")) warnings.append(" Extension toolbar actions/popups were not imported.");
+        if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Extension permissions were not granted; Daymark uses only page-local injection.");
+        return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
+                matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
+    }
+
+    private static void appendPackFiles(StringBuilder css, StringBuilder js, JSONArray cssFiles,
+                                        JSONArray jsFiles, StringBuilder warnings) {
+        if (cssFiles != null) {
+            for (int i = 0; i < cssFiles.length(); i++) {
+                String path = cssFiles.optString(i, "").trim();
+                if (!path.isEmpty()) warnings.append(" CSS file ").append(path).append(" must be bundled as raw CSS to import; file paths are not fetched.");
+            }
+        }
+        if (jsFiles != null) {
+            for (int i = 0; i < jsFiles.length(); i++) {
+                String path = jsFiles.optString(i, "").trim();
+                if (!path.isEmpty()) warnings.append(" JS file ").append(path).append(" must be bundled as raw JS to import; file paths are not fetched.");
+            }
+        }
+    }
+
     static BrowserExtension parseUserScript(String raw) throws Exception {
         if (raw == null || raw.trim().isEmpty()) {
             throw new IllegalArgumentException("Empty userscript.");
