@@ -220,6 +220,9 @@ public final class MainActivity extends Activity {
     private Button browserHomeButton;
     private Button browserHistoryButton;
     private Button browserSettingsButton;
+    private Button browserExpandButton;
+    private android.app.Dialog fullScreenWebDialog;
+    private FrameLayout fullScreenWebContainer;
     private Spinner searchEngineSpinner;
     private CheckBox browserOnlineToggle;
     private TextView browserStatus;
@@ -325,6 +328,15 @@ public final class MainActivity extends Activity {
         if (!sanitized.equals(existing)) {
             browserPreferences.edit().putString(BROWSER_HISTORY_KEY, sanitized).apply();
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) {
+            closeFullScreenWebReader();
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
@@ -829,7 +841,7 @@ public final class MainActivity extends Activity {
     private LinearLayout buildBrowserScreen() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(8), dp(2), dp(8), dp(6));
+        panel.setPadding(dp(8), dp(0), dp(8), dp(2));
 
         HorizontalScrollView toolbarScroll = new HorizontalScrollView(this);
         toolbarScroll.setHorizontalScrollBarEnabled(false);
@@ -859,23 +871,27 @@ public final class MainActivity extends Activity {
         browserSettingsButton = compactButton("Settings", false);
         browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
         browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog());
+        browserExpandButton = compactButton("Expand", false);
+        browserExpandButton.setContentDescription("Open the current web page in a full-screen reader");
+        browserExpandButton.setEnabled(false);
+        browserExpandButton.setOnClickListener(view -> openFullScreenWebReader());
         for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton)) {
+                browserReloadButton, browserExpandButton, browserHomeButton, browserHistoryButton, browserSettingsButton)) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
             params.setMargins(0, 0, dp(5), 0);
             toolbar.addView(button, params);
         }
         toolbarScroll.addView(toolbar);
-        panel.addView(toolbarScroll, bottomMargin(dp(4)));
+        panel.addView(toolbarScroll, bottomMargin(dp(2)));
 
         TextView disclosure = text(
                 "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked.",
                 11, palette.muted, Typeface.NORMAL);
-        disclosure.setPadding(dp(11), dp(8), dp(11), dp(8));
+        disclosure.setPadding(dp(8), dp(4), dp(8), dp(4));
         disclosure.setBackground(shape(palette.accentSoft, 10, palette.accentSoft));
         disclosure.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
-        panel.addView(disclosure, bottomMargin(dp(5)));
+        panel.addView(disclosure, bottomMargin(dp(2)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
         sitesScroll.setHorizontalScrollBarEnabled(false);
@@ -1067,6 +1083,10 @@ public final class MainActivity extends Activity {
         browserBackButton.setEnabled(available && browserWebView.canGoBack());
         browserForwardButton.setEnabled(available && browserWebView.canGoForward());
         browserReloadButton.setEnabled(available);
+        boolean hasPage = browserWebView != null && browserWebView.getUrl() != null && !browserWebView.getUrl().isEmpty();
+        if (browserExpandButton != null) {
+            browserExpandButton.setEnabled(available && hasPage);
+        }
     }
 
     private void showBrowserHome() {
@@ -1077,7 +1097,85 @@ public final class MainActivity extends Activity {
         syncBrowserButtons();
     }
 
+    private void openFullScreenWebReader() {
+        if (browserWebView == null || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) return;
+
+        if (browserWebView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) browserWebView.getParent()).removeView(browserWebView);
+        }
+
+        fullScreenWebDialog = new android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        fullScreenWebDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout dialogRoot = new LinearLayout(this);
+        dialogRoot.setOrientation(LinearLayout.VERTICAL);
+        dialogRoot.setBackgroundColor(palette.background);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(12), dp(8), dp(12), dp(8));
+        header.setBackgroundColor(palette.surface);
+
+        TextView headerTitle = text("Web result — Full screen", 16, palette.text, Typeface.BOLD);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        header.addView(headerTitle, titleParams);
+
+        Button closeButton = compactButton("Close", true);
+        closeButton.setContentDescription("Close full-screen reader and return to standard browser view");
+        closeButton.setOnClickListener(v -> closeFullScreenWebReader());
+        header.addView(closeButton);
+
+        dialogRoot.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        fullScreenWebContainer = new FrameLayout(this);
+        fullScreenWebContainer.addView(browserWebView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        dialogRoot.addView(fullScreenWebContainer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        fullScreenWebDialog.setContentView(dialogRoot);
+        Window window = fullScreenWebDialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        }
+
+        fullScreenWebDialog.setOnCancelListener(d -> returnWebViewToViewport());
+        fullScreenWebDialog.setOnDismissListener(d -> {
+            fullScreenWebDialog = null;
+            returnWebViewToViewport();
+        });
+
+        fullScreenWebDialog.show();
+    }
+
+    private void closeFullScreenWebReader() {
+        if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) {
+            fullScreenWebDialog.dismiss();
+        }
+    }
+
+    private void returnWebViewToViewport() {
+        if (browserWebView != null) {
+            if (browserWebView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) browserWebView.getParent()).removeView(browserWebView);
+            }
+            if (browserViewport != null && browserWebView.getParent() == null) {
+                browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
+        }
+    }
+
     private void discardBrowserWebView() {
+        if (fullScreenWebDialog != null) {
+            fullScreenWebDialog.setOnDismissListener(null);
+            if (fullScreenWebDialog.isShowing()) {
+                fullScreenWebDialog.dismiss();
+            }
+            fullScreenWebDialog = null;
+        }
         discardBrowserWebView(true);
     }
 

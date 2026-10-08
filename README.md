@@ -100,3 +100,34 @@ sh tools/run-portable-backup-tests.sh
 - Found an issue or want to request a feature? Open an [Issue](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues).
 - Want to contribute? Check our [Contributing Guide](CONTRIBUTING.md).
 - Security concerns? Please read our [Security Policy](SECURITY.md).
+
+---
+
+## Building, Downloading, and Verifying Signed Release APKs
+
+### 1. Creating a Release Tag
+To trigger the automated GitHub Actions release workflow:
+```bash
+# Create an annotated release tag (e.g. v1.0.2)
+git tag -a v1.0.2 -m "Release v1.0.2"
+
+# Push the tag to GitHub
+git push origin v1.0.2
+```
+The `.github/workflows/android-release-assets.yml` workflow automatically decodes the configured `KEYSTORE_BASE64` secret at runtime, builds `assembleGithubSideloadRelease`, verifies the signature, and attaches the signed release APK directly to the GitHub Release.
+
+### 2. Downloading the Signed APK
+1. Go to the [Releases](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases) section of the repository.
+2. Select the published release tag.
+3. Download the attached APK asset (e.g. `Daymark-githubSideload-release-v1.0.2.apk`).
+
+### 3. Verifying the APK Signature
+Using Android SDK's `apksigner`, verify that the APK is properly signed and check its certificate digest:
+```bash
+apksigner verify --verbose --print-certs Daymark-githubSideload-release-v1.0.2.apk
+```
+Expected verification output includes:
+- `Verifies`
+- `Verified using v1 scheme (JAR signing): true`
+- `Verified using v2 scheme (APK Signature Scheme v2): true`
+- Certificate SHA-256 digest matching your release keystore certificate.
