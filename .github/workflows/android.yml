@@ -34,11 +34,23 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # Every host regression suite the round-2 fixes added is wired here explicitly.
+      # `check-v1-source.sh` also runs the core/window-insets/attachment/portable-backup
+      # suites, but the round-2 suites are listed by name so a future edit to
+      # check-v1-source.sh cannot silently drop one of them from CI. The
+      # `check-ci-wiring.py` guard below asserts this list stays complete.
       - name: Run Android host regression checks
         run: |
           sh ./tools/check-v1-source.sh
           sh ./tools/run-storage-recovery-tests.sh
           sh ./tools/run-updater-picker-routing-tests.sh
+          sh ./tools/run-diagnostics-tests.sh
+          sh ./tools/run-web-mode-tests.sh
+          sh ./tools/run-text-scale-tests.sh
+          sh ./tools/run-composer-draft-tests.sh
+          sh ./tools/run-portable-staging-tests.sh
+          sh ./tools/run-activity-request-code-tests.sh
+          sh ./tools/run-portable-export-tests.sh
 
       # #41 (34A): the release build must fail closed when signing credentials are absent.
       # This asserts the contract itself, so it cannot silently regress to a debug-signed
@@ -63,3 +75,20 @@ jobs:
           testPlayDebugUnitTest
           compileGithubSideloadDebugAndroidTestJavaWithJavac
           compilePlayDebugAndroidTestJavaWithJavac
+
+  web:
+    name: Web prototype tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '20'
+
+      # `node --test` discovers tests/*.test.js, which now includes the round-2
+      # dark-mode regression suite (F6) alongside the task-logic and storage suites.
+      - name: Run web prototype tests
+        run: npm test
