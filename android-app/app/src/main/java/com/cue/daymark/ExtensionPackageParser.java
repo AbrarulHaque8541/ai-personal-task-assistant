@@ -5,6 +5,11 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -62,15 +67,48 @@ final class ExtensionPackageParser {
      * privileged APIs are intentionally not executed; they are surfaced as warnings.
      */
     static BrowserExtension parseWebExtensionManifest(String raw) throws Exception {
-        if (raw == null || raw.trim().isEmpty()) throw new IllegalArgumentException("Empty extension manifest.");
-        if (raw.length() > MAX_PACK_CHARS) throw new IllegalArgumentException("Extension manifest is too large.");
-        JSONObject manifest = new JSONObject(raw);
+        return buildWebExtension(new JSONObject(requirePackText(raw)), null);
+    }
+
+    /** Imports a ZIP-based WebExtension package by converting only content_scripts into a Daymark pack. */
+    static BrowserExtension parseWebExtensionArchive(byte[] archive) throws Exception {
+        if (archive == null || archive.length == 0 || archive.length > 5 * 1024 * 1024) {
+            throw new IllegalArgumentException("Extension archive is empty or exceeds the 5 MB import limit.");
+        }
+        byte[] zipBytes = normalizeZipBytes(archive);
+        Map<String, String> files = new HashMap<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            ZipEntry entry;
+            int fileCount = 0;
+            int totalText = 0;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory() || ++fileCount > 128) continue;
+                String path = entry.getName().replace('\\\\', '/');
+                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\\\') >= 0) continue;
+                if (!path.equals("manifest.json") && !path.endsWith(".js") && !path.endsWith(".css")) continue;
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = zip.read(buffer)) != -1) {
+                    totalText += read;
+                    if (totalText > MAX_PACK_CHARS) throw new IllegalArgumentException("Extension code is too large (max 200 KB text)." );
+                    out.write(buffer, 0, read);
+                }
+                files.put(path, out.toString("UTF-8"));
+            }
+        }
+        String manifest = files.get("manifest.json");
+        if (manifest == null) throw new IllegalArgumentException("Extension archive does not contain manifest.json.");
+        return buildWebExtension(new JSONObject(manifest), files);
+    }
+
+    private static BrowserExtension buildWebExtension(JSONObject manifest, Map<String, String> files) throws Exception {
         String name = manifest.optString("name", "").trim();
         String version = manifest.optString("version", "1.0.0").trim();
         if (name.isEmpty()) throw new IllegalArgumentException("Extension manifest requires a name.");
         JSONArray scripts = manifest.optJSONArray("content_scripts");
         if (scripts == null || scripts.length() == 0) {
-            throw new IllegalArgumentException("No content_scripts found. This extension needs privileged browser APIs or UI that Daymark cannot execute.");
+            throw new IllegalArgumentException("No content_scripts found. This extension needs browser APIs or UI that Daymark cannot execute.");
         }
         List<String> matches = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
@@ -81,49 +119,65 @@ final class ExtensionPackageParser {
         for (int i = 0; i < scripts.length() && i < 32; i++) {
             JSONObject item = scripts.optJSONObject(i);
             if (item == null) continue;
-            JSONArray itemMatches = item.optJSONArray("matches");
-            if (itemMatches != null) {
-                for (int j = 0; j < itemMatches.length() && matches.size() < 32; j++) {
-                    String value = itemMatches.optString(j, "").trim();
-                    if (!value.isEmpty()) matches.add(value);
-                }
-            }
-            JSONArray itemExcludes = item.optJSONArray("exclude_matches");
-            if (itemExcludes != null) {
-                for (int j = 0; j < itemExcludes.length() && excludes.size() < 32; j++) {
-                    String value = itemExcludes.optString(j, "").trim();
-                    if (!value.isEmpty()) excludes.add(value);
-                }
-            }
+            appendPatterns(matches, item.optJSONArray("matches"));
+            appendPatterns(excludes, item.optJSONArray("exclude_matches"));
             String itemRunAt = item.optString("run_at", "document_idle").toLowerCase(Locale.ROOT);
             if (itemRunAt.contains("start")) runAt = "document_start";
             else if ("document_end".equals(itemRunAt)) runAt = "document_end";
-            else if ("document_idle".equals(itemRunAt) && "document_end".equals(runAt)) runAt = "document_end";
-            appendPackFiles(css, js, item.optJSONArray("css"), item.optJSONArray("js"), warnings);
+            appendFiles(css, item.optJSONArray("css"), files, "CSS", warnings);
+            appendFiles(js, item.optJSONArray("js"), files, "JS", warnings);
         }
         if (matches.isEmpty()) matches.add("*://*/*");
-        String id = "webext." + Integer.toHexString(raw.hashCode());
         if (manifest.has("background")) warnings.append(" Background/service worker was not imported.");
         if (manifest.has("action") || manifest.has("browser_action") || manifest.has("page_action")) warnings.append(" Extension toolbar actions/popups were not imported.");
         if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Extension permissions were not granted; Daymark uses only page-local injection.");
+        String id = "webext." + Integer.toHexString(manifest.toString().hashCode());
         return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
     }
 
-    private static void appendPackFiles(StringBuilder css, StringBuilder js, JSONArray cssFiles,
-                                        JSONArray jsFiles, StringBuilder warnings) {
-        if (cssFiles != null) {
-            for (int i = 0; i < cssFiles.length(); i++) {
-                String path = cssFiles.optString(i, "").trim();
-                if (!path.isEmpty()) warnings.append(" CSS file ").append(path).append(" must be bundled as raw CSS to import; file paths are not fetched.");
+    private static void appendPatterns(List<String> target, JSONArray values) {
+        if (values == null) return;
+        for (int i = 0; i < values.length() && target.size() < 32; i++) {
+            String value = values.optString(i, "").trim();
+            if (!value.isEmpty()) target.add(value);
+        }
+    }
+
+    private static void appendFiles(StringBuilder output, JSONArray values, Map<String, String> files,
+                                    String kind, StringBuilder warnings) {
+        if (values == null) return;
+        for (int i = 0; i < values.length(); i++) {
+            String path = values.optString(i, "").trim();
+            if (path.isEmpty()) continue;
+            String code = files == null ? null : files.get(path);
+            if (code == null) {
+                warnings.append(' ').append(kind).append(" file ").append(path).append(" was not found in the imported archive.");
+                continue;
+            }
+            if (output.length() + code.length() > MAX_PACK_CHARS) throw new IllegalArgumentException("Imported extension code is too large.");
+            output.append("\\n/* ").append(safePath(path)).append(" */\\n").append(code).append('\\n');
+        }
+    }
+
+    private static String safePath(String path) { return path.replace("*/", "* /").replace('\\n', ' '); }
+
+    private static String requirePackText(String raw) {
+        if (raw == null || raw.trim().isEmpty()) throw new IllegalArgumentException("Empty extension manifest.");
+        if (raw.length() > MAX_PACK_CHARS) throw new IllegalArgumentException("Extension manifest is too large.");
+        return raw;
+    }
+
+    private static byte[] normalizeZipBytes(byte[] bytes) throws Exception {
+        if (bytes.length >= 4 && bytes[0] == 'P' && bytes[1] == 'K') return bytes;
+        if (bytes.length >= 16 && bytes[0] == 'C' && bytes[1] == 'r' && bytes[2] == '2' && bytes[3] == '4') {
+            int version = (bytes[4] & 0xff) | ((bytes[5] & 0xff) << 8) | ((bytes[6] & 0xff) << 16) | ((bytes[7] & 0xff) << 24);
+            if (version == 3 && bytes.length >= 12) {
+                int header = (bytes[8] & 0xff) | ((bytes[9] & 0xff) << 8) | ((bytes[10] & 0xff) << 16) | ((bytes[11] & 0xff) << 24);
+                if (header >= 0 && header <= bytes.length - 12) return java.util.Arrays.copyOfRange(bytes, 12 + header, bytes.length);
             }
         }
-        if (jsFiles != null) {
-            for (int i = 0; i < jsFiles.length(); i++) {
-                String path = jsFiles.optString(i, "").trim();
-                if (!path.isEmpty()) warnings.append(" JS file ").append(path).append(" must be bundled as raw JS to import; file paths are not fetched.");
-            }
-        }
+        throw new IllegalArgumentException("Unsupported extension package. Choose a ZIP/.xpi-style package or Daymark JSON/userscript.");
     }
 
     static BrowserExtension parseUserScript(String raw) throws Exception {
