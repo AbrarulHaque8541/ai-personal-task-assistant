@@ -3,6 +3,7 @@ package com.cue.daymark;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.app.DownloadManager;
 import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -24,6 +25,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.text.Editable;
 import android.text.InputFilter;
@@ -50,6 +52,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.webkit.CookieManager;
 import android.webkit.WebStorage;
+import android.webkit.URLUtil;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -221,6 +224,7 @@ public final class MainActivity extends Activity {
     private Button browserHomeButton;
     private Button browserHistoryButton;
     private Button browserSettingsButton;
+    private Button browserOverflowButton;
     private Button browserExpandButton;
     private Button browserReaderButton;
     private LinearLayout browserReaderActionRow;
@@ -883,12 +887,15 @@ public final class MainActivity extends Activity {
         browserSettingsButton = compactButton("Settings", false);
         browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
         browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog());
+        browserOverflowButton = compactButton("⋮", false);
+        browserOverflowButton.setContentDescription("Open browser actions menu");
+        browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
         browserExpandButton = compactButton("Expand", false);
         browserExpandButton.setContentDescription("Open the current web page in a full-screen reader");
         browserExpandButton.setEnabled(false);
         browserExpandButton.setOnClickListener(view -> openFullScreenWebReader());
         for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton)) {
+                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton, browserOverflowButton)) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
             params.setMargins(0, 0, dp(5), 0);
@@ -1095,9 +1102,9 @@ public final class MainActivity extends Activity {
                 browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
             }
 
-            @Override public void onDownloadRequested() {
+            @Override public void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 if (!isActivityCallbackCurrent()) return;
-                showToast("Downloads are not supported in this lightweight browser.");
+                queueBrowserDownload(url, userAgent, contentDisposition, mimeType);
             }
 
             @Override public void onRendererGone() {
@@ -1112,6 +1119,141 @@ public final class MainActivity extends Activity {
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         return true;
+    }
+
+    private void showBrowserOverflowMenu(View anchor) {
+        final String[] actions = {
+                "Reload / Stop", "Find in page", "Share page", "Copy page URL",
+                "Open in external browser", "Desktop site", "Downloads", "Browser settings"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Browser actions")
+                .setItems(actions, (dialog, which) -> {
+                    switch (which) {
+                        case 0:
+                            if (browserWebView != null && browserWebView.getUrl() != null) browserWebView.reload();
+                            break;
+                        case 1:
+                            showFindInPageDialog();
+                            break;
+                        case 2:
+                            shareCurrentBrowserUrl();
+                            break;
+                        case 3:
+                            copyCurrentBrowserUrl();
+                            break;
+                        case 4:
+                            openCurrentBrowserExternally();
+                            break;
+                        case 5:
+                            toggleDesktopSite();
+                            break;
+                        case 6:
+                            openDownloadsFolder();
+                            break;
+                        case 7:
+                            showBrowserSettingsDialog();
+                            break;
+                        default:
+                            break;
+                    }
+                }).show();
+    }
+
+    private void showFindInPageDialog() {
+        if (browserWebView == null) return;
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("Find text on this page");
+        new AlertDialog.Builder(this).setTitle("Find in page").setView(input)
+                .setPositiveButton("Find", (d, w) -> {
+                    String query = input.getText() == null ? "" : input.getText().toString().trim();
+                    if (!query.isEmpty()) browserWebView.findAllAsync(query);
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void shareCurrentBrowserUrl() {
+        String url = browserWebView == null ? null : browserWebView.getUrl();
+        if (url == null || !BrowserAddress.isAllowedWebUrl(url)) return;
+        Intent intent = new Intent(Intent.ACTION_SEND);
+        intent.setType("text/plain");
+        intent.putExtra(Intent.EXTRA_TEXT, url);
+        startActivity(Intent.createChooser(intent, "Share page"));
+    }
+
+    private void copyCurrentBrowserUrl() {
+        String url = browserWebView == null ? null : browserWebView.getUrl();
+        if (url == null || !BrowserAddress.isAllowedWebUrl(url)) return;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard == null) return;
+        clipboard.setPrimaryClip(ClipData.newPlainText("Page URL", url));
+        showToast("Page URL copied.");
+    }
+
+    private void openCurrentBrowserExternally() {
+        String url = browserWebView == null ? null : browserWebView.getUrl();
+        if (url == null || !BrowserAddress.isAllowedWebUrl(url)) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception exception) {
+            showToast("No browser is available.");
+        }
+    }
+
+    private void toggleDesktopSite() {
+        if (browserWebView == null) return;
+        android.webkit.WebSettings settings = browserWebView.getSettings();
+        String current = settings.getUserAgentString();
+        boolean desktop = current != null && current.contains("X11");
+        String mobile = android.webkit.WebSettings.getDefaultUserAgent(this);
+        settings.setUserAgentString(desktop ? mobile : mobile.replace("Mobile", "X11").replace("Android", "Linux"));
+        browserWebView.reload();
+    }
+
+    private void openDownloadsFolder() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            startActivity(intent);
+        } catch (Exception exception) {
+            showToast("System file picker is unavailable.");
+        }
+    }
+
+    private void queueBrowserDownload(String url, String userAgent, String contentDisposition, String mimeType) {
+        if (!BrowserAddress.isAllowedWebUrl(url)) {
+            showToast("Download blocked: HTTPS is required.");
+            return;
+        }
+        if (Build.VERSION.SDK_INT < 29 &&
+                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 7811);
+            showToast("Allow storage access, then retry the download.");
+            return;
+        }
+        DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        if (manager == null) {
+            showToast("Downloads are unavailable on this device.");
+            return;
+        }
+        try {
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            String filename = URLUtil.guessFileName(url, contentDisposition, mimeType);
+            request.setTitle(filename);
+            request.setDescription("Daymark browser download");
+            if (mimeType != null && !mimeType.isEmpty()) request.setMimeType(mimeType);
+            if (userAgent != null && !userAgent.isEmpty()) request.addRequestHeader("User-Agent", userAgent);
+            String cookies = CookieManager.getInstance().getCookie(url);
+            if (cookies != null && !cookies.isEmpty()) request.addRequestHeader("Cookie", cookies);
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+            manager.enqueue(request);
+            showToast("Download started. Check Downloads for progress.");
+        } catch (Exception exception) {
+            showToast("Download could not be started.");
+        }
     }
 
     private void syncBrowserButtons() {
