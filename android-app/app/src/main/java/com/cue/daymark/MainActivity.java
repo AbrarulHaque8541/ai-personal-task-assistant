@@ -86,6 +86,7 @@ public final class MainActivity extends Activity {
     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
+    private static final String STATE_WEB_MODE = WebModeState.KEY;
     private static final String PREFERENCES = "daymark.preferences.v1";
     private static final String THEME_KEY = "theme_mode";
     private static final int THEME_SYSTEM = 0;
@@ -236,7 +237,9 @@ public final class MainActivity extends Activity {
         themeMode = Math.max(THEME_SYSTEM, Math.min(THEME_DARK, preferences.getInt(THEME_KEY, THEME_SYSTEM)));
         powerMode = preferences.getBoolean(POWER_MODE_KEY, false);
         textSizeMode = Math.max(0, Math.min(2, preferences.getInt(TEXT_SIZE_KEY, 1)));
-        textScale = textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f;
+        textScale = TextScalePolicy.combined(
+                textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f,
+                getResources().getConfiguration().fontScale);
         highContrast = preferences.getBoolean(HIGH_CONTRAST_KEY, false);
         setTheme(themeResource(themeMode));
         super.onCreate(savedInstanceState);
@@ -268,6 +271,7 @@ public final class MainActivity extends Activity {
                     pendingPortableImportNeedsRepick = true;
                 }
             }
+            webMode = WebModeState.restore(savedInstanceState.getBoolean(STATE_WEB_MODE, false));
         }
         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
         searchEngine = BrowserAddress.SearchEngine.fromName(
@@ -395,6 +399,7 @@ public final class MainActivity extends Activity {
         if (pendingAttachmentTaskId != null) {
             outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
         }
+        outState.putBoolean(STATE_WEB_MODE, webMode);
         PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
         if (pendingSelection != null) {
             try {
@@ -1466,7 +1471,7 @@ public final class MainActivity extends Activity {
                     portableSelectionPreserved = portableBackupManager.reconcileStartupImportUri(
                             loaded, attachmentStore, restoredSelection);
                     try { attachmentStore.cleanupOrphans(attachmentIds(loaded)); }
-                    catch (Exception ignored) { /* Retry orphan cleanup on a later launch. */ }
+                    catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.ORPHAN_CLEANUP_FAILED, exception); }
                     portableBackupManager.cleanupTransientFiles();
                 }
             } catch (Exception exception) {
@@ -3050,7 +3055,10 @@ public final class MainActivity extends Activity {
 
     private boolean deleteCreatedDocument(Uri uri) {
         try { return DocumentsContract.deleteDocument(getContentResolver(), uri); }
-        catch (Exception ignored) { return false; }
+        catch (Exception exception) {
+            StartupDiagnostics.record(StartupDiagnostics.EXPORT_STAGE_CLEANUP_FAILED, exception);
+            return false;
+        }
     }
 
     private void choosePortableImport() {
@@ -3452,7 +3460,9 @@ public final class MainActivity extends Activity {
                 .setTitle("Text size")
                 .setSingleChoiceItems(sizes, textSizeMode, (dialog, selected) -> {
                     textSizeMode = selected;
-                    textScale = selected == 0 ? 0.9f : selected == 2 ? 1.25f : 1.0f;
+                    textScale = TextScalePolicy.combined(
+                            selected == 0 ? 0.9f : selected == 2 ? 1.25f : 1.0f,
+                            getResources().getConfiguration().fontScale);
                     getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
                             .putInt(TEXT_SIZE_KEY, textSizeMode).apply();
                     dialog.dismiss();
@@ -3694,7 +3704,7 @@ public final class MainActivity extends Activity {
             }
             if (failure != null || (result != null && result.status == UpdaterCore.VerificationStatus.CANCELLED)) {
                 try { updaterRecoveryStore.clearIfNoVerifiedArtifact(release); }
-                catch (Exception ignored) { }
+                catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.UPDATER_RECOVERY_CLEAR_FAILED, exception); }
             }
             final UpdaterCore.VerificationResult completedResult = result;
             final UpdaterCore.UpdateException completedFailure = failure;
@@ -3735,7 +3745,7 @@ public final class MainActivity extends Activity {
                     offerUnrecoverableArtifact(orphanedArtifacts.get(0));
                     return true;
                 }
-            } catch (IOException ignored) { }
+            } catch (IOException exception) { StartupDiagnostics.record(StartupDiagnostics.UPDATER_ARTIFACT_LIST_FAILED, exception); }
             return false;
         }
         if (recoveryCheckRunning) return true;
@@ -3804,7 +3814,7 @@ public final class MainActivity extends Activity {
                 offerUnrecoverableArtifact(artifacts.get(0));
                 return;
             }
-        } catch (IOException ignored) { }
+        } catch (IOException exception) { StartupDiagnostics.record(StartupDiagnostics.UPDATER_ARTIFACT_LIST_FAILED, exception); }
         if (recoveryPromptShowing) return;
         recoveryPromptShowing = true;
         AlertDialog dialog = new AlertDialog.Builder(this)
@@ -3981,7 +3991,7 @@ public final class MainActivity extends Activity {
         String version = "unknown";
         try {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (Exception ignored) { }
+        } catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.PACKAGE_INFO_FAILED, exception); }
         String distributionDetails = BuildConfig.UPDATER_ENABLED
                 ? "GitHub sideload distribution: declares INTERNET and ACCESS_NETWORK_STATE for foreground checks and consented, Wi-Fi/mobile-choice downloads. Verified APKs can be saved for manual opening; Daymark does not launch an installer. The protected publisher release gate is closed."
                 : "Play distribution: no network or package-install permissions are declared. Tasks remain local and offline.";
@@ -4012,7 +4022,7 @@ public final class MainActivity extends Activity {
         String version = "unknown";
         try {
             version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (Exception ignored) { }
+        } catch (Exception exception) { StartupDiagnostics.record(StartupDiagnostics.PACKAGE_INFO_FAILED, exception); }
         String report = "Daymark " + version + " | Android API " + Build.VERSION.SDK_INT
                 + " | theme " + themeLabel() + " | tasks " + tasks.size()
                 + " | encrypted storage " + (storageReady ? "ready" : "unavailable");
