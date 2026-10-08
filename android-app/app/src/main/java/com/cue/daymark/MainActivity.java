@@ -2781,7 +2781,33 @@ public final class MainActivity extends Activity {
             dateButton.setText("Choose a date");
         });
         dateActions.addView(clearDate, new LinearLayout.LayoutParams(dp(76), dp(48)));
-        form.addView(dateActions, bottomMargin(dp(14)));
+        form.addView(dateActions, bottomMargin(dp(6)));
+
+        LinearLayout quickDates = new LinearLayout(this);
+        quickDates.setGravity(Gravity.CENTER_VERTICAL);
+        Button todayButton = compactButton("Today", false);
+        Button tomorrowButton = compactButton("Tomorrow", false);
+        Button nextWeekButton = compactButton("Next week", false);
+        todayButton.setOnClickListener(view -> {
+            selectedDate[0] = LocalDate.now().toString();
+            dateButton.setText(dateButtonLabel(selectedDate[0]));
+        });
+        tomorrowButton.setOnClickListener(view -> {
+            selectedDate[0] = LocalDate.now().plusDays(1).toString();
+            dateButton.setText(dateButtonLabel(selectedDate[0]));
+        });
+        nextWeekButton.setOnClickListener(view -> {
+            selectedDate[0] = LocalDate.now().plusWeeks(1).toString();
+            dateButton.setText(dateButtonLabel(selectedDate[0]));
+        });
+        quickDates.addView(todayButton, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        LinearLayout tomorrowParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        tomorrowParams.leftMargin = dp(5);
+        quickDates.addView(tomorrowButton, tomorrowParams);
+        LinearLayout nextWeekParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        nextWeekParams.leftMargin = dp(5);
+        quickDates.addView(nextWeekButton, nextWeekParams);
+        form.addView(quickDates, bottomMargin(dp(14)));
 
         TextView priorityLabel = text("Priority", 13, palette.muted, Typeface.BOLD);
         form.addView(priorityLabel, bottomMargin(dp(4)));
