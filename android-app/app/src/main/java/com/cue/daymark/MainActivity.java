@@ -1145,7 +1145,7 @@ public final class MainActivity extends Activity {
         button.setContentDescription("Open the " + label + " website in Daymark's browser");
         button.setOnClickListener(view -> {
             if (!webMode) return;
-            quickCaptureInput.setText(address);
+            if (browserAddressInput != null) browserAddressInput.setText(address);
             navigateBrowserTo(address);
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -1351,21 +1351,30 @@ public final class MainActivity extends Activity {
             byte[] buffer = new byte[8192];
             int read;
             while ((read = input.read(buffer)) != -1) {
-                if (output.size() + read > 200_000) throw new IOException("Extension is too large.");
+                if (output.size() + read > 5 * 1024 * 1024) {
+                    throw new IOException("Extension archive is too large.");
+                }
                 output.write(buffer, 0, read);
             }
-            String raw = output.toString("UTF-8");
-            ExtensionPackageParser parser = null;
+            byte[] bytes = output.toByteArray();
+            String lowerName = uri.toString().toLowerCase(Locale.ROOT);
             BrowserExtension ext;
-            String name = uri.toString().toLowerCase(Locale.ROOT);
-            if (name.endsWith(".user.js") || raw.contains("==UserScript==")) {
-                ext = ExtensionPackageParser.parseUserScript(raw);
+            if (lowerName.endsWith(".zip") || lowerName.endsWith(".xpi") || lowerName.endsWith(".crx")) {
+                ext = ExtensionPackageParser.parseWebExtensionArchive(bytes);
             } else {
-                ext = ExtensionPackageParser.parseDaymarkJson(raw, false);
+                String raw = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                if (lowerName.endsWith(".user.js") || raw.contains("==UserScript==")) {
+                    ext = ExtensionPackageParser.parseUserScript(raw);
+                } else if (raw.trim().startsWith("{")) {
+                    ext = ExtensionPackageParser.parseDaymarkJson(raw, false);
+                } else {
+                    throw new IllegalArgumentException(
+                            "Unsupported extension. Use .daymark-ext.json, compatible userscript, ZIP/XPI, or CRX3.");
+                }
             }
             new ExtensionStore(this).installUserPack(ext);
             showToast("Extension added: " + ext.name);
-            showExtensionManagerDialog();
+            showBrowserExtensionsManager();
         } catch (Exception exception) {
             showToast("Extension rejected: " + exception.getMessage());
         }
@@ -2108,11 +2117,12 @@ public final class MainActivity extends Activity {
         if (sharedComposer != null) sharedComposer.setVisibility(webMode ? View.GONE : View.VISIBLE);
         taskScreen.setVisibility(webMode ? View.GONE : View.VISIBLE);
         browserScreen.setVisibility(webMode ? View.VISIBLE : View.GONE);
-        sharedComposer.setVisibility(webMode ? View.GONE : View.VISIBLE);
+        // Browser mode owns its own address bar and controls; never stack Task UI above it.
+        sharedComposer.setVisibility(View.GONE);
         appTopBar.setVisibility(webMode ? View.GONE : View.VISIBLE);
-        taskActions.setVisibility(View.VISIBLE);
+        taskActions.setVisibility(webMode ? View.GONE : View.VISIBLE);
         webActions.setVisibility(View.GONE);
-        pathButton.setVisibility(View.VISIBLE);
+        pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
         quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
         quickCaptureInput.setContentDescription(webMode
                 ? "Search the web or enter an HTTPS web address. Browser network access is Offline by default; this is sent only when Online is enabled and you tap Go."
