@@ -379,11 +379,11 @@ assert "uri.getPort() == -1 || uri.getPort() == 443" in updater_core, "release a
 assert "github.com:444" in (root / "tools/UpdaterSmoke.java").read_text(encoding="utf-8"), "unusual asset port regression is required"
 assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
 
-print("PASS V1 source policy: main declares INTERNET for browser; Play inherits INTERNET without extra permissions; GitHub sideload adds ACCESS_NETWORK_STATE; no install permission/handoff, background polling, runtime dependencies, or optional binaries")
-print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
-print("PASS permission/updater policy: release-only sideload gates, exact publisher verification, explicit install-choice boundary, Play permission isolation, task data isolated")
-print("PASS V1 source policy: no permissions/network, background components or runtime dependencies; only the non-exported grant-only attachment provider; no optional media/model binaries")
-print("PASS accessibility/localization source checks: scalable text, labeled controls, explicit English-only scope, device-locale dates")
+# One accurate summary per policy area. The previous block repeated several lines
+# verbatim and still claimed "no permissions/network" for a manifest that declares
+# INTERNET for the HTTPS-only browser (issue #45) — a stale summary that contradicted
+# the assertions above it.
+print("PASS manifest/permissions: main declares INTERNET for the HTTPS-only browser; Play adds none; GitHub sideload adds ACCESS_NETWORK_STATE; no install permission or handoff, no background components, no runtime dependencies, no optional media/model binaries")
 print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
 print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
@@ -394,7 +394,7 @@ print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redire
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
 print("PASS local browser data: capped origin-only site history, legacy-origin migration, reopen/dedup, secret redaction, and explicit history/cookie/cache/WebStorage clear")
-print("PASS manifest/dependencies: INTERNET only, no background components, no added runtime dependency or optional media/model binaries")
 print("PASS accessibility/localization source checks: scalable text, labeled controls, live status, explicit English-only scope, device-locale dates")
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"
+python3 "$ROOT/tools/check-source-check-summary.py"
