@@ -37,8 +37,7 @@ final class BrowserAddress {
         CLAUDE("Claude", "https://claude.ai/new?q="),
         COPILOT("Microsoft Copilot", "https://copilot.microsoft.com/?q="),
         GROK("Grok", "https://grok.com/?q="),
-        DEEPSEEK("DeepSeek", "https
-://chat.deepseek.com/?q="),
+        DEEPSEEK("DeepSeek", "https://chat.deepseek.com/?q="),
         PHIND("Phind", "https://www.phind.com/search?q="),
         KIMI("Kimi", "https://www.kimi.com/?q="),
         YOU_COM_AI("You.com AI", "https://you.com/search?q="),
@@ -84,8 +83,7 @@ final class BrowserAddress {
     }
 
     static String resolveInput(String input, SearchEngine engine) {
-        String value = input == null ? "" :
- input.trim();
+        String value = input == null ? "" : input.trim();
         if (value.isEmpty()) throw new IllegalArgumentException("Type a search or web address first.");
         if (value.length() > MAX_INPUT_LENGTH) {
             throw new IllegalArgumentException("Web searches and addresses can be at most 2048 characters.");
@@ -127,8 +125,7 @@ final class BrowserAddress {
         }
     }
 
-    stat
-ic boolean isLikelyWebAddress(String value) {
+    static boolean isLikelyWebAddress(String value) {
         if (value == null) return false;
         String candidate = value.trim();
         return SCHEME.matcher(candidate).find() || looksLikeBareDomain(candidate);
