@@ -49,8 +49,7 @@ android {
                     throw GradleException(
                         "Release signing configuration error: Missing required environment variable(s): " +
                         missing.joinToString(", ") +
-                        ". All four variables (KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) 
-must be set."
+                        ". All four variables (KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) must be set."
                     )
                 }
 
@@ -111,8 +110,7 @@ gradle.taskGraph.whenReady {
         if (System.getenv("KEY_ALIAS").isNullOrBlank()) missing.add("KEY_ALIAS")
         if (System.getenv("KEY_PASSWORD").isNullOrBlank()) missing.add("KEY_PASSWORD")
 
-        if (missing.isNotEmpty(
-)) {
+        if (missing.isNotEmpty()) {
             throw GradleException(
                 "Release build rejected: Missing required signing environment variable(s): " +
                 missing.joinToString(", ") +
