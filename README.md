@@ -34,6 +34,7 @@ These are source-level capability descriptions. See [Android app documentation](
 - Imported scripts can read or modify matching website page content. Import only code you trust and review the confirmation before adding it.
 - Browser extensions cannot use privileged Chrome/Firefox APIs, full network interception, or Tampermonkey `GM_*` storage.
 - No cloud LLM API, local LLM inference, Telegram bot, voice capture, autonomous background agent, root access, or Termux shell bridge is currently implemented.
+- **Updater metadata limitation at this audit:** the published v1.0.4 release has an empty notes body, so it does not satisfy Daymark's in-app updater metadata parser. PR #181 fixed the production workflow for future releases; until v1.0.5 is published, use the published release page above rather than assuming the in-app updater can validate v1.0.4.
 - Host tests and CI do not prove real-device behavior. Android Keystore, SAF/document providers, TalkBack, process death, physical installation/update, and performance still require device checks.
 - The current Gradle target is API 35. Google Play submissions from 31 August 2026 require API 36 or higher; Daymark has not yet completed an API 36 migration/edge-to-edge qualification. Personal sideload use is a separate distribution path.
 

@@ -22,9 +22,9 @@ PR #181 was merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`; main CI run #3
 - Fixed the release-contract mismatch: `GitHubReleaseClient` rejects a stable release without a `daymark-updater-v1` metadata block, but the production workflow previously generated notes without it. The workflow now derives min SDK from the built APK and includes package/version/min-SDK/signer metadata. The current v1.0.4 release body is empty, so the next workflow-published release should contain the required block.
 - Refreshed the root README, agent rules, release guidance, project plan and audit notes.
 
-## Current follow-up (PR #182)
+## Reader Mode merged; release candidate state
 
-PR #182 adds a real local text-only Reader Mode, separate from the live full-screen WebView. It extracts bounded text from a cloned DOM, renders native selectable text, provides explicit copy, and adds source guards. Its CI and review must pass before merge.
+PR #182 added a real local text-only Reader Mode, separate from the live full-screen WebView. It uses a bounded DOM tree walk, renders native selectable text, provides explicit copy, and adds source guards. It was merged at `b9279e26f35b72db00c124955caee8775cb0cf31`; main CI run #345 passed signed candidate APK/AAB generation and release artifact metadata verification. No exact `v1.0.5` tag or public v1.0.5 release exists yet. Physical-device QA remains outstanding.
 
 ## Evidence boundaries
 
