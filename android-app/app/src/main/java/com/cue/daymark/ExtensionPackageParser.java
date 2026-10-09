@@ -90,9 +90,9 @@ final class ExtensionPackageParser {
                     throw new IllegalArgumentException("Extension archive contains too many entries.");
                 }
                 String originalPath = entry.getName();
-                String path = originalPath == null ? "" : originalPath.replace('\\\\', '/');
+                String path = originalPath == null ? "" : originalPath.replace('\\', '/');
                 boolean safePath = !entry.isDirectory() && !path.startsWith("/")
-                        && !path.contains("../") && originalPath != null && originalPath.indexOf('\\\\') < 0;
+                        && !path.contains("../") && originalPath != null && originalPath.indexOf('\\') < 0;
                 boolean importText = safePath && (path.equals("manifest.json")
                         || path.endsWith(".js") || path.endsWith(".css"));
                 ByteArrayOutputStream out = importText ? new ByteArrayOutputStream() : null;
