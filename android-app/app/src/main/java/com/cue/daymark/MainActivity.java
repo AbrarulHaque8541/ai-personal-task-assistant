@@ -2093,7 +2093,7 @@ public final class MainActivity extends Activity {
                 + "['play','playing','loadedmetadata','emptied'].forEach(function(n){v.addEventListener(n,function(){place(v);});});"
                 + "v.addEventListener('pause',function(){if(active===v)button.style.display='none';});"
                 + "v.addEventListener('ended',function(){if(active===v)button.style.display='none';});}"
-                + "function scan(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){attach(vs[i]);if(!vs[i].paused&&direct(vs[i]))place(vs[i]);}}"
+                + "function scan(){if(!button.isConnected)document.documentElement.appendChild(button);var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){attach(vs[i]);if(!vs[i].paused&&direct(vs[i]))place(vs[i]);}}"
                 + "button.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var u=direct(active);"
                 + "if(u)window.location.href='daymark-media-download://request?url='+encodeURIComponent(u);else button.style.display='none';});"
                 + "addEventListener('scroll',function(){if(active)place(active);},true);addEventListener('resize',function(){if(active)place(active);});"
