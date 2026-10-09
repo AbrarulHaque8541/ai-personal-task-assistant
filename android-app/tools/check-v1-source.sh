@@ -406,7 +406,7 @@ saf_saver = (updater_dir / "SafApkSaver.java").read_text(encoding="utf-8")
 release_test = (root / "tools/GitHubTransportSmoke.java").read_text(encoding="utf-8")
 assert 'https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest' in release_client, "updater endpoint must remain fixed"
 assert release_client.count("https://") == 1, "release metadata client must not add other service endpoints"
-assert '"Check now"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
+assert '"Check for updates"' in activity and "checkForUpdates(false)" in activity and "UpdaterCore.shouldCheck" in activity, "updater checks must remain foreground/manual and rate limited"
 assert 'create("githubSideload")' in build and 'create("play")' in build, "explicit sideload and Play product flavors are required"
 assert '"UPDATER_ENABLED", "true"' in build and '"UPDATER_ENABLED", "false"' in build, "only sideload may include the updater"
 assert "UPDATER_ENABLED = true" in publisher_config, "publisher updater gate must be explicitly enabled only in the intended source"
