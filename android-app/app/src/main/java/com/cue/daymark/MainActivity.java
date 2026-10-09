@@ -1582,7 +1582,10 @@ public final class MainActivity extends Activity {
     }
 
     private void startNewBrowserTab() {
-        if (browserWebView != null) browserWebView.setVisibility(View.GONE);
+        if (browserWebView != null) {
+            browserWebView.onPause();
+            browserWebView.setVisibility(View.GONE);
+        }
         browserWebView = null;
         if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
@@ -1595,8 +1598,10 @@ public final class MainActivity extends Activity {
 
     private void switchBrowserTab(int index) {
         if (index < 0 || index >= browserTabs.size()) return;
+        if (browserWebView != null && browserWebView != browserTabs.get(index)) browserWebView.onPause();
         for (DaymarkWebView tab : browserTabs) tab.setVisibility(View.GONE);
         browserWebView = browserTabs.get(index);
+        browserWebView.onResume();
         browserWebView.setVisibility(View.VISIBLE);
         if (browserHomeView != null) browserHomeView.setVisibility(View.GONE);
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
@@ -2798,10 +2803,18 @@ public final class MainActivity extends Activity {
         }
         if (!webMode) {
             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
-        } else if (browserWebView != null) {
-            discardBrowserWebView();
+            if (browserWebView != null) {
+                browserWebView.onPause();
+                browserWebView.setVisibility(View.GONE);
+                browserWebView = null;
+            }
+            for (DaymarkWebView tab : browserTabs) tab.setVisibility(View.GONE);
+            updateBrowserTabsButton();
         }
         webMode = enabled;
+        if (enabled && browserWebView == null && !browserTabs.isEmpty()) {
+            switchBrowserTab(browserTabs.size() - 1);
+        }
         quickCaptureInput.setText(enabled ? "" : taskDraft);
         quickCaptureInput.setError(null);
         if (enabled && browserStatus != null) {
