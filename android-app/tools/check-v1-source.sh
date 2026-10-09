@@ -274,6 +274,12 @@ assert "AiSiteCatalog.entries()" in activity, \
 ai_catalog = (main / "java/com/cue/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
 assert "ChatGPT" in ai_catalog and "Claude" in ai_catalog and "Gemini" in ai_catalog and "Perplexity" in ai_catalog
 assert "https://chatgpt.com/" in ai_catalog and "https://claude.ai/" in ai_catalog
+assert "new Entry(\"Mistral Le Chat\"" in ai_catalog and "new Entry(\"Duck.ai\"" in ai_catalog
+assert "new Entry(\"Qwen Chat\"" in ai_catalog and "new Entry(\"Character AI\"" in ai_catalog
+assert "browserSiteButton(AiSiteCatalog.Entry entry)" in activity, "AI shortcuts must use the shared catalog entries"
+assert "BrowserAddress.isLikelyWebAddress(value)" in activity, "provider taps must not mistake a typed URL for a question"
+assert "entry.searchEngine.searchUrl(value)" in activity, "provider tap must submit the current query without a separate Go tap"
+assert "static boolean isLikelyWebAddress(String value)" in address, "provider tap must distinguish a query from a web address"
 assert "BROWSER_HISTORY_KEY" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity
 clear = re.search(r"private void clearBrowserData\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert clear, "explicit browser data clear action is required"

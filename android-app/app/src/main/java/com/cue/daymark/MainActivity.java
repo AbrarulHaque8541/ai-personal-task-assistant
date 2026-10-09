@@ -947,8 +947,7 @@ public final class MainActivity extends Activity {
         searchEngineSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (position < 0 || position >= BrowserAddress.SearchEngine.values().length) return;
-                searchEngine = BrowserAddress.SearchEngine.values()[position];
-                browserPreferences.edit().putString(SEARCH_ENGINE_KEY, searchEngine.name()).apply();
+                selectSearchEngine(BrowserAddress.SearchEngine.values()[position]);
             }
 
             @Override public void onNothingSelected(AdapterView<?> parent) { }
@@ -1034,8 +1033,7 @@ public final class MainActivity extends Activity {
         browserSearchEngineSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (position < 0 || position >= BrowserAddress.SearchEngine.values().length) return;
-                searchEngine = BrowserAddress.SearchEngine.values()[position];
-                browserPreferences.edit().putString(SEARCH_ENGINE_KEY, searchEngine.name()).apply();
+                selectSearchEngine(BrowserAddress.SearchEngine.values()[position]);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
@@ -1158,7 +1156,7 @@ public final class MainActivity extends Activity {
         // shortcuts, not API integrations; the catalog keeps every label/URL pair in
         // one place so the row and the catalog cannot drift apart.
         for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
-            sites.addView(browserSiteButton(entry.label, entry.httpsUrl));
+            sites.addView(browserSiteButton(entry));
         }
         sitesScroll.addView(sites);
         panel.addView(sitesScroll, bottomMargin(dp(3)));
@@ -1190,12 +1188,44 @@ public final class MainActivity extends Activity {
         return panel;
     }
 
-    private Button browserSiteButton(String label, String address) {
-        Button button = compactButton(label, false);
-        button.setContentDescription("Open the " + label + " website in Daymark's browser");
+    private void selectSearchEngine(BrowserAddress.SearchEngine engine) {
+        if (engine == null) return;
+        searchEngine = engine;
+        browserPreferences.edit().putString(SEARCH_ENGINE_KEY, searchEngine.name()).apply();
+        int position = java.util.Arrays.asList(BrowserAddress.SearchEngine.values()).indexOf(engine);
+        if (position >= 0) {
+            if (searchEngineSpinner != null && searchEngineSpinner.getSelectedItemPosition() != position) {
+                searchEngineSpinner.setSelection(position);
+            }
+            if (browserSearchEngineSpinner != null && browserSearchEngineSpinner.getSelectedItemPosition() != position) {
+                browserSearchEngineSpinner.setSelection(position);
+            }
+        }
+    }
+
+    private Button browserSiteButton(AiSiteCatalog.Entry entry) {
+        Button button = compactButton(entry.label, false);
+        button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
-            if (browserAddressInput != null) browserAddressInput.setText(address);
+            if (!browserNetworkPolicy.allowsRemoteLoads()) {
+                showBrowserOfflineStatus();
+                return;
+            }
+            String value = browserAddressInput == null || browserAddressInput.getText() == null
+                    ? "" : browserAddressInput.getText().toString().trim();
+            selectSearchEngine(entry.searchEngine);
+            String address = entry.httpsUrl;
+            if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
+                try {
+                    address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
+                } catch (IllegalArgumentException exception) {
+                    if (browserAddressInput != null) browserAddressInput.setError(exception.getMessage());
+                    browserStatus.setText("Nothing was opened. Check the question or provider address.");
+                    return;
+                }
+            }
+            if (browserAddressInput != null) browserAddressInput.setError(null);
             navigateBrowserTo(address);
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(

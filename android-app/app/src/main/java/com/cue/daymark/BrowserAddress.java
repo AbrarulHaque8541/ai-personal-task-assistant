@@ -42,7 +42,16 @@ final class BrowserAddress {
         KIMI("Kimi", "https://www.kimi.com/?q="),
         YOU_COM_AI("You.com AI", "https://you.com/search?q="),
         WOLFRAM_ALPHA("WolframAlpha", "https://www.wolframalpha.com/input/?i="),
-        WIKIPEDIA("Wikipedia", "https://en.wikipedia.org/wiki/Special:Search?search=");
+        WIKIPEDIA("Wikipedia", "https://en.wikipedia.org/wiki/Special:Search?search="),
+        ANDI("Andi Search", "https://andisearch.com/?query="),
+        EXA("Exa Search", "https://exa.ai/search?q="),
+        META_AI("Meta AI", "https://www.meta.ai/?q="),
+        MISTRAL("Mistral Le Chat", "https://chat.mistral.ai/chat/?q="),
+        POE("Poe", "https://poe.com/?q="),
+        HUGGINGCHAT("HuggingChat", "https://huggingface.co/chat/?q="),
+        DUCK_AI("Duck.ai", "https://duck.ai/?q="),
+        QWEN_CHAT("Qwen Chat", "https://chat.qwen.ai/?q="),
+        CHARACTER_AI("Character AI", "https://character.ai/?q=");
 
         final String label;
         private final String searchPrefix;
@@ -110,6 +119,12 @@ final class BrowserAddress {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Enter a valid HTTPS web address.");
         }
+    }
+
+    static boolean isLikelyWebAddress(String value) {
+        if (value == null) return false;
+        String candidate = value.trim();
+        return SCHEME.matcher(candidate).find() || looksLikeBareDomain(candidate);
     }
 
     static boolean isAllowedWebUrl(String value) {
