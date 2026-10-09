@@ -100,7 +100,8 @@ At the 2026-10-09 follow-up:
 - Source candidate: **v1.0.5 / versionCode 6**, not yet published; exact tag `v1.0.5` still needs the production workflow.
 - PR #181 (updater metadata, extension trust confirmation, More UI, and network-image blocking) was merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`.
 - PR #182 added local text-only Reader Mode and was merged at `b9279e26f35b72db00c124955caee8775cb0cf31`.
-- Main CI run #345 passed on `b9279e26f35b72db00c124955caee8775cb0cf31`: host/source checks, protected signing-secret validation, signed candidate APK/AAB generation, and release artifact metadata verification passed.
+- PR #184 added Reader Mode font-size, sans/serif, and light/sepia/dark controls; it was merged at `e3033ef74e370bd5b4c06b1b20c1fcc927386fb6`.
+- Main CI run #351 passed on `e3033ef74e370bd5b4c06b1b20c1fcc927386fb6`: host/source checks, protected signing-secret validation, signed candidate APK/AAB generation, and release artifact metadata verification passed.
 - The exact tag `v1.0.5` is still not created; the signed build is a candidate, not a published release.
 - Physical-device install/update, TalkBack, real SAF provider behavior, Reader Mode quality, and performance are not proven by CI.
 - Target SDK is 35, so Play API 36 migration/qualification is still outstanding.
