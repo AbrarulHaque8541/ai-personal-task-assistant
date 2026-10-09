@@ -1784,7 +1784,7 @@ public final class MainActivity extends Activity {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
                 "Open in external browser", "Desktop site", "Downloads", "Extensions",
-                "Browser settings", "Turn off online browsing"
+                "Browser settings", "Site info", "Turn off online browsing"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -1821,6 +1821,9 @@ public final class MainActivity extends Activity {
                             showBrowserSettingsDialog();
                             break;
                         case 9:
+                            showBrowserSiteInfoDialog();
+                            break;
+                        case 10:
                             if (browserNetworkPolicy.isOnlineEnabled()) {
                                 setBrowserOnlineEnabled(false);
                                 showToast("Online browsing is off. Pages and tabs were closed.");
@@ -2289,6 +2292,41 @@ public final class MainActivity extends Activity {
         } catch (Exception exception) {
             showToast("No browser is available.");
         }
+    }
+
+    private void showBrowserSiteInfoDialog() {
+        DaymarkWebView target = browserWebView;
+        String url = target == null ? null : target.getUrl();
+        if (target == null || !BrowserAddress.isAllowedWebUrl(url)) {
+            showToast("Open an HTTPS page before viewing site information.");
+            return;
+        }
+
+        Uri uri = Uri.parse(url);
+        String host = uri.getHost();
+        StringBuilder details = new StringBuilder();
+        details.append("Address: ").append(url)
+                .append("\n\nConnection: HTTPS")
+                .append("\nHost: ").append(host == null ? "Unavailable" : host)
+                .append("\n\nDaymark blocks HTTP navigation/downgrades and does not bypass SSL certificate errors.")
+                .append("\n\nHTTPS does not guarantee that page content is safe. This summary is not a phishing, reputation, or third-party request audit.");
+
+        android.net.http.SslCertificate certificate = target.getCertificate();
+        if (certificate != null) {
+            android.net.http.SslCertificate.DName subject = certificate.getIssuedTo();
+            android.net.http.SslCertificate.DName issuer = certificate.getIssuedBy();
+            details.append("\n\nCertificate metadata supplied by Android WebView (not a full safety assessment):")
+                    .append("\nSubject: ").append(subject == null ? "Unavailable" : subject.getDName())
+                    .append("\nIssuer: ").append(issuer == null ? "Unavailable" : issuer.getDName());
+        } else {
+            details.append("\n\nCertificate metadata is unavailable for this page.");
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Site information")
+                .setMessage(details.toString())
+                .setPositiveButton("Done", null)
+                .show();
     }
 
     private void toggleDesktopSite() {
