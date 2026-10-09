@@ -2,7 +2,7 @@
 
 ## Scope and honesty
 
-This audit was prepared against the live repository after main CI run #314. It is a source/repository/official-documentation review plus automated CI evidence; it is **not** a claim of exhaustive testing on a physical phone. Current main at the start of this branch was `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. This branch adds a modernized More menu and a trust-confirmation gate for imported extension code; CI must validate those changes before merge.
+This audit began against main `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. PR #181 is now merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`; main CI run #331 passed host/source checks, signed candidate build, and signer verification. PR #182 is the current Reader Mode follow-up. This is a source/repository/official-documentation review plus automated CI evidence; it is **not** a claim of exhaustive testing on a physical phone.
 
 ## Verified baseline
 
@@ -21,19 +21,19 @@ This audit was prepared against the live repository after main CI run #314. It i
 2. **Physical phone QA remains mandatory.** Test first install, in-place update over the same production signer, task creation/edit/delete/undo, encrypted backup export/import, attachments, browser Back/tabs/downloads, extension enable/disable, More menu, Reader Mode extraction/copy, image blocking, keyboard/insets, and TalkBack. Record device/API/WebView version and results.
 3. **Android target API:** Gradle currently targets API 35. Google's current Play requirement is API 36+ for ordinary new apps and updates submitted from 2026-08-31 ([official policy](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en-IN)). Personal sideload use is a separate path, but do not claim Play-ready until API 36 migration and edge-to-edge/predictive-Back qualification are complete. Android's [API 36 behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16) call out edge-to-edge and predictive Back changes.
 
-### P1 — UX and extension trust (branch work)
+### Merged in PR #181 — UX, extension trust, release metadata, and image blocking
 
-1. The More screen was an old-style flat `AlertDialog.setItems` list. This branch replaces it with grouped settings rows, explanatory subtitles, clearer labels, and a restrained entrance transition.
-2. The extension import path previously called `installUserPack` immediately after parsing. This branch adds a pre-install review showing source/type, CSS/JS size, run timing, match scope, parser warnings, and an explicit **Trust & add** confirmation warning about logged-in page content and script network effects.
-3. Adds an opt-in **Block network images (save data)** preference using Android `WebSettings.setBlockNetworkImage`, persisted locally and applied to current/new WebViews. This is a real native feature, but not a full ad/tracker blocker; already loaded images need a reload to disappear.
+1. The More screen was an old-style flat `AlertDialog.setItems` list. PR #181 replaced it with grouped settings rows, explanatory subtitles, clearer labels, and a restrained entrance transition.
+2. The extension import path previously called `installUserPack` immediately after parsing. PR #181 added a pre-install review showing source/type, CSS/JS size, run timing, match scope, parser warnings, and an explicit **Trust & add** confirmation warning about logged-in page content and script network effects.
+3. PR #181 added an opt-in **Block network images (save data)** preference using Android `WebSettings.setBlockNetworkImage`, persisted locally and applied to current/new WebViews. This is a real native feature, but not a full ad/tracker blocker; already loaded images need a reload to disappear.
 4. Regression coverage must verify the import flow always routes through the confirmation method and does not persist an imported pack directly. The dialog is a user-facing risk gate, not a sandbox or static security proof; scripts remain untrusted.
 
 ### Browser feature research and implementation decision
 
 - Mozilla's current Firefox for Android feature list advertises Reader Mode, supported extensions, and enhanced tracking protection ([Firefox on Google Play](https://play.google.com/store/apps/details?id=org.mozilla.firefox), [Firefox menu features](https://support.mozilla.org/en-US/kb/explore-firefox-android-menu)). Brave documents engine-integrated Shields for ad/tracker/fingerprinting protection ([Brave Shields](https://brave.com/shields/)).
 - Daymark embeds Android System WebView rather than owning a Chromium/Gecko browser engine. Reproducing Firefox's extension system or Brave's network-level filtering is not a safe small patch; the app's current extension runtime is intentionally page-local and cannot intercept every network request.
-- This branch implements the practical native feature available in WebView: opt-in network-image blocking via `WebSettings.setBlockNetworkImage`. It can reduce image traffic but is not an ad blocker, tracker blocker, or guarantee that every image is removed without reloading.
-- The Reader Mode follow-up branch adds a true local text-only view: user-triggered DOM extraction from article/main/body, removal of obvious navigation/form/script elements from a cloned DOM, a 60,000-character bound, native selectable text, and explicit Copy. The extracted content is never rendered as HTML and the original page DOM is not modified. The full-screen live-page view is a separate action. Article heuristics can still be poor on dynamic/non-article pages; real-device accessibility, large-text, memory, and extraction-quality tests remain required.
+- PR #181 implements the practical native feature available in WebView: opt-in network-image blocking via `WebSettings.setBlockNetworkImage`. It can reduce image traffic but is not an ad blocker, tracker blocker, or guarantee that every image is removed without reloading.
+- PR #182 adds a true local text-only view: user-triggered DOM extraction from article/main/body, removal of obvious navigation/form/script elements from a cloned DOM, a 60,000-character bound, native selectable text, and explicit Copy. The extracted content is never rendered as HTML and the original page DOM is not modified. The full-screen live-page view is a separate action. Article heuristics can still be poor on dynamic/non-article pages; real-device accessibility, large-text, memory, and extraction-quality tests remain required.
 
 ### P1 — Browser security and capability honesty
 
