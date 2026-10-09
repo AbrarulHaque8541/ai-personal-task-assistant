@@ -332,13 +332,10 @@ public final class MainActivity extends Activity {
     }
 
     private boolean readBrowserOnlinePreference() {
-        try {
-            return browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY,
-                    BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED);
-        } catch (ClassCastException invalidPreference) {
-            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
-            return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
-        }
+        // v1.0.5 removes the confusing Online/Offline switch. Migrate older installs
+        // away from the v1.0.4 opt-in gate so the browser does not silently stay blocked.
+        browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
+        return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
     }
 
     private boolean readSafeBrowsingPreference() {
