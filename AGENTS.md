@@ -8,6 +8,10 @@ Daymark is a personal, local-first Android task assistant with an embedded HTTPS
 
 **Do the work, not just a plan:** inspect the live default branch, reproduce claims, research official docs when platform behavior matters, implement focused changes, add regression coverage, run available checks, and open a PR. Do not stop at a recommendation when repository access permits implementation.
 
+## 1A. Current release handoff (2026-10-09)
+
+Before making release-candidate changes, read [`RELEASE_HANDOFF_V1.0.5.md`](RELEASE_HANDOFF_V1.0.5.md) and the linked [master handoff issue #186](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/186). It inventories merged PRs, distinguishes closed/unmerged drafts, lists device-only acceptance that CI cannot prove, and links current follow-up issues. Reconcile against live `main` and CI before acting; never treat the handoff snapshot as a claim that v1.0.5 has been published.
+
 ## 2. Non-negotiable product invariants
 
 1. Keep `applicationId = com.cue.daymark`; never change the package identity.
