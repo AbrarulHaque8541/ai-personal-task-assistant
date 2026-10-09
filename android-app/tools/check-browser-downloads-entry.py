@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
-"""Source regression checks for the browser Downloads destination (issue #213)."""
+"""Source regression checks for the in-app browser Downloads destination (issues #211/#213)."""
 from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
 activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
-method = activity.split("private void openDownloadsFolder()", 1)[1].split(
-    "private void queueBrowserDownload", 1
+menu = activity.split("private void showBrowserOverflowMenu", 1)[1].split(
+    "private void importExtensionFromUri", 1
+)[0]
+method = activity.split("private void showBrowserDownloadsDialog()", 1)[1].split(
+    "private String browserDownloadStatusLabel", 1
 )[0]
 
-assert "DownloadManager.ACTION_VIEW_DOWNLOADS" in method, \
-    "the Downloads menu should open the system download list first"
-assert "Intent.ACTION_OPEN_DOCUMENT" in method, \
-    "a document picker may only be used as an explicit fallback"
-assert method.index("DownloadManager.ACTION_VIEW_DOWNLOADS") < method.index("Intent.ACTION_OPEN_DOCUMENT"), \
-    "the file picker must not replace the primary Downloads destination"
-assert "Use Files to locate downloaded items." in method, \
-    "fallback behavior must be disclosed"
-assert "No Downloads app or file picker is available on this device." in method, \
-    "missing system handlers must produce a useful message"
-print("PASS browser Downloads destination: system list first, explicit picker fallback, actionable errors")
+assert 'showBrowserDownloadsDialog();' in menu, \
+    "the browser Downloads menu must open the in-app status list"
+assert "private void openDownloadsFolder()" not in activity, \
+    "the obsolete generic/system downloads destination must not shadow the in-app list"
+assert "manager.query(new DownloadManager.Query())" in method, \
+    "the in-app list must query Android DownloadManager"
+assert "No Daymark browser downloads are available yet." in method, \
+    "the list must explain the empty state"
+assert 'setNeutralButton("Refresh"' in method, \
+    "the list must expose a refresh action"
+assert "DownloadManager.ACTION_VIEW_DOWNLOADS" not in method, \
+    "the status list must not silently hand off to another screen"
+print("PASS browser Downloads destination: in-app DownloadManager list, explicit empty state and refresh")
 
 # Work by: ChatGPT
 # Model: GPT-6
 # Tooling: GitHub MCP tools
-# Timestamp (UTC): 2026-10-09T17:31:45.598Z
+# Timestamp (UTC): 2026-10-09T17:44:30Z
