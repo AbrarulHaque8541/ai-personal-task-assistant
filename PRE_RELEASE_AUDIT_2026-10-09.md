@@ -25,8 +25,15 @@ This audit was prepared against the live repository after main CI run #314. It i
 
 1. The More screen was an old-style flat `AlertDialog.setItems` list. This branch replaces it with grouped settings rows, explanatory subtitles, clearer labels, and a restrained entrance transition.
 2. The extension import path previously called `installUserPack` immediately after parsing. This branch adds a pre-install review showing source/type, CSS/JS size, run timing, match scope, parser warnings, and an explicit **Trust & add** confirmation warning about logged-in page content and script network effects.
-4. Adds an opt-in **Block network images (save data)** preference using Android `WebSettings.setBlockNetworkImage`, persisted locally and applied to current/new WebViews. This is a real native feature, but not a full ad/tracker blocker; already loaded images need a reload to disappear.
-3. Regression coverage must verify the import flow always routes through the confirmation method and does not persist an imported pack directly. The dialog is a user-facing risk gate, not a sandbox or static security proof; scripts remain untrusted.
+3. Adds an opt-in **Block network images (save data)** preference using Android `WebSettings.setBlockNetworkImage`, persisted locally and applied to current/new WebViews. This is a real native feature, but not a full ad/tracker blocker; already loaded images need a reload to disappear.
+4. Regression coverage must verify the import flow always routes through the confirmation method and does not persist an imported pack directly. The dialog is a user-facing risk gate, not a sandbox or static security proof; scripts remain untrusted.
+
+### Browser feature research and implementation decision
+
+- Mozilla's current Firefox for Android feature list advertises Reader Mode, supported extensions, and enhanced tracking protection ([Firefox on Google Play](https://play.google.com/store/apps/details?id=org.mozilla.firefox), [Firefox menu features](https://support.mozilla.org/en-US/kb/explore-firefox-android-menu)). Brave documents engine-integrated Shields for ad/tracker/fingerprinting protection ([Brave Shields](https://brave.com/shields/)).
+- Daymark embeds Android System WebView rather than owning a Chromium/Gecko browser engine. Reproducing Firefox's extension system or Brave's network-level filtering is not a safe small patch; the app's current extension runtime is intentionally page-local and cannot intercept every network request.
+- This branch implements the practical native feature available in WebView: opt-in network-image blocking via `WebSettings.setBlockNetworkImage`. It can reduce image traffic but is not an ad blocker, tracker blocker, or guarantee that every image is removed without reloading.
+- A true Reader Mode is still missing. The existing full-screen view only enlarges the live website; it does not extract article content. A future reader view can be built from user-triggered DOM extraction, but it needs careful handling of long pages, dynamic content, article heuristics, page errors, accessibility/font scaling, and safe text rendering. This branch renames the misleading full-screen label instead of pretending that feature already exists.
 
 ### P1 — Browser security and capability honesty
 
