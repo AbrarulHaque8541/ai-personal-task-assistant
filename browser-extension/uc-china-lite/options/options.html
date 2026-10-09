@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <h1>UC China Lite — Options</h1>
+
+  <section>
+    <h2>AI Assistant</h2>
+    <label>API endpoint (OpenAI-compatible)
+      <input id="api-url" type="url" placeholder="https://api.openai.com/v1/chat/completions">
+    </label>
+    <label>API origin for permission (e.g. https://api.openai.com)
+      <input id="api-origin" type="text">
+    </label>
+    <label>API key
+      <input id="api-key" type="password" autocomplete="off">
+    </label>
+    <label>Model
+      <input id="model" type="text" placeholder="gpt-4o-mini">
+    </label>
+  </section>
+
+  <section>
+    <h2>Translate</h2>
+    <label>Target language code
+      <input id="language" type="text" placeholder="hi">
+    </label>
+  </section>
+
+  <section>
+    <h2>Custom ad-block filter list</h2>
+    <p class="hint">One EasyList-style line per rule. Supported: <code>||domain.com^</code> and plain URL substrings. Lines starting with <code>!</code> are comments.</p>
+    <textarea id="custom-filters" rows="8" placeholder="||ads.example.com^&#10;/pagead/"></textarea>
+  </section>
+
+  <footer>
+    <span id="status" role="status"></span>
+    <button id="save">Save</button>
+  </footer>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>
