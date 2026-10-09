@@ -289,6 +289,8 @@ assert "new Entry(\"Qwen Chat\"" in ai_catalog and "new Entry(\"Character AI\"" 
 assert "browserSiteButton(AiSiteCatalog.Entry entry)" in activity, "AI shortcuts must use the shared catalog entries"
 assert "BrowserAddress.isLikelyWebAddress(value)" in activity, "provider taps must not mistake a typed URL for a question"
 assert "entry.searchEngine.searchUrl(value)" in activity, "provider tap must submit the current query without a separate Go tap"
+assert "private String lastBrowserSearchQuery = \"\";" in activity and "lastBrowserSearchQuery = input.trim();" in activity, "provider switching must retain the original query after the address field shows a result URL"
+assert "String value = BrowserAddress.isLikelyWebAddress(typedValue)" in activity, "provider shortcuts must distinguish the visible current URL from the last search query"
 assert "static boolean isLikelyWebAddress(String value)" in address, "provider tap must distinguish a query from a web address"
 assert "BROWSER_HISTORY_KEY" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity
 clear = re.search(r"private void clearBrowserData\(\)\s*\{(.*?)\n    \}", activity, re.S)
