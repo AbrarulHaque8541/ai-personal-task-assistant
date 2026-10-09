@@ -250,6 +250,7 @@ public final class MainActivity extends Activity {
     private TextView browserStatus;
     private View browserProviderRow;
     private TextView browserPrivacyButton;
+    private Button browserProviderPickerButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1039,7 +1040,15 @@ public final class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        bottom.addView(browserSearchEngineSpinner, new LinearLayout.LayoutParams(0, dp(38), 1f));
+        browserSearchEngineSpinner.setVisibility(View.GONE);
+        browserProviderPickerButton = compactButton(searchEngine.label + "  ▾", false);
+        browserProviderPickerButton.setTextSize(12 * textScale);
+        browserProviderPickerButton.setMinHeight(dp(38));
+        browserProviderPickerButton.setMinimumHeight(dp(38));
+        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
+        browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
+        browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
+        bottom.addView(browserProviderPickerButton, new LinearLayout.LayoutParams(0, dp(38), 1f));
 
         browserOnlineToggle = new CheckBox(this);
         browserOnlineToggle.setText("Online");
@@ -1209,6 +1218,126 @@ public final class MainActivity extends Activity {
             if (browserSearchEngineSpinner != null && browserSearchEngineSpinner.getSelectedItemPosition() != position) {
                 browserSearchEngineSpinner.setSelection(position);
             }
+        }
+        if (browserProviderPickerButton != null) {
+            browserProviderPickerButton.setText(engine.label + "  ▾");
+            browserProviderPickerButton.setContentDescription("Search provider: " + engine.label + ". Tap to change provider.");
+        }
+    }
+
+    private boolean isAiProvider(BrowserAddress.SearchEngine engine) {
+        switch (engine) {
+            case CHATGPT: case PERPLEXITY: case GEMINI: case CLAUDE: case COPILOT:
+            case GROK: case DEEPSEEK: case PHIND: case KIMI: case YOU_COM_AI:
+            case META_AI: case MISTRAL: case POE: case HUGGINGCHAT: case DUCK_AI:
+            case QWEN_CHAT: case CHARACTER_AI:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void showSearchProviderPicker() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        EditText filter = new EditText(this);
+        filter.setSingleLine(true);
+        filter.setTextSize(14 * textScale);
+        filter.setHint("Search engines and AI assistants");
+        filter.setPadding(dp(12), 0, dp(12), 0);
+        filter.setTextColor(palette.text);
+        filter.setHintTextColor(palette.muted);
+        filter.setBackground(shape(palette.surfaceAlt, 14, palette.line));
+        root.addView(filter, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setGravity(Gravity.CENTER_VERTICAL);
+        String[] categories = {"All", "Web search", "AI assistants"};
+        final String[] selectedCategory = {"All"};
+        final LinearLayout[] rowsHost = {null};
+        final AlertDialog[] dialogRef = {null};
+        for (String category : categories) {
+            Button tab = compactButton(category, false);
+            tab.setTextSize(11 * textScale);
+            tab.setMinHeight(dp(36));
+            tab.setMinimumHeight(dp(36));
+            tab.setPadding(dp(8), 0, dp(8), 0);
+            tab.setBackground(shape(palette.surfaceAlt, 16, palette.surfaceAlt));
+            tab.setOnClickListener(view -> {
+                selectedCategory[0] = category;
+                renderSearchProviderRows(rowsHost[0], filter.getText().toString(), selectedCategory[0], dialogRef[0]);
+                for (int i = 0; i < tabs.getChildCount(); i++) {
+                    View child = tabs.getChildAt(i);
+                    if (child instanceof Button) {
+                        String name = ((Button) child).getText().toString();
+                        child.setBackground(shape(name.equals(category) ? palette.accentSoft : palette.surfaceAlt,
+                                16, name.equals(category) ? palette.accentSoft : palette.surfaceAlt));
+                    }
+                }
+            });
+            LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+            tabParams.setMargins(0, dp(8), dp(6), dp(8));
+            tabs.addView(tab, tabParams);
+        }
+        root.addView(tabs);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        rowsHost[0] = new LinearLayout(this);
+        rowsHost[0].setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(rowsHost[0]);
+        root.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(390)));
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Choose search provider")
+                .setView(root)
+                .setNegativeButton("Close", null)
+                .create();
+        dialogRef[0] = dialog;
+        renderSearchProviderRows(rowsHost[0], "", selectedCategory[0], dialog);
+        filter.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                renderSearchProviderRows(rowsHost[0], s.toString(), selectedCategory[0], dialog);
+            }
+            @Override public void afterTextChanged(Editable s) { }
+        });
+        dialog.show();
+    }
+
+    private void renderSearchProviderRows(LinearLayout host, String query, String category, AlertDialog dialog) {
+        if (host == null) return;
+        host.removeAllViews();
+        String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        for (BrowserAddress.SearchEngine engine : BrowserAddress.SearchEngine.values()) {
+            boolean ai = isAiProvider(engine);
+            if ("Web search".equals(category) && ai) continue;
+            if ("AI assistants".equals(category) && !ai) continue;
+            if (!engine.label.toLowerCase(Locale.ROOT).contains(normalized)) continue;
+            TextView row = text((engine == searchEngine ? "●  " : "○  ") + engine.label,
+                    14, engine == searchEngine ? palette.accent : palette.text, Typeface.NORMAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(12), 0, dp(12), 0);
+            row.setMinHeight(dp(44));
+            row.setBackground(shape(palette.surface, 10, palette.surface));
+            row.setContentDescription("Select " + engine.label + (engine == searchEngine ? ", currently selected" : ""));
+            row.setOnClickListener(view -> {
+                selectSearchEngine(engine);
+                dialog.dismiss();
+            });
+            host.addView(row, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+        }
+        if (host.getChildCount() == 0) {
+            TextView empty = text("No matching providers", 13, palette.muted, Typeface.NORMAL);
+            empty.setPadding(dp(12), dp(14), dp(12), dp(14));
+            host.addView(empty);
         }
     }
 
