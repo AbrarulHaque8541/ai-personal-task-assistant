@@ -87,7 +87,7 @@ final class ExtensionPackageParser {
             int totalText = 0;
             while ((entry = zip.getNextEntry()) != null) {
                 if (++entryCount > 128) {
-                    throw new IllegalArgumentException("Extension archive contains too many entries.");
+                    throw new IllegalArgumentException("Extension archive contains too many files or directory entries.");
                 }
                 String originalPath = entry.getName();
                 String path = originalPath == null ? "" : originalPath.replace('\\', '/');
