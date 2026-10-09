@@ -20,7 +20,7 @@ public final class ExtensionPackageParserSmoke {
         daymarkJsonRoundTripPreservesEveryField();
         daymarkJsonValidationRejectsBadPacks();
         userscriptHeaderParsesAndGrantPolicyIsWarned();
-        bareUserscriptGetsSafeDefaults();
+        userscriptWithoutMatchIsRejected();
         webExtensionManifestTranslatesContentScriptsOnly();
         webExtensionManifestWithoutContentScriptsIsRejected();
         archiveImportSkipsTraversalEntriesAndUnsupportedFiles();
@@ -59,6 +59,8 @@ public final class ExtensionPackageParserSmoke {
         expectRejected("{\"id\":\"x\"}", "packs without a name are rejected");
         expectRejected("{\"name\":\"X\"}", "packs without an id are rejected");
         expectRejected("{\"id\":\"bad id!\",\"name\":\"X\"}", "ids with unsafe characters are rejected");
+        expectRejected("{\"id\":\"no-scope\",\"name\":\"No scope\"}", "Daymark packs without match scopes are rejected");
+        expectRejected("{\"id\":\"bad-scope\",\"name\":\"Bad scope\",\"matches\":[\"http://example.com/*\"]}", "Daymark packs with unsupported cleartext scopes are rejected");
         expectRejected("[1,2,3]", "non-object JSON payloads are rejected");
         expectRejected(null, "null pack text is rejected");
         StringBuilder huge = new StringBuilder();
@@ -91,7 +93,7 @@ public final class ExtensionPackageParserSmoke {
         check(ext.warnings.contains("@require/@resource not fetched"), "remote @require is refused with a warning");
         check(!ext.warnings.contains("unsupported @grant"), "GM_addStyle is allowed without an unsupported-grant warning");
 
-        String unsafe = "// ==UserScript==\n// @name Unsafe\n// @grant GM_setValue\n// ==/UserScript==\nbody();";
+        String unsafe = "// ==UserScript==\n// @name Unsafe\n// @match https://example.com/*\n// @grant GM_setValue\n// ==/UserScript==\nbody();";
         BrowserExtension warned = ExtensionPackageParser.parseUserScript(unsafe);
         check(warned.warnings.contains("unsupported @grant GM_setValue"),
                 "privileged GM_* grants become warnings, not APIs");
@@ -99,11 +101,10 @@ public final class ExtensionPackageParserSmoke {
                 "the description tells the user only DOM-level APIs are provided");
     }
 
-    private static void bareUserscriptGetsSafeDefaults() throws Exception {
-        BrowserExtension bare = ExtensionPackageParser.parseUserScript("console.log(1);");
-        check("Imported script".equals(bare.name), "headerless userscripts get a default name");
-        check(bare.matches.contains("*://*/*"), "headerless userscripts default to all HTTPS pages");
-        check("console.log(1);".equals(bare.js), "headerless userscripts keep their whole body");
+    private static void userscriptWithoutMatchIsRejected() {
+        expectUserscriptRejected("console.log(1);", "headerless userscripts without an explicit @match are rejected");
+        expectUserscriptRejected("// ==UserScript==\n// @name No scope\n// ==/UserScript==\nrun();",
+                "userscripts without @match are rejected instead of running on every site");
     }
 
     private static void webExtensionManifestTranslatesContentScriptsOnly() throws Exception {
@@ -138,6 +139,10 @@ public final class ExtensionPackageParserSmoke {
                 "extensions without content_scripts are rejected");
         expectRejected("{\"name\":\"Empty scripts\",\"content_scripts\":[]}",
                 "extensions with an empty content_scripts list are rejected");
+        expectWebExtensionRejected("{\"name\":\"No scope\",\"content_scripts\":[{\"js\":[\"a.js\"]}]}",
+                "WebExtension content scripts without matches are rejected");
+        expectWebExtensionRejected("{\"name\":\"Bad scope\",\"content_scripts\":[{\"matches\":[\"http://example.com/*\"]}]}",
+                "WebExtension content scripts with unsupported cleartext scopes are rejected");
     }
 
     private static void archiveImportSkipsTraversalEntriesAndUnsupportedFiles() throws Exception {
@@ -235,6 +240,30 @@ public final class ExtensionPackageParserSmoke {
         assertions++;
         try {
             ExtensionPackageParser.parseDaymarkJson(raw, false);
+            throw new AssertionError(message + ": expected rejection");
+        } catch (IllegalArgumentException expected) {
+            // rejected as expected
+        } catch (Exception other) {
+            throw new AssertionError(message + ": unexpected rejection type " + other, other);
+        }
+    }
+
+    private static void expectUserscriptRejected(String raw, String message) {
+        assertions++;
+        try {
+            ExtensionPackageParser.parseUserScript(raw);
+            throw new AssertionError(message + ": expected rejection");
+        } catch (IllegalArgumentException expected) {
+            // rejected as expected
+        } catch (Exception other) {
+            throw new AssertionError(message + ": unexpected rejection type " + other, other);
+        }
+    }
+
+    private static void expectWebExtensionRejected(String raw, String message) {
+        assertions++;
+        try {
+            ExtensionPackageParser.parseWebExtensionManifest(raw);
             throw new AssertionError(message + ": expected rejection");
         } catch (IllegalArgumentException expected) {
             // rejected as expected
