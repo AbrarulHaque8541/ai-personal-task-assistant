@@ -153,12 +153,12 @@ assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
-assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "missing/corrupt online preference must default Offline"
-assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY," in activity, "browser Online preference must be read locally"
+assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "browser must use the online-by-default policy"
+assert "browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();" in activity, "v1.0.4 offline opt-in must be migrated so existing installs are not stuck offline"
 assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
 assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
 assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
-assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
+assert "Online browsing is enabled by default" in activity and "each search or site still requires a separate tap" in activity
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
 assert "may log it" in activity and "may contact and be logged by third-party endpoints" in activity, "provider and page endpoint logging must not be ruled out"
 assert "Google/Play Services" in activity and "The Safe Browsing provider itself is not selectable in Daymark" in activity, "Safe Browsing provider and platform traffic must be disclosed separately from its local on/off setting"
@@ -421,7 +421,7 @@ print("PASS encrypted task-store policy: writer and reader share invalid/duplica
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
 print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
-print("PASS browser policy: Offline by default with persisted opt-in, Daymark page/resource loads blocked while Offline, and a separate tap required for each request")
+print("PASS browser policy: online-by-default migration, HTTPS-only navigation, and user-initiated requests")
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
