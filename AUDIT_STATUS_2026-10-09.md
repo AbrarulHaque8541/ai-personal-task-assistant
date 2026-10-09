@@ -1,5 +1,37 @@
 # Daymark repository audit — 2026-10-09
 
+## Current verified baseline
+
+This report supersedes the older audit snapshot below. It reflects a live GitHub repository check and CI metadata review, not a physical-device acceptance claim.
+
+- Current main at audit start: `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`.
+- Latest published GitHub Release: [v1.0.4](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4), with APK and AAB assets.
+- Source candidate: v1.0.5 / versionCode 6. The exact `v1.0.5` tag had not been created; therefore v1.0.5 was not published.
+- Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37942559451) passed. It validated protected signing secrets, restored the keystore, built signed candidate APK/AAB artifacts, and verified the APK certificate against the pinned publisher certificate.
+- Package ID remains `com.cue.daymark`; pinned production signer SHA-256 remains `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
+- Android Gradle target is API 35. API 36 migration/edge-to-edge/predictive-Back qualification is still needed before claiming Google Play submission readiness.
+- The repository searches returned no open PRs or issues at the start of the follow-up audit. Recheck live state before release.
+
+## Current follow-up branch work
+
+Branch `feat/pre-release-ux-and-agent-handoff` is a proposed pre-release improvement set; its CI and review must pass before merge.
+
+- Replaces the flat legacy More menu with grouped, descriptive settings rows and a short entrance transition.
+- Adds an explicit review and **Trust & add** confirmation before imported extension code is persisted.
+- Adds regression checks for extension-import trust wiring and for the production release workflow's updater metadata.
+- Fixes a release-contract mismatch: `GitHubReleaseClient` rejects a stable release without a `daymark-updater-v1` metadata block, but the production workflow previously generated release notes without that block. The workflow now derives min SDK from the built APK and includes package/version/min-SDK/signer metadata. The current v1.0.4 release body is empty, so its metadata is not compatible with the in-app updater; the next workflow-published release should contain the required block.
+- Refreshes the root README, agent rules, release guidance, project plan and audit notes to distinguish source, host tests, CI artifacts, physical-device verification, and published releases.
+
+## Evidence boundaries
+
+- **PASS:** named automated check completed successfully.
+- **SOURCE-VERIFIED:** current source/configuration was inspected; runtime is not implied.
+- **PARTIALLY VERIFIED:** host tests cover the logic but Android integration remains.
+- **NOT TESTED:** no qualifying emulator/device test was run.
+- **PUBLISHED:** exact GitHub Release/tag exists with the expected assets.
+
+No physical Android phone or emulator was operated during this audit. Install/update, task/backup/attachment workflows, real Android Keystore and SAF provider behavior, TalkBack, keyboard/insets, WebView lifecycle, media downloads, and real-device performance remain unverified. See [PRE_RELEASE_AUDIT_2026-10-09.md](PRE_RELEASE_AUDIT_2026-10-09.md), [DOCUMENTATION_TRUTH_AUDIT.md](DOCUMENTATION_TRUTH_AUDIT.md), and [V1_ACCEPTANCE.md](android-app/V1_ACCEPTANCE.md).
+
 Scope note: this report reflects a live GitHub source/metadata/CI audit, not a claim that every line/device scenario was exhaustively tested. Commit `0c55048f6e3cea794de930212cf2e0284dd0a86c` is the main head at the time of writing.
 
 ## Changes actually completed

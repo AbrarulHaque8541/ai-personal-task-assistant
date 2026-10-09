@@ -109,6 +109,7 @@ jobs:
           expected_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
           expected_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
           expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
+          min_sdk_version="$(grep -m1 "^sdkVersion:" <<< "$badging" | sed -n "s/^sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p")"
           echo "Package ID:       $package_id"
           echo "Version Name:     $version_name"
           echo "Version Code:     $version_code"
@@ -118,6 +119,7 @@ jobs:
           [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
+          [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
           apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
           actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
           if [[ -z "$actual_signer" ]]; then
@@ -138,6 +140,8 @@ jobs:
           (cd release-artifacts && sha256sum "$apk_name" "$aab_name" | tee SHA256SUMS.txt)
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "min_sdk_version=$min_sdk_version" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=${expected_signer,,}" >> "$GITHUB_OUTPUT"
           echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
           echo "aab_name=$aab_name" >> "$GITHUB_OUTPUT"
           echo "apk_sha=$(sha256sum "release-artifacts/$apk_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
@@ -161,6 +165,8 @@ jobs:
           TAG: ${{ github.ref_name }}
           VERSION_NAME: ${{ steps.verify.outputs.version_name }}
           VERSION_CODE: ${{ steps.verify.outputs.version_code }}
+          MIN_SDK_VERSION: ${{ steps.verify.outputs.min_sdk_version }}
+          SIGNER_SHA256: ${{ steps.verify.outputs.signer_sha256 }}
           APK_NAME: ${{ steps.verify.outputs.apk_name }}
           AAB_NAME: ${{ steps.verify.outputs.aab_name }}
           APK_SHA: ${{ steps.verify.outputs.apk_sha }}
@@ -181,6 +187,10 @@ jobs:
             echo "- APK SHA-256: `$APK_SHA`"
             echo "- AAB: `$AAB_NAME`"
             echo "- AAB SHA-256: `$AAB_SHA`"
+            echo
+            echo "<!-- daymark-updater-v1"
+            printf '{"applicationId":"com.cue.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
+            echo "-->"
           } > "$notes"
           release_json="$RUNNER_TEMP/release.json"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then

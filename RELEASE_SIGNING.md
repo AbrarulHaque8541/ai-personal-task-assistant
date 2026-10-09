@@ -30,7 +30,7 @@ If the keystore is lost or rotated without a careful migration, **all existing i
 4. Publish only via `.github/workflows/android-production-release.yml` (tag push on `main`).
 5. APK asset name: `Daymark-v{versionName}-githubSideload.apk`.
 
-Latest published GitHub release: v1.0.4 / versionCode 5. The current source candidate is v1.0.5 / versionCode 6 and is not published yet. The source version is not proof that a corresponding release asset exists; verify the exact tag's production workflow and attached artifacts before distribution.
+Latest published GitHub release: v1.0.4 / versionCode 5, with APK and AAB assets. Current source candidate is v1.0.5 / versionCode 6 and remains unpublished until tag `v1.0.5` runs the exact-tag production workflow successfully. Main CI run #314 validated the protected signing secrets, generated signed candidate APK/AAB artifacts, and confirmed signer continuity; it did not publish a release or prove physical-device behavior. Always verify the exact tag's production workflow and attached artifacts before distribution.
 
 - `versionName = 1.0.5` (release candidate)
 - `versionCode = 6` (release candidate)

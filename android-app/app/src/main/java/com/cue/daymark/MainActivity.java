@@ -118,6 +118,7 @@ public final class MainActivity extends Activity {
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
+    private static final String BROWSER_BLOCK_IMAGES_KEY = "block_network_images";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -181,6 +182,7 @@ public final class MainActivity extends Activity {
     private boolean webMode;
     private BrowserNetworkPolicy browserNetworkPolicy = new BrowserNetworkPolicy();
     private BrowserSettingsPolicy browserSettingsPolicy = new BrowserSettingsPolicy();
+    private boolean browserImagesBlocked;
     private boolean suppressBrowserOnlineToggleListener;
     private boolean suppressSafeBrowsingToggleListener;
     private String taskDraft = "";
@@ -316,6 +318,7 @@ public final class MainActivity extends Activity {
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
         browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
         browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
+        browserImagesBlocked = readBrowserImagesBlockedPreference();
         sanitizeStoredBrowserHistory();
         buildInterface();
         loadEncryptedTasks();
@@ -355,6 +358,15 @@ public final class MainActivity extends Activity {
         } catch (ClassCastException invalidPreference) {
             browserPreferences.edit().remove(SAFE_BROWSING_ENABLED_KEY).apply();
             return BrowserSettingsPolicy.DEFAULT_SAFE_BROWSING_ENABLED;
+        }
+    }
+
+    private boolean readBrowserImagesBlockedPreference() {
+        try {
+            return browserPreferences.getBoolean(BROWSER_BLOCK_IMAGES_KEY, false);
+        } catch (ClassCastException invalidPreference) {
+            browserPreferences.edit().remove(BROWSER_BLOCK_IMAGES_KEY).apply();
+            return false;
         }
     }
 
@@ -1638,6 +1650,7 @@ public final class MainActivity extends Activity {
             }
         });
         targetRef[0] = browserWebView;
+        browserWebView.getSettings().setBlockNetworkImage(browserImagesBlocked);
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
@@ -1850,12 +1863,42 @@ public final class MainActivity extends Activity {
                             "Unsupported extension. Use .daymark-ext.json, compatible userscript, ZIP/XPI, or CRX3.");
                 }
             }
-            new ExtensionStore(this).installUserPack(ext);
-            showToast("Extension added: " + ext.name);
-            showBrowserExtensionsManager();
+            confirmAndInstallExtension(ext);
         } catch (Exception exception) {
             showToast("Extension rejected: " + exception.getMessage());
         }
+    }
+
+    private void confirmAndInstallExtension(BrowserExtension ext) {
+        if (ext == null) return;
+        StringBuilder review = new StringBuilder();
+        review.append("Daymark supports only page-local CSS and JavaScript. This is not a full Chrome/Firefox extension runtime.\n\n");
+        review.append("Name: ").append(ext.name).append('\n');
+        review.append("Version: ").append(ext.version).append('\n');
+        review.append("Source: ").append(ext.builtIn ? "built-in" : "imported file").append('\n');
+        review.append("JavaScript: ").append(ext.js.length()).append(" characters\n");
+        review.append("CSS: ").append(ext.css.length()).append(" characters\n");
+        review.append("Run time: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\n');
+        review.append("Site match rules: ").append(ext.matches.isEmpty() ? "none (does not run on pages)" : ext.matches.size() + " rule(s)").append('\n');
+        if (ext.warnings != null && !ext.warnings.trim().isEmpty()) {
+            review.append("\nImport warnings: ").append(ext.warnings).append('\n');
+        }
+        review.append("\nTRUST WARNING\n");
+        review.append("When enabled, this script can read and change matching website page content. On a site where you are signed in, page scripts may be able to access information visible to that page and send it to an external service. Only add code from a source you trust. Daymark does not execute the script during this review.");
+        new AlertDialog.Builder(this)
+                .setTitle("Review before adding")
+                .setMessage(review.toString())
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Trust & add", (dialog, which) -> {
+                    try {
+                        new ExtensionStore(this).installUserPack(ext);
+                        showToast("Extension added: " + ext.name);
+                        showBrowserExtensionsManager();
+                    } catch (Exception exception) {
+                        showToast("Extension rejected: " + exception.getMessage());
+                    }
+                })
+                .show();
     }
 
     private void showBrowserExtensionsManager() {
@@ -1915,7 +1958,7 @@ public final class MainActivity extends Activity {
             row.addView(enabled);
 
             String detail = "v" + ext.version + " · " +
-                    (ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size() + " match rule(s)");
+                    (ext.matches.isEmpty() ? "0 match rules · does not run on pages" : ext.matches.size() + " match rule(s)");
             if (ext.warnings != null && !ext.warnings.isEmpty()) detail += "\nWarning: " + ext.warnings;
             TextView description = text(
                     (ext.description.isEmpty() ? detail : ext.description + "\n" + detail),
@@ -1971,11 +2014,15 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(content);
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Extensions")
                 .setView(scroll)
                 .setPositiveButton("Done", null)
-                .show();
+                .create();
+        content.setAlpha(0f);
+        content.setTranslationY(dp(8));
+        dialog.show();
+        content.animate().alpha(1f).translationY(0f).setDuration(160L).start();
     }
 
     private void showExtensionDetailsDialog(BrowserExtension ext) {
@@ -2407,12 +2454,12 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(12), dp(8), dp(12), dp(8));
         header.setBackgroundColor(palette.surface);
 
-        TextView headerTitle = text("Web result — Full screen", 16, palette.text, Typeface.BOLD);
+        TextView headerTitle = text("Full-screen page", 16, palette.text, Typeface.BOLD);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         header.addView(headerTitle, titleParams);
 
         Button closeButton = compactButton("Close", true);
-        closeButton.setContentDescription("Close full-screen reader and return to standard browser view");
+        closeButton.setContentDescription("Close full-screen page and return to standard browser view");
         closeButton.setOnClickListener(v -> closeFullScreenWebReader());
         header.addView(closeButton);
 
@@ -3053,12 +3100,46 @@ public final class MainActivity extends Activity {
         return true;
     }
 
+    private boolean setBrowserImagesBlocked(boolean enabled) {
+        if (browserImagesBlocked == enabled) return true;
+        boolean previous = browserImagesBlocked;
+        for (DaymarkWebView tab : browserTabs) {
+            try {
+                tab.getSettings().setBlockNetworkImage(enabled);
+            } catch (RuntimeException applyFailed) {
+                boolean rollbackComplete = true;
+                for (DaymarkWebView rollback : browserTabs) {
+                    try { rollback.getSettings().setBlockNetworkImage(previous); }
+                    catch (RuntimeException rollbackFailed) { rollbackComplete = false; }
+                }
+                showToast(rollbackComplete
+                        ? "Image setting could not be applied. The previous preference remains active."
+                        : "Image setting failed and a tab could not be restored. Close and reopen that tab.");
+                return false;
+            }
+        }
+        browserImagesBlocked = enabled;
+        browserPreferences.edit().putBoolean(BROWSER_BLOCK_IMAGES_KEY, enabled).apply();
+        showToast(enabled
+                ? "Network images blocked. Reload the current page to apply it to images already loaded."
+                : "Network images allowed again. Reload a page to load images that were blocked.");
+        return true;
+    }
+
     private void showBrowserSettingsDialog() {
         TextView explanation = text(
-                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. Daymark's browser network policy controls page/resource loads; this setting controls Safe Browsing separately.",
+                "Safe Browsing helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The image option blocks network image resources; it does not block all ads or tracking. Page/resource requests remain governed by Daymark's HTTPS-only browser policy.",
                 14, palette.text, Typeface.NORMAL);
         explanation.setLineSpacing(dp(3), 1f);
         explanation.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        CheckBox imagesToggle = new CheckBox(this);
+        imagesToggle.setText("Block network images (save data)");
+        imagesToggle.setMinHeight(dp(48));
+        imagesToggle.setChecked(browserImagesBlocked);
+        imagesToggle.setContentDescription(browserImagesBlocked
+                ? "Network images are blocked for page loads. Turn off to allow images."
+                : "Network images are allowed. Turn on to block network image resources.");
 
         CheckBox safeBrowsingToggle = new CheckBox(this);
         safeBrowsingToggle.setText("Safe Browsing (recommended)");
@@ -3071,6 +3152,8 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(explanation);
+        content.addView(imagesToggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
         content.addView(safeBrowsingToggle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
 
@@ -3090,6 +3173,15 @@ public final class MainActivity extends Activity {
                             .setPositiveButton("Clear", (d, w) -> clearBrowserData())
                             .show();
                 }));
+
+        imagesToggle.setOnCheckedChangeListener((button, enabled) -> {
+            if (!setBrowserImagesBlocked(enabled)) {
+                button.setChecked(browserImagesBlocked);
+            }
+            button.setContentDescription(browserImagesBlocked
+                    ? "Network images are blocked for page loads. Turn off to allow images."
+                    : "Network images are allowed. Turn on to block network image resources.");
+        });
 
         safeBrowsingToggle.setOnCheckedChangeListener((button, enabled) -> {
             if (suppressSafeBrowsingToggleListener) return;
@@ -5325,32 +5417,86 @@ public final class MainActivity extends Activity {
     }
 
     private void showSettingsDialog() {
-        String[] options = {
-                "Appearance: " + themeLabel(),
-                "Text size: " + textSizeLabel(),
-                "High contrast: " + (highContrast ? "On" : "Off"),
-                "Accessibility",
-                "Permission status: " + permissionStatusLabel(),
-                "Encrypted backup / restore",
-                "Browser & extensions",
-                "Check now"
-        };
-        new AlertDialog.Builder(this)
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(4), dp(16), dp(8));
+
+        TextView intro = text(
+                "Make Daymark feel right, manage your data, and open power features when you need them.",
+                13, palette.muted, Typeface.NORMAL);
+        intro.setLineSpacing(dp(2), 1f);
+        content.addView(intro, bottomMargin(dp(12)));
+
+        addSettingsSection(content, "PERSONALIZE");
+        addSettingsRow(content, "Appearance", themeLabel(),
+                () -> showThemePicker());
+        addSettingsRow(content, "Text size", textSizeLabel(),
+                () -> showTextSizePicker());
+        addSettingsRow(content, "High contrast", highContrast ? "On · stronger contrast" : "Off · standard colors",
+                () -> toggleHighContrast());
+
+        addSettingsSection(content, "ACCESSIBILITY & DATA");
+        addSettingsRow(content, "Accessibility", "Screen reader and motion support",
+                () -> showScreenReaderInfo());
+        addSettingsRow(content, "Permission status", permissionStatusLabel(),
+                () -> showPermissionStatus());
+        addSettingsRow(content, "Encrypted backup & restore", "Export or add tasks from a .dmbackup file",
+                () -> showPortableBackupDialog());
+
+        addSettingsSection(content, "POWER FEATURES");
+        addSettingsRow(content, "Browser & extensions",
+                webMode ? "Manage page scripts and matching sites" : "Switch to Web mode; open Extensions from browser actions",
+                () -> {
+                    if (webMode) showBrowserExtensionsManager();
+                    else setWebMode(true);
+                });
+        addSettingsRow(content, "Check for updates", "Check the signed sideload release channel",
+                () -> checkForUpdates(true));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.addView(content);
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("More")
-                .setItems(options, (dialog, selected) -> {
-                    if (selected == 0) showThemePicker();
-                    else if (selected == 1) showTextSizePicker();
-                    else if (selected == 2) toggleHighContrast();
-                    else if (selected == 3) showScreenReaderInfo();
-                    else if (selected == 4) showPermissionStatus();
-                    else if (selected == 5) showPortableBackupDialog();
-                    else if (selected == 6) {
-                        if (webMode) showBrowserExtensionsManager();
-                        else setWebMode(true);
-                    } else checkForUpdates(true);
-                })
-                .setNegativeButton("Close", null)
-                .show();
+                .setView(scroll)
+                .setNegativeButton("Done", null)
+                .create();
+        content.setAlpha(0f);
+        content.setTranslationY(dp(8));
+        dialog.show();
+        content.animate().alpha(1f).translationY(0f).setDuration(160L).start();
+    }
+
+    private void addSettingsSection(LinearLayout parent, String label) {
+        TextView heading = text(label, 10, palette.muted, Typeface.BOLD);
+        heading.setLetterSpacing(0.12f);
+        heading.setPadding(dp(3), dp(12), dp(3), dp(5));
+        parent.addView(heading);
+    }
+
+    private void addSettingsRow(LinearLayout parent, String title, String subtitle, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(10), dp(12), dp(10));
+        row.setBackground(shape(palette.surface, 12, palette.line));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setContentDescription(title + ". " + subtitle);
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = text(title, 14, palette.text, Typeface.BOLD);
+        TextView detail = text(subtitle, 12, palette.muted, Typeface.NORMAL);
+        detail.setLineSpacing(dp(1), 1f);
+        copy.addView(heading);
+        copy.addView(detail, topMargin(dp(3)));
+        row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView arrow = text("›", 24, palette.muted, Typeface.NORMAL);
+        arrow.setGravity(Gravity.CENTER);
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setOnClickListener(view -> action.run());
+        parent.addView(row, bottomMargin(dp(6)));
     }
 
     private void showThemePicker() {
