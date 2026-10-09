@@ -1466,17 +1466,18 @@ public final class MainActivity extends Activity {
     private boolean ensureBrowserWebView() {
         if (!browserNetworkPolicy.allowsRemoteLoads()) return false;
         if (browserWebView != null) return true;
-        browserWebView = new DaymarkWebView(this, browserNetworkPolicy,
+        final DaymarkWebView[] tabRef = new DaymarkWebView[1];
+        tabRef[0] = new DaymarkWebView(this, browserNetworkPolicy,
                 browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
             @Override public void onPageStarted(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 syncBrowserButtons();
             }
 
             @Override public void onPageFinished(String url) {
-                if (extensionRuntime != null) extensionRuntime.onPageFinished(browserWebView, url);
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
+                if (extensionRuntime != null) extensionRuntime.onPageFinished(tabRef[0], url);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
@@ -1490,13 +1491,13 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onNavigationBlocked(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
 
             @Override public void onOfflineNavigationBlocked() {
-                postActivityCallback(MainActivity.this::showBrowserOfflineStatus);
+                postActivityCallback(() -> { if (browserWebView == tabRef[0]) showBrowserOfflineStatus(); });
             }
 
             @Override public void onHttpNavigationBlocked(String url, boolean redirect) {
@@ -1504,33 +1505,34 @@ public final class MainActivity extends Activity {
                         ? "An HTTP redirect/downgrade was blocked. No insecure page was opened."
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
                 postActivityCallback(() -> {
+                    if (browserWebView != tabRef[0]) return;
                     browserStatus.setText(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
                     showToast("Insecure HTTP navigation blocked. Use HTTPS instead.");
                 });
             }
 
             @Override public void onLoadError() {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
                 browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
             }
 
             @Override public void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
                 queueBrowserDownload(url, userAgent, contentDisposition, mimeType);
             }
 
             @Override public void onMediaDownloadRequested(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
                 if (!BrowserAddress.isAllowedWebUrl(url)) {
                     showToast("This video source is not a direct HTTPS file that Daymark can download.");
                     return;
                 }
-                String agent = browserWebView == null ? null : browserWebView.getSettings().getUserAgentString();
+                String agent = tabRef[0].getSettings().getUserAgentString();
                 queueBrowserDownload(url, agent, null, "video/*");
             }
 
             @Override public void onRendererGone() {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || browserWebView != tabRef[0]) return;
                 discardBrowserWebView(false);
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
                 if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
@@ -1538,6 +1540,9 @@ public final class MainActivity extends Activity {
                 browserStatus.setText("The page stopped unexpectedly. Return to browser home and try again.");
             }
         });
+        browserWebView = tabRef[0];
+        browserTabs.add(browserWebView);
+        updateBrowserTabsButton();
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
