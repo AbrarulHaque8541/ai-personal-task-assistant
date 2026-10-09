@@ -34,7 +34,7 @@ assert archive.count("totalDecompressed") >= 3, "aggregate accounting must be ch
 assert "manifest.toString().hashCode()" not in parser, "32-bit string hashes are not collision-resistant ids"
 assert "raw.hashCode()" not in parser, "userscript ids must not use the 32-bit string hash"
 assert 'MessageDigest.getInstance("SHA-256")' in parser, "imported ids must derive from SHA-256"
-assert 'sha256Hex(manifest.toString() + "\\nCSS:\\n" + css + "\\nJS:\\n" + js)' in parser, \\
+assert 'sha256Hex(manifest.toString() + "\\nCSS:\\n" + css + "\\nJS:\\n" + js)' in parser, \
     "WebExtension ids must include effective CSS/JS, not manifest metadata alone"
 assert "already installed with id" in install, "installing a different pack under an existing id must fail"
 assert install.index("already installed with id") < install.index("writeFile(out, json)"), \
