@@ -2130,7 +2130,10 @@ public final class MainActivity extends Activity {
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
                 Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                root.setPadding(dp(8) + bars.left, bars.top, dp(8) + bars.right, bars.bottom);
+                int imeBottom = WindowInsetsPolicy.CONSUME_IME_INSETS
+                        ? insets.getInsets(WindowInsets.Type.ime()).bottom : 0;
+                root.setPadding(dp(8) + bars.left, bars.top, dp(8) + bars.right,
+                        WindowInsetsPolicy.bottomPadding(bars.bottom, imeBottom));
             } else {
                 // API 26-29: the decor view still fits the system windows by
                 // default, so content is already positioned below the status bar.
