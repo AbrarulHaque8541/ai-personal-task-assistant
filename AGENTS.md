@@ -91,6 +91,7 @@ Before asking the owner to push a production tag:
 - [ ] Backup/export/restore and same-signer in-place update risks are clearly documented.
 - [ ] Real-phone checks are listed separately and not falsely marked complete.
 - [ ] GitHub Release has the exact APK/AAB names and SHA-256 checksums after the tag workflow finishes.
+- [ ] Release notes include exactly one `<!-- daymark-updater-v1 { ... } -->` block with `applicationId`, `versionCode`, `minSdkVersion`, and `signerCertificateSha256`; the in-app updater rejects stable releases without this metadata.
 
 ## 9. Current baseline (verify before acting)
 
