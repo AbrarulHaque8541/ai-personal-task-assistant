@@ -1345,6 +1345,7 @@ public final class MainActivity extends Activity {
             String query = !value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)
                     ? value : (!tabQuery.isEmpty() ? tabQuery : lastBrowserQuery);
             if (!query.isEmpty() && !BrowserAddress.isLikelyWebAddress(query)) {
+                lastBrowserQuery = query;
                 try {
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(query));
                 } catch (IllegalArgumentException exception) {
@@ -1355,6 +1356,7 @@ public final class MainActivity extends Activity {
             }
             if (browserAddressInput != null) browserAddressInput.setError(null);
             navigateBrowserTo(address);
+            if (browserWebView != null) browserTabQueries.put(browserWebView, lastBrowserQuery);
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
