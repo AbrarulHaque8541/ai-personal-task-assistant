@@ -6,10 +6,10 @@ Local-first Android task assistant (`com.cue.daymark`).
 
 | Release | APK |
 |---------|-----|
-| **Current stable production** | [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.2) — [Daymark-v1.0.2.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) |
-| Previous | [v1.0.1](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.1) — [Daymark-v1.0.1.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.1/Daymark-v1.0.1.apk) |
+| **Latest published GitHub release** | [v1.0.4](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4) — [Daymark-v1.0.4-githubSideload.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.4/Daymark-v1.0.4-githubSideload.apk) |
+| Previous | [v1.0.3](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.3) — [Daymark-v1.0.3-githubSideload.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.3/Daymark-v1.0.3-githubSideload.apk) |
 
-**Next release status:** this PR prepares source version **v1.0.5** (`versionCode = 6`); it is **not published yet**. The repository's published-download table still identifies v1.0.2 as the latest stable production release, so verify that any claimed v1.0.4 release has an actual GitHub Release tag and APK asset. Do not distribute a production update until the APK signer matches the pinned production certificate and the release verification workflow passes. Follow [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
+**Next release status:** the current source candidate is **v1.0.5** (`versionCode = 6`); it is **not published yet**. GitHub Release v1.0.4 and its APK/AAB assets are published. Before announcing a new production update, confirm that the exact release tag passes the production workflow and that its APK signer matches the pinned production certificate. Follow [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
 **Same package + same production signing key + higher versionCode = in-place update (data kept).**  
 Uninstalling the app deletes local encrypted data. Prefer exporting a portable backup before reinstalling.

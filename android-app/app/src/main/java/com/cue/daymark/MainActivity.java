@@ -342,13 +342,10 @@ public final class MainActivity extends Activity {
     }
 
     private boolean readBrowserOnlinePreference() {
-        try {
-            return browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY,
-                    BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED);
-        } catch (ClassCastException invalidPreference) {
-            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
-            return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
-        }
+        // Older builds persisted an Offline opt-in switch that is no longer shown.
+        // Migrate those installs so removing the switch cannot leave the browser blocked.
+        browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
+        return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
     }
 
     private boolean readSafeBrowsingPreference() {
@@ -971,7 +968,7 @@ public final class MainActivity extends Activity {
         webGoButton.setOnClickListener(view -> navigateFromInput());
         providerRow.addView(webGoButton, new LinearLayout.LayoutParams(dp(76), dp(48)));
         webActions.addView(providerRow);
-        TextView requestNote = text("Offline by default. Online requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination; pages may contact third parties. The Online switch controls Daymark page/resource loads only. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
+        TextView requestNote = text("Browsing starts ready for explicit searches and sites; no page opens until you tap Go or a provider shortcut. Requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination, which may log it; pages may contact third parties. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
                 11, palette.muted, Typeface.NORMAL);
         webActions.addView(requestNote, topMargin(dp(3)));
         card.addView(webActions);
@@ -1161,12 +1158,12 @@ public final class MainActivity extends Activity {
         panel.addView(toolbarScroll, bottomMargin(dp(2)));
 
         String disclosureText =
-                "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
+                "Browsing is ready for explicit user-initiated navigation; no page opens until you tap Go or a site. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
         browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
         browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
         browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
         browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
-        browserPrivacyButton.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
+        browserPrivacyButton.setContentDescription("Browser privacy: browsing is ready for explicit user-initiated navigation; each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. Daymark's browser network policy controls Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
 
@@ -2945,7 +2942,7 @@ public final class MainActivity extends Activity {
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
         quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
         quickCaptureInput.setContentDescription(webMode
-                ? "Search the web or enter an HTTPS web address. Browser network access is Offline by default; this is sent only when Online is enabled and you tap Go."
+                ? "Search the web or enter an HTTPS web address. Browsing is ready; requests are sent only after you tap Go or a provider/site shortcut."
                 : "What do you want to get done? Type a task");
         quickCaptureInput.setImeOptions(webMode ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
         taskModeButton.setTextColor(webMode ? palette.muted : palette.accent);
@@ -2958,7 +2955,7 @@ public final class MainActivity extends Activity {
                 ? "Switch to Task mode. Your web search is not added to your tasks."
                 : "Task mode selected. Typing creates a task only after Add task.");
         webModeButton.setContentDescription(webMode
-                ? "Web mode selected. Browser starts Offline; requests require Online enabled and a separate Go or site tap."
+                ? "Web mode selected. Browsing is ready; requests require a separate Go or site tap."
                 : "Switch to Web mode. The current task draft stays in Daymark and is not sent to a site.");
         if (undoBar != null) {
             if (webMode) undoBar.setVisibility(View.GONE);
@@ -3005,7 +3002,9 @@ public final class MainActivity extends Activity {
             browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
             if (browserStatus != null) browserStatus.setText("Online access enabled. No website opens until you tap Go or a site.");
         } else {
-            browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, false).apply();
+            // Keep this failure closed for the current session, but do not persist a
+            // hidden Offline state that users cannot change from the browser UI.
+            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
             showBrowserHome();
             showBrowserOfflineStatus();
         }
@@ -3024,7 +3023,7 @@ public final class MainActivity extends Activity {
     private void confirmBrowserOnlineAccess(Runnable afterEnable) {
         new AlertDialog.Builder(this)
                 .setTitle("Enable online browsing?")
-                .setMessage("Online browsing sends a search query or requested URL, plus normal connection data such as your IP address and browser identification, to the selected provider/site; those services may log requests. Pages may contact their own or third-party endpoints, which may also be logged. The Online switch blocks Daymark page/resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks; its provider is not selectable in Daymark, though its protection setting is available in Browser Settings. WebView M126+ may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This is not a claim that every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text and adds no app analytics; WebView diagnostic metrics are opted out. HTTP remains blocked. Enabling Online alone makes no page request; each search or site still requires a tap. This choice is saved on this device. Turning Online off stops and closes the active page.")
+                .setMessage("Online browsing sends a search query or requested URL, plus normal connection data such as your IP address and browser identification, to the selected provider/site; those services may log requests. Pages may contact their own or third-party endpoints, which may also be logged. Daymark's browser network policy controls page/resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks; its provider is not selectable in Daymark, though its protection setting is available in Browser Settings. WebView M126+ may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This is not a claim that every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text and adds no app analytics; WebView diagnostic metrics are opted out. HTTP remains blocked. Enabling Online alone makes no page request; each search or site still requires a tap. This choice is saved on this device. Turning Online off stops and closes the active page.")
                 .setNegativeButton("Stay offline", (dialog, which) -> showBrowserOfflineStatus())
                 .setPositiveButton("Enable Online", (dialog, which) -> {
                     setBrowserOnlineEnabled(true);
@@ -3056,7 +3055,7 @@ public final class MainActivity extends Activity {
 
     private void showBrowserSettingsDialog() {
         TextView explanation = text(
-                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Online switch only blocks Daymark page/resource loads; this setting controls Safe Browsing separately.",
+                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. Daymark's browser network policy controls page/resource loads; this setting controls Safe Browsing separately.",
                 14, palette.text, Typeface.NORMAL);
         explanation.setLineSpacing(dp(3), 1f);
         explanation.setPadding(dp(16), dp(8), dp(16), dp(8));

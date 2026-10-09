@@ -7,7 +7,7 @@ public final class BrowserSettingsPolicySmoke {
     public static void main(String[] args) {
         BrowserSettingsPolicy fresh = new BrowserSettingsPolicy();
         assert fresh.isSafeBrowsingEnabled() : "Safe Browsing must default on for new installs";
-        BrowserNetworkPolicy offline = new BrowserNetworkPolicy();
+        BrowserNetworkPolicy offline = new BrowserNetworkPolicy(false);
         BrowserNetworkPolicy online = new BrowserNetworkPolicy(true);
         assert offline.shouldBlockWebViewLoads() && fresh.isSafeBrowsingEnabled()
                 : "Safe Browsing must default on while Daymark page loads are Offline";
