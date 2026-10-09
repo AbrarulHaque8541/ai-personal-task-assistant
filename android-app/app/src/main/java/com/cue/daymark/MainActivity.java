@@ -2303,12 +2303,19 @@ public final class MainActivity extends Activity {
 
     private void openDownloadsFolder() {
         try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            startActivity(intent);
-        } catch (Exception exception) {
-            showToast("System file picker is unavailable.");
+            // The menu action is a destination, not a file-selection request. Prefer the
+            // system Downloads UI so users can see progress and completed downloads.
+            startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS));
+        } catch (Exception noDownloadsHandler) {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                startActivity(intent);
+                showToast("The Downloads app is unavailable. Use Files to locate downloaded items.");
+            } catch (Exception noFilePicker) {
+                showToast("No Downloads app or file picker is available on this device.");
+            }
         }
     }
 
