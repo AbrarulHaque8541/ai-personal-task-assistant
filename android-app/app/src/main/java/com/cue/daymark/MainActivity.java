@@ -2749,7 +2749,7 @@ public final class MainActivity extends Activity {
                     dialog.dismiss();
                     new AlertDialog.Builder(this)
                             .setTitle("Clear site history and data?")
-                            .setMessage("Site history stores only validated HTTPS origins: no paths, queries, fragments, URL credentials, or page titles. Older entries are reduced to origins on launch. Selecting a saved site opens that origin, not the last route. Clearing removes Daymark's site history, the current WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
+                            .setMessage("Site history stores only validated HTTPS origins: no paths, queries, fragments, URL credentials, or page titles. Older entries are reduced to origins on launch. Selecting a saved site opens that origin, not the last route. Clearing removes Daymark's site history, every open WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear site data", (confirm, selected) -> clearBrowserData())
                             .show();
@@ -2758,22 +2758,37 @@ public final class MainActivity extends Activity {
     }
 
     private void clearBrowserData() {
-        if (browserWebView != null) {
-            browserWebView.clearHistory();
-            browserWebView.clearCache(true);
-            browserWebView.clearFormData();
-            browserWebView.clearSslPreferences();
+        List<DaymarkWebView> openTabs = new ArrayList<>(browserTabs);
+        if (browserWebView != null && !openTabs.contains(browserWebView)) {
+            openTabs.add(browserWebView);
+        }
+        boolean tabDataCleared = true;
+        for (DaymarkWebView tab : openTabs) {
+            try {
+                tab.clearHistory();
+                tab.clearCache(true);
+                tab.clearFormData();
+                tab.clearSslPreferences();
+            } catch (RuntimeException clearFailed) {
+                tabDataCleared = false;
+            }
         }
         browserPreferences.edit().putString(BROWSER_HISTORY_KEY, BrowserHistory.clear()).apply();
         WebStorage.getInstance().deleteAllData();
         CookieManager cookies = CookieManager.getInstance();
         showBrowserHome();
         browserStatus.setText("Clearing Daymark site history and local site data...");
+        final boolean allTabDataCleared = tabDataCleared;
         cookies.removeAllCookies(removed -> {
             cookies.flush();
             if (isActivityCallbackCurrent()) {
-                browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
-                showToast("Local site history and site data cleared.");
+                if (allTabDataCleared) {
+                    browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
+                    showToast("Local site history and site data cleared.");
+                } else {
+                    browserStatus.setText("Cookies, storage, and saved site history were cleared, but one or more open tabs could not clear their local navigation data. Close and reopen those tabs.");
+                    showToast("Some open-tab data could not be cleared. Close and reopen affected tabs.");
+                }
             }
         });
     }
@@ -3262,11 +3277,26 @@ public final class MainActivity extends Activity {
 
     private boolean setBrowserSafeBrowsingEnabled(boolean enabled) {
         if (browserSettingsPolicy.isSafeBrowsingEnabled() == enabled) return true;
-        if (browserWebView != null) {
+        boolean previous = browserSettingsPolicy.isSafeBrowsingEnabled();
+        List<DaymarkWebView> tabsToUpdate = new ArrayList<>(browserTabs);
+        if (browserWebView != null && !tabsToUpdate.contains(browserWebView)) {
+            tabsToUpdate.add(browserWebView);
+        }
+        for (DaymarkWebView tab : tabsToUpdate) {
             try {
-                browserWebView.getSettings().setSafeBrowsingEnabled(enabled);
+                tab.getSettings().setSafeBrowsingEnabled(enabled);
             } catch (RuntimeException updateFailed) {
-                showToast("Safe Browsing could not be changed. The previous setting remains active.");
+                boolean rollbackComplete = true;
+                for (DaymarkWebView rollback : tabsToUpdate) {
+                    try {
+                        rollback.getSettings().setSafeBrowsingEnabled(previous);
+                    } catch (RuntimeException rollbackFailed) {
+                        rollbackComplete = false;
+                    }
+                }
+                showToast(rollbackComplete
+                        ? "Safe Browsing could not be changed. The previous setting remains active."
+                        : "Safe Browsing update failed and a tab could not be restored. Close and reopen that tab.");
                 return false;
             }
         }
