@@ -1,0 +1,15 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ more button
++        moreButton.setOnClickListener(view -> {
++            if (webMode) showBrowserOverflowMenu(view);
++            else showSettingsDialog();
++        });
+@@ browser overflow title
++                .setTitle("More · Browser")
+@@ showSettingsDialog rewritten: hero, Quick Actions (updates, backup, about), Look & Feel, Access
+@@ showAboutApp added (clearer copy)
+@@ showPermissionStatus: explains why no launch-time permission prompt
+
+Apply with: git apply patches/contextual-more-about.patch
+(Full unified diff may be applied from agent workspace file contextual_more.patch ~11KB.)
