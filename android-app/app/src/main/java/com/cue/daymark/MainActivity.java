@@ -1812,7 +1812,7 @@ public final class MainActivity extends Activity {
                             toggleDesktopSite();
                             break;
                         case 6:
-                            openDownloadsFolder();
+                            showBrowserDownloadsDialog();
                             break;
                         case 7:
                             showBrowserExtensionsManager();
@@ -2301,15 +2301,168 @@ public final class MainActivity extends Activity {
         browserWebView.reload();
     }
 
-    private void openDownloadsFolder() {
-        try {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            startActivity(intent);
-        } catch (Exception exception) {
-            showToast("System file picker is unavailable.");
+    private void showBrowserDownloadsDialog() {
+        DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        if (manager == null) {
+            showToast("Downloads are unavailable on this device.");
+            return;
         }
+
+        List<Long> ids = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        List<String> mimeTypes = new ArrayList<>();
+        List<Integer> statuses = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        boolean truncated = false;
+        try (Cursor cursor = manager.query(new DownloadManager.Query())) {
+            if (cursor != null) {
+                int idColumn = cursor.getColumnIndex(DownloadManager.COLUMN_ID);
+                int titleColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE);
+                int urlColumn = cursor.getColumnIndex(DownloadManager.COLUMN_URI);
+                int mimeColumn = cursor.getColumnIndex(DownloadManager.COLUMN_MEDIA_TYPE);
+                int statusColumn = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                int reasonColumn = cursor.getColumnIndex(DownloadManager.COLUMN_REASON);
+                int downloadedColumn = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR);
+                int totalColumn = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES);
+                if (idColumn < 0 || statusColumn < 0) {
+                    throw new IllegalStateException("Download provider did not return required status columns.");
+                }
+                while (cursor.moveToNext()) {
+                    if (ids.size() >= 100) {
+                        truncated = true;
+                        break;
+                    }
+                    long id = cursor.getLong(idColumn);
+                    String title = titleColumn >= 0 ? cursor.getString(titleColumn) : null;
+                    String url = urlColumn >= 0 ? cursor.getString(urlColumn) : null;
+                    String mime = mimeColumn >= 0 ? cursor.getString(mimeColumn) : null;
+                    int status = cursor.getInt(statusColumn);
+                    int reason = reasonColumn >= 0 ? cursor.getInt(reasonColumn) : 0;
+                    long downloaded = downloadedColumn >= 0 ? cursor.getLong(downloadedColumn) : 0;
+                    long total = totalColumn >= 0 ? cursor.getLong(totalColumn) : -1;
+                    if (title == null || title.trim().isEmpty()) title = "Download " + id;
+                    ids.add(id);
+                    urls.add(url);
+                    mimeTypes.add(mime);
+                    statuses.add(status);
+                    labels.add(title + " — " + browserDownloadStatusLabel(status, reason, downloaded, total));
+                }
+            }
+        } catch (RuntimeException queryFailed) {
+            showToast("Could not read download status. Try again.");
+            return;
+        }
+
+        if (ids.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Downloads")
+                    .setMessage("No Daymark browser downloads are available yet. Downloads started from a page will appear here when the system download provider exposes them.")
+                    .setPositiveButton("Close", null)
+                    .setNeutralButton("Refresh", (dialog, which) -> showBrowserDownloadsDialog())
+                    .show();
+            return;
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(truncated ? "Downloads (showing 100 items)" : "Downloads")
+                .setItems(labels.toArray(new String[0]), (shown, selected) -> {
+                    if (selected < 0 || selected >= ids.size()) return;
+                    long id = ids.get(selected);
+                    int status = statuses.get(selected);
+                    String url = urls.get(selected);
+                    String mime = mimeTypes.get(selected);
+                    postActivityCallback(() -> handleBrowserDownloadSelection(manager, id, status, url, mime));
+                })
+                .setNeutralButton("Refresh", (shown, which) -> showBrowserDownloadsDialog())
+                .setNegativeButton("Close", null)
+                .create();
+        dialog.show();
+    }
+
+    private String browserDownloadStatusLabel(int status, int reason, long downloaded, long total) {
+        switch (status) {
+            case DownloadManager.STATUS_PENDING:
+                return "Queued";
+            case DownloadManager.STATUS_RUNNING:
+                if (total > 0) {
+                    long percent = Math.max(0, Math.min(100, downloaded * 100 / total));
+                    return "Downloading " + percent + "%";
+                }
+                return "Downloading";
+            case DownloadManager.STATUS_PAUSED:
+                return "Paused — " + browserDownloadReason(true, reason);
+            case DownloadManager.STATUS_SUCCESSFUL:
+                return "Completed — tap to open";
+            case DownloadManager.STATUS_FAILED:
+                return "Failed — " + browserDownloadReason(false, reason) + " (tap to retry)";
+            default:
+                return "Status unavailable";
+        }
+    }
+
+    private String browserDownloadReason(boolean paused, int reason) {
+        if (paused) {
+            switch (reason) {
+                case DownloadManager.PAUSED_QUEUED_FOR_WIFI: return "waiting for Wi-Fi";
+                case DownloadManager.PAUSED_WAITING_FOR_NETWORK: return "waiting for network";
+                case DownloadManager.PAUSED_WAITING_TO_RETRY: return "retrying after a network issue";
+                case DownloadManager.PAUSED_UNKNOWN: return "paused by system";
+                default: return "paused by system";
+            }
+        }
+        switch (reason) {
+            case DownloadManager.ERROR_CANNOT_RESUME: return "cannot resume";
+            case DownloadManager.ERROR_DEVICE_NOT_FOUND: return "download storage unavailable";
+            case DownloadManager.ERROR_FILE_ALREADY_EXISTS: return "file already exists";
+            case DownloadManager.ERROR_FILE_ERROR: return "file error";
+            case DownloadManager.ERROR_HTTP_DATA_ERROR: return "network data error";
+            case DownloadManager.ERROR_INSUFFICIENT_SPACE: return "not enough storage";
+            case DownloadManager.ERROR_TOO_MANY_REDIRECTS: return "too many redirects";
+            case DownloadManager.ERROR_UNHANDLED_HTTP_CODE: return "server rejected the request";
+            case DownloadManager.ERROR_UNKNOWN: return "unknown error";
+            default: return "download failed";
+        }
+    }
+
+    private void handleBrowserDownloadSelection(DownloadManager manager, long id, int status,
+                                                String url, String mimeType) {
+        if (status == DownloadManager.STATUS_SUCCESSFUL) {
+            Uri downloadedUri;
+            try {
+                downloadedUri = manager.getUriForDownloadedFile(id);
+            } catch (RuntimeException unavailable) {
+                downloadedUri = null;
+            }
+            if (downloadedUri == null) {
+                showToast("The downloaded file is no longer available.");
+                return;
+            }
+            String effectiveMime = mimeType == null || mimeType.trim().isEmpty() ? "*/*" : mimeType;
+            Intent open = new Intent(Intent.ACTION_VIEW);
+            open.setDataAndType(downloadedUri, effectiveMime);
+            open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            try {
+                startActivity(Intent.createChooser(open, "Open download"));
+            } catch (Exception noViewer) {
+                showToast("No compatible app could open this file. The download remains saved.");
+            }
+            return;
+        }
+        if (status == DownloadManager.STATUS_FAILED) {
+            if (!BrowserAddress.isAllowedWebUrl(url)) {
+                showToast("Retry is unavailable because the saved URL is not a valid HTTPS address.");
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Retry download?")
+                    .setMessage("Daymark will make a new request to this HTTPS URL. The site may require a valid current session.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Retry", (dialog, which) -> queueBrowserDownload(url, null, null, mimeType))
+                    .show();
+            return;
+        }
+        showToast("Download status: " + (status == DownloadManager.STATUS_PENDING ? "queued"
+                : status == DownloadManager.STATUS_RUNNING ? "downloading" : "paused") + ". Refresh to check again.");
     }
 
     private void queueBrowserDownload(String url, String userAgent, String contentDisposition, String mimeType) {
