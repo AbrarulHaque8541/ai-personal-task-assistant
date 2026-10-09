@@ -12,15 +12,19 @@ This report supersedes the older audit snapshot below. It reflects a live GitHub
 - Android Gradle target is API 35. API 36 migration/edge-to-edge/predictive-Back qualification is still needed before claiming Google Play submission readiness.
 - The repository searches returned no open PRs or issues at the start of the follow-up audit. Recheck live state before release.
 
-## Current follow-up branch work
+## Merged pre-release hardening (PR #181)
 
-Branch `feat/pre-release-ux-and-agent-handoff` is a proposed pre-release improvement set; its CI and review must pass before merge.
+PR #181 was merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`; main CI run #331 passed.
 
-- Replaces the flat legacy More menu with grouped, descriptive settings rows and a short entrance transition.
-- Adds an explicit review and **Trust & add** confirmation before imported extension code is persisted.
-- Adds regression checks for extension-import trust wiring and for the production release workflow's updater metadata.
-- Fixes a release-contract mismatch: `GitHubReleaseClient` rejects a stable release without a `daymark-updater-v1` metadata block, but the production workflow previously generated release notes without that block. The workflow now derives min SDK from the built APK and includes package/version/min-SDK/signer metadata. The current v1.0.4 release body is empty, so its metadata is not compatible with the in-app updater; the next workflow-published release should contain the required block.
-- Refreshes the root README, agent rules, release guidance, project plan and audit notes to distinguish source, host tests, CI artifacts, physical-device verification, and published releases.
+- Replaced the flat legacy More menu with grouped settings rows and a short entrance transition.
+- Added an explicit review and **Trust & add** confirmation before imported extension code is persisted.
+- Added persisted opt-in network-image blocking and source regression coverage.
+- Fixed the release-contract mismatch: `GitHubReleaseClient` rejects a stable release without a `daymark-updater-v1` metadata block, but the production workflow previously generated notes without it. The workflow now derives min SDK from the built APK and includes package/version/min-SDK/signer metadata. The current v1.0.4 release body is empty, so the next workflow-published release should contain the required block.
+- Refreshed the root README, agent rules, release guidance, project plan and audit notes.
+
+## Current follow-up (PR #182)
+
+PR #182 adds a real local text-only Reader Mode, separate from the live full-screen WebView. It extracts bounded text from a cloned DOM, renders native selectable text, provides explicit copy, and adds source guards. Its CI and review must pass before merge.
 
 ## Evidence boundaries
 
