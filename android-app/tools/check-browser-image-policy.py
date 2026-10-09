@@ -15,6 +15,8 @@ for marker in (
     "rollback.getSettings().setBlockNetworkImage(previous)",
     "Reload the current page to apply it to images already loaded.",
     "it does not block all ads or tracking",
+    'text("Full-screen page", 16, palette.text, Typeface.BOLD)',
+    "Close full-screen page and return to standard browser view",
 ):
     assert marker in activity, f"network image preference missing or misleading: {marker}"
 print("PASS: opt-in WebView network-image blocking is persisted and applied to current/new tabs")
