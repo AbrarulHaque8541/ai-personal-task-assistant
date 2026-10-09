@@ -1147,15 +1147,15 @@ public final class MainActivity extends Activity {
         browserMediaButton.setOnClickListener(view -> findMediaOnPage());
         browserExpandButton = compactButton("Expand", false);
         browserExpandButton.setVisibility(View.GONE);
-        browserExpandButton.setContentDescription("Open the current web page in a full-screen reader");
+        browserExpandButton.setContentDescription("Open the current web page in a full-screen view");
         browserExpandButton.setEnabled(false);
-        browserExpandButton.setOnClickListener(view -> openFullScreenWebReader());
+        browserExpandButton.setOnClickListener(view -> openFullScreenWebView());
         Button tasksButton = compactButton("Tasks", false);
         tasksButton.setContentDescription("Return to Daymark tasks");
         tasksButton.setOnClickListener(view -> setWebMode(false));
         for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
                 browserReloadButton, browserHomeButton, browserTabButton, browserHistoryButton,
-                browserSettingsButton, browserOverflowButton, browserMediaButton)) {
+                browserSettingsButton, browserOverflowButton, browserMediaButton, browserExpandButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -1203,10 +1203,10 @@ public final class MainActivity extends Activity {
         browserReaderActionRow.setOrientation(LinearLayout.HORIZONTAL);
         browserReaderActionRow.setGravity(Gravity.CENTER_VERTICAL);
         browserReaderActionRow.setPadding(dp(2), 0, dp(2), 0);
-        browserReaderButton = compactButton("Read full screen", true);
-        browserReaderButton.setContentDescription("Open the current web page in a full-screen reader");
+        browserReaderButton = compactButton("Reader mode", true);
+        browserReaderButton.setContentDescription("Extract readable article text into a local text-only view");
         browserReaderButton.setEnabled(false);
-        browserReaderButton.setOnClickListener(view -> openFullScreenWebReader());
+        browserReaderButton.setOnClickListener(view -> openReaderMode());
         browserReaderActionRow.addView(browserReaderButton, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
         browserReaderActionRow.setVisibility(View.GONE);
@@ -2409,9 +2409,10 @@ public final class MainActivity extends Activity {
                 ? "Stop loading the current page" : "Reload the current page");
         if (browserExpandButton != null) {
             browserExpandButton.setEnabled(available && hasPage);
+            browserExpandButton.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
         }
         if (browserReaderActionRow != null) {
-            browserReaderActionRow.setVisibility(View.GONE);
+            browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
         }
         if (browserReaderButton != null) {
             browserReaderButton.setEnabled(available && hasPage);
@@ -2433,7 +2434,109 @@ public final class MainActivity extends Activity {
         syncBrowserButtons();
     }
 
-    private void openFullScreenWebReader() {
+    private void openReaderMode() {
+        if (!browserNetworkPolicy.allowsRemoteLoads() || browserWebView == null
+                || !BrowserAddress.isAllowedWebUrl(browserWebView.getUrl())) {
+            showToast("Open an HTTPS article first.");
+            return;
+        }
+        if (browserWebView.getProgress() < 100) {
+            showToast("Wait for the page to finish loading before opening Reader Mode.");
+            return;
+        }
+        final DaymarkWebView source = browserWebView;
+        final String sourceUrl = source.getUrl();
+        browserStatus.setText("Preparing a local text-only reading view...");
+        String script = "(function(){try{"
+                + "var root=document.querySelector('article')||document.querySelector('main')||document.body;"
+                + "var walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{acceptNode:function(node){"
+                + "if(node.nodeType===1){var tag=node.tagName.toLowerCase();"
+                + "if(/^(script|style|noscript|nav|aside|footer|form|button|svg|iframe)$/i.test(tag)||node.getAttribute('aria-hidden')==='true')return NodeFilter.FILTER_REJECT;}"
+                + "return NodeFilter.FILTER_ACCEPT;}});"
+                + "var heading=document.querySelector('h1');"
+                + "var title=((heading&&heading.innerText)||document.title||'Reader mode').trim().slice(0,120);"
+                + "var parts=[],length=0,node;"
+                + "while((node=walker.nextNode())&&length<60000){"
+                + "if(node.nodeType===3){var value=node.nodeValue||'';if(value.trim()){parts.push(value);length+=value.length;}}"
+                + "else if(/^(p|div|li|h1|h2|h3|br|section|article)$/i.test(node.tagName)){parts.push('\\n');}}"
+                + "var body=parts.join('').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,60000);"
+                + "return [title,body];"
+                + "}catch(e){return ['Reader mode',''];}})()";
+        source.evaluateJavascript(script, value -> {
+            if (!isActivityCallbackCurrent() || source != browserWebView
+                    || !sourceUrl.equals(source.getUrl())) return;
+            if (value == null || "null".equals(value)) {
+                showToast("Reader Mode could not read this page.");
+                return;
+            }
+            try {
+                org.json.JSONArray extracted = new org.json.JSONArray(value);
+                String title = extracted.optString(0, "Reader mode");
+                String body = extracted.optString(1, "");
+                if (body.trim().isEmpty()) {
+                    browserStatus.setText("Reader Mode found no readable article text on this page.");
+                    showToast("No readable article text found.");
+                    return;
+                }
+                browserStatus.setText("Reader Mode extracted page text locally. The original page is unchanged.");
+                showReaderModeDialog(title, body);
+            } catch (Exception invalidResult) {
+                showToast("Reader Mode could not read this page.");
+            }
+        });
+    }
+
+    private void showReaderModeDialog(String title, String body) {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(8), dp(16), dp(16));
+
+        TextView note = text(
+                "Text-only view · extracted on this device · original website left unchanged",
+                12, palette.muted, Typeface.NORMAL);
+        note.setLineSpacing(dp(2), 1f);
+        content.addView(note, bottomMargin(dp(10)));
+
+        Button copy = compactButton("Copy article text", true);
+        copy.setContentDescription("Copy extracted article text to the clipboard");
+        copy.setOnClickListener(view -> {
+            android.content.ClipboardManager clipboard =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard == null) {
+                showToast("Clipboard is unavailable.");
+                return;
+            }
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Daymark Reader Mode", body));
+            showToast("Article text copied.");
+        });
+        content.addView(copy, bottomMargin(dp(10)));
+
+        TextView article = text(body, 16, palette.text, Typeface.NORMAL);
+        article.setTextSize(16f * textScale);
+        article.setTextIsSelectable(true);
+        article.setLineSpacing(dp(5), 1.12f);
+        article.setGravity(Gravity.START);
+        content.addView(article);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.addView(content);
+
+        String safeTitle = title == null || title.trim().isEmpty()
+                ? "Reader mode" : title.trim().substring(0, Math.min(120, title.trim().length()));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(safeTitle)
+                .setView(scroll)
+                .setPositiveButton("Done", null)
+                .create();
+        content.setAlpha(0f);
+        content.setTranslationY(dp(6));
+        dialog.show();
+        content.animate().alpha(1f).translationY(0f).setDuration(140L).start();
+    }
+
+    private void openFullScreenWebView() {
         if (browserWebView == null || !browserNetworkPolicy.allowsRemoteLoads()) return;
         if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) return;
 
@@ -3122,7 +3225,7 @@ public final class MainActivity extends Activity {
         browserPreferences.edit().putBoolean(BROWSER_BLOCK_IMAGES_KEY, enabled).apply();
         showToast(enabled
                 ? "Network images blocked. Reload the current page to apply it to images already loaded."
-                : "Network images allowed again. Reload a page to load images that were blocked.");
+                : "Network images allowed again. Previously blocked images may load automatically.");
         return true;
     }
 

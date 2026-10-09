@@ -40,7 +40,7 @@ Daymark is a personal, local-first Android task assistant with an embedded HTTPS
 - Keep Android backup disabled unless the owner approves a fully reviewed data/key migration design.
 - Do not add hidden analytics, telemetry, ad SDKs, remote task sync, background polling, or silent cloud fallback.
 - Imported page scripts are untrusted code. Explain matching sites, permissions/unsupported APIs, possible access to logged-in page content, and network side effects; require explicit trust confirmation before persistence/enabling.
-- Keep untrusted WebView content away from native bridges and app-private files. Never expose a broad `addJavascriptInterface` to arbitrary web pages.
+- Keep untrusted WebView content away from native bridges and app-private files. Never expose a broad `addJavascriptInterface` to arbitrary web pages. Reader Mode must remain user-triggered, extract bounded text only, render with native TextView (never page HTML), avoid additional network calls, and leave the original page DOM untouched.
 - Keep HTTP/cleartext blocked, validate URL schemes, and retain Android WebView Safe Browsing unless the user deliberately changes it after a warning.
 - Any optional download must be user-initiated, show source/size/storage impact, support cancellation, verify bytes/hash, and be removable with caches. No silent/background model, locale, plugin, or update download.
 - Never recommend uninstalling a production install without warning about local-data loss and first considering a valid portable backup.
@@ -58,7 +58,7 @@ Daymark is a personal, local-first Android task assistant with an embedded HTTPS
 
 - Prioritize the phone-sized experience: clear hierarchy, compact but readable controls, touch targets around 48dp, good keyboard/inset handling, visible empty/loading/error/success states, and no horizontal overflow.
 - Prefer custom grouped settings pages/cards over a long legacy list of unrelated AlertDialog items. Use restrained, short transitions; respect Android's system animation scale and avoid looping/auto-playing motion.
-- Keep nested/internal pages (browser settings, extension manager/details, backup/restore, task editor, update flow) visually consistent with the main app.
+- Keep nested/internal pages (browser settings, extension manager/details, Reader Mode extraction/copy and long-page text scaling, backup/restore, task editor, update flow) visually consistent with the main app.
 - Every action needs an accessible label and a real effect. Test text scaling, contrast, keyboard focus, TalkBack, Back navigation, and reduced-motion behavior where possible.
 - Do not add decorative animation that delays an action, hides status, or increases work on low-end devices. Performance and stability beat visual effects.
 
@@ -95,12 +95,13 @@ Before asking the owner to push a production tag:
 
 ## 9. Current baseline (verify before acting)
 
-At the 2026-10-09 audit:
+At the 2026-10-09 follow-up:
 - Latest published GitHub release: **v1.0.4**; APK and AAB assets exist.
-- Source candidate: **v1.0.5 / versionCode 6**, not yet published.
-- Main CI run #314 passed on `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`; signing secrets validated and the signed candidate artifacts matched the pinned publisher certificate.
-- Exact tag `v1.0.5` had not been created. A tag-triggered production workflow is still required to publish.
-- Physical-device install/update, TalkBack, real SAF provider behavior, and performance are not proven by CI.
+- Source candidate: **v1.0.5 / versionCode 6**, not yet published; exact tag `v1.0.5` still needs the production workflow.
+- PR #181 (updater metadata, extension trust confirmation, More UI, and network-image blocking) was merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`.
+- Main CI run #331 passed on that merge commit, including host/source checks, protected signing-secret validation, signed candidate APK/AAB generation, and signer verification.
+- PR #182 adds local text-only Reader Mode and is the current pre-release follow-up; verify its live CI before merging.
+- Physical-device install/update, TalkBack, real SAF provider behavior, Reader Mode quality, and performance are not proven by CI.
 - Target SDK is 35, so Play API 36 migration/qualification is still outstanding.
 
 Primary references: [README](README.md), [release signing contract](RELEASE_SIGNING.md), [project plan](PROJECT_PLAN.md), [documentation truth audit](DOCUMENTATION_TRUTH_AUDIT.md), [V1 acceptance checklist](android-app/V1_ACCEPTANCE.md), [pre-release audit](PRE_RELEASE_AUDIT_2026-10-09.md).
