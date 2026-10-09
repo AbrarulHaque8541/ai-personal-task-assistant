@@ -2487,6 +2487,10 @@ public final class MainActivity extends Activity {
     }
 
     private void showReaderModeDialog(String title, String body) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(8), dp(16), dp(16));
@@ -2495,7 +2499,30 @@ public final class MainActivity extends Activity {
                 "Text-only view · extracted on this device · original website left unchanged",
                 12, palette.muted, Typeface.NORMAL);
         note.setLineSpacing(dp(2), 1f);
-        content.addView(note, bottomMargin(dp(10)));
+
+        final float[] readerFontSize = {Math.max(14f, Math.min(28f, 16f * textScale))};
+        final boolean[] readerSerif = {false};
+        final int[] readerTheme = {0};
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.HORIZONTAL);
+        controls.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button smaller = compactButton("A−", true);
+        smaller.setContentDescription("Decrease reader text size");
+        Button larger = compactButton("A+", true);
+        larger.setContentDescription("Increase reader text size");
+        Button font = compactButton("Font: Sans", true);
+        font.setContentDescription("Switch between sans serif and serif reader fonts");
+        Button theme = compactButton("Theme: Light", true);
+        theme.setContentDescription("Cycle reader background between light, sepia, and dark");
+
+        for (Button control : new Button[]{smaller, larger, font, theme}) {
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    0, dp(42), 1f);
+            params.setMargins(dp(2), 0, dp(2), 0);
+            controls.addView(control, params);
+        }
 
         Button copy = compactButton("Copy article text", true);
         copy.setContentDescription("Copy extracted article text to the clipboard");
@@ -2509,19 +2536,64 @@ public final class MainActivity extends Activity {
             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Daymark Reader Mode", body));
             showToast("Article text copied.");
         });
-        content.addView(copy, bottomMargin(dp(10)));
 
         TextView article = text(body, 16, palette.text, Typeface.NORMAL);
-        article.setTextSize(16f * textScale);
         article.setTextIsSelectable(true);
         article.setLineSpacing(dp(5), 1.12f);
         article.setGravity(Gravity.START);
-        content.addView(article);
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(false);
-        scroll.setClipToPadding(false);
+        String[] themeNames = {"Light", "Sepia", "Dark"};
+        Runnable applyAppearance = () -> {
+            int background;
+            int foreground;
+            int muted;
+            if (readerTheme[0] == 1) {
+                background = 0xFFF1E4C8;
+                foreground = 0xFF3B2F24;
+                muted = 0xFF766650;
+            } else if (readerTheme[0] == 2) {
+                background = 0xFF171717;
+                foreground = 0xFFF1F1F1;
+                muted = 0xFFB9B9B9;
+            } else {
+                background = 0xFFFFFEFC;
+                foreground = 0xFF202124;
+                muted = 0xFF666666;
+            }
+            content.setBackgroundColor(background);
+            scroll.setBackgroundColor(background);
+            note.setTextColor(muted);
+            article.setBackgroundColor(background);
+            article.setTextColor(foreground);
+            article.setTextSize(readerFontSize[0]);
+            article.setTypeface(readerSerif[0] ? Typeface.SERIF : Typeface.SANS_SERIF);
+            font.setText(readerSerif[0] ? "Font: Serif" : "Font: Sans");
+            theme.setText("Theme: " + themeNames[readerTheme[0]]);
+        };
+
+        smaller.setOnClickListener(view -> {
+            readerFontSize[0] = Math.max(14f, readerFontSize[0] - 2f);
+            applyAppearance.run();
+        });
+        larger.setOnClickListener(view -> {
+            readerFontSize[0] = Math.min(28f, readerFontSize[0] + 2f);
+            applyAppearance.run();
+        });
+        font.setOnClickListener(view -> {
+            readerSerif[0] = !readerSerif[0];
+            applyAppearance.run();
+        });
+        theme.setOnClickListener(view -> {
+            readerTheme[0] = (readerTheme[0] + 1) % themeNames.length;
+            applyAppearance.run();
+        });
+
+        content.addView(note, bottomMargin(dp(10)));
+        content.addView(controls, bottomMargin(dp(10)));
+        content.addView(copy, bottomMargin(dp(10)));
+        content.addView(article);
         scroll.addView(content);
+        applyAppearance.run();
 
         String safeTitle = title == null || title.trim().isEmpty()
                 ? "Reader mode" : title.trim().substring(0, Math.min(120, title.trim().length()));
