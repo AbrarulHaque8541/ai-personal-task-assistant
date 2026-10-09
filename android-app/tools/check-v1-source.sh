@@ -201,7 +201,7 @@ assert "URL-hash-based checks" in activity and "WebView M126 and later may send 
 assert "This does not mean every full URL is sent" in activity
 assert "Daymark sends no task text" in activity and "adds no app analytics" in activity
 assert "WebView diagnostic metrics are opted out" in activity
-assert "The Online switch blocks Daymark page/resource loads only" in activity
+assert "Daymark's browser network policy controls page/resource loads only" in activity
 assert "does not control Android System WebView Safe Browsing" in activity
 assert "no search/site request was sent" in activity, "Offline status must not overpromise absence of platform Safe Browsing traffic"
 assert "browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());" in activity
