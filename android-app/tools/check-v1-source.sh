@@ -156,8 +156,15 @@ assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePrefere
 assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "missing/corrupt online preference must default Offline"
 assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY," in activity, "browser Online preference must be read locally"
 assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
-assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
+assert "browserOnlineToggle = null;" in activity and "Internet access is requested when you search or open a site." in activity, "browser UI must not expose an Online/Offline toggle"
+assert "new CheckBox(this)" not in activity[activity.index("private View buildBrowserAddressBar()"):activity.index("private void navigateFromBrowserInput()")], "address bar must not create an Online/Offline checkbox"
+assert "confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress))" in activity, "first navigation should continue after explicit network consent"
 assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
+assert "private String browserLastSearchQuery = \"\";" in activity, "browser should retain the last submitted query for provider switching"
+assert "panel.addView(browserProviderRow, bottomMargin(dp(3)));" in activity, "provider shortcuts should be positioned after the weighted WebView as a bottom strip"
+assert "browserLastSearchQuery" in activity and "selectSearchEngine(entry.searchEngine)" in activity, "provider shortcuts should reuse the previous query with the selected provider"
+assert 'compactButton("Media ↓", false)' in activity and "e.currentSrc" in activity and "e.videoWidth+'×'+e.videoHeight" in activity, "media discovery should expose direct sources and available video dimensions"
+assert "browserReaderActionRow.setVisibility(View.GONE);" in activity, "reader action must not take space below the page"
 assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
 assert "may log it" in activity and "may contact and be logged by third-party endpoints" in activity, "provider and page endpoint logging must not be ruled out"
