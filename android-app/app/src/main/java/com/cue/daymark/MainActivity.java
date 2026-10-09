@@ -1850,12 +1850,42 @@ public final class MainActivity extends Activity {
                             "Unsupported extension. Use .daymark-ext.json, compatible userscript, ZIP/XPI, or CRX3.");
                 }
             }
-            new ExtensionStore(this).installUserPack(ext);
-            showToast("Extension added: " + ext.name);
-            showBrowserExtensionsManager();
+            confirmAndInstallExtension(ext);
         } catch (Exception exception) {
             showToast("Extension rejected: " + exception.getMessage());
         }
+    }
+
+    private void confirmAndInstallExtension(BrowserExtension ext) {
+        if (ext == null) return;
+        StringBuilder review = new StringBuilder();
+        review.append("Daymark supports only page-local CSS and JavaScript. This is not a full Chrome/Firefox extension runtime.\\n\\n");
+        review.append("Name: ").append(ext.name).append('\\n');
+        review.append("Version: ").append(ext.version).append('\\n');
+        review.append("Source: ").append(ext.builtIn ? "built-in" : "imported file").append('\\n');
+        review.append("JavaScript: ").append(ext.js.length()).append(" characters\\n");
+        review.append("CSS: ").append(ext.css.length()).append(" characters\\n");
+        review.append("Run time: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\\n');
+        review.append("Site match rules: ").append(ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size()).append('\\n');
+        if (ext.warnings != null && !ext.warnings.trim().isEmpty()) {
+            review.append("\\nImport warnings: ").append(ext.warnings).append('\\n');
+        }
+        review.append("\\nTRUST WARNING\\n");
+        review.append("When enabled, this script can read and change matching website page content. On a site where you are signed in, page scripts may be able to access information visible to that page and send it to an external service. Only add code from a source you trust. Daymark does not execute the script during this review.");
+        new AlertDialog.Builder(this)
+                .setTitle("Review before adding")
+                .setMessage(review.toString())
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Trust & add", (dialog, which) -> {
+                    try {
+                        new ExtensionStore(this).installUserPack(ext);
+                        showToast("Extension added: " + ext.name);
+                        showBrowserExtensionsManager();
+                    } catch (Exception exception) {
+                        showToast("Extension rejected: " + exception.getMessage());
+                    }
+                })
+                .show();
     }
 
     private void showBrowserExtensionsManager() {
@@ -5325,32 +5355,85 @@ public final class MainActivity extends Activity {
     }
 
     private void showSettingsDialog() {
-        String[] options = {
-                "Appearance: " + themeLabel(),
-                "Text size: " + textSizeLabel(),
-                "High contrast: " + (highContrast ? "On" : "Off"),
-                "Accessibility",
-                "Permission status: " + permissionStatusLabel(),
-                "Encrypted backup / restore",
-                "Browser & extensions",
-                "Check now"
-        };
-        new AlertDialog.Builder(this)
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(4), dp(16), dp(8));
+
+        TextView intro = text(
+                "Make Daymark feel right, manage your data, and open power features when you need them.",
+                13, palette.muted, Typeface.NORMAL);
+        intro.setLineSpacing(dp(2), 1f);
+        content.addView(intro, bottomMargin(dp(12)));
+
+        addSettingsSection(content, "PERSONALIZE");
+        addSettingsRow(content, "Appearance", themeLabel(),
+                () -> showThemePicker());
+        addSettingsRow(content, "Text size", textSizeLabel(),
+                () -> showTextSizePicker());
+        addSettingsRow(content, "High contrast", highContrast ? "On · stronger contrast" : "Off · standard colors",
+                () -> toggleHighContrast());
+
+        addSettingsSection(content, "ACCESSIBILITY & DATA");
+        addSettingsRow(content, "Accessibility", "Screen reader and motion support",
+                () -> showScreenReaderInfo());
+        addSettingsRow(content, "Permission status", permissionStatusLabel(),
+                () -> showPermissionStatus());
+        addSettingsRow(content, "Encrypted backup & restore", "Export or add tasks from a .dmbackup file",
+                () -> showPortableBackupDialog());
+
+        addSettingsSection(content, "POWER FEATURES");
+        addSettingsRow(content, "Browser & extensions", "WebView, site tools, and compatible page scripts",
+                () -> {
+                    if (webMode) showBrowserExtensionsManager();
+                    else setWebMode(true);
+                });
+        addSettingsRow(content, "Check for updates", "Check the signed sideload release channel",
+                () -> checkForUpdates(true));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.addView(content);
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("More")
-                .setItems(options, (dialog, selected) -> {
-                    if (selected == 0) showThemePicker();
-                    else if (selected == 1) showTextSizePicker();
-                    else if (selected == 2) toggleHighContrast();
-                    else if (selected == 3) showScreenReaderInfo();
-                    else if (selected == 4) showPermissionStatus();
-                    else if (selected == 5) showPortableBackupDialog();
-                    else if (selected == 6) {
-                        if (webMode) showBrowserExtensionsManager();
-                        else setWebMode(true);
-                    } else checkForUpdates(true);
-                })
-                .setNegativeButton("Close", null)
-                .show();
+                .setView(scroll)
+                .setNegativeButton("Done", null)
+                .create();
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+    }
+
+    private void addSettingsSection(LinearLayout parent, String label) {
+        TextView heading = text(label, 10, palette.muted, Typeface.BOLD);
+        heading.setLetterSpacing(0.12f);
+        heading.setPadding(dp(3), dp(12), dp(3), dp(5));
+        parent.addView(heading);
+    }
+
+    private void addSettingsRow(LinearLayout parent, String title, String subtitle, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(10), dp(12), dp(10));
+        row.setBackground(shape(palette.surface, 12, palette.line));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setContentDescription(title + ". " + subtitle);
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = text(title, 14, palette.text, Typeface.BOLD);
+        TextView detail = text(subtitle, 12, palette.muted, Typeface.NORMAL);
+        detail.setLineSpacing(dp(1), 1f);
+        copy.addView(heading);
+        copy.addView(detail, topMargin(dp(3)));
+        row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView arrow = text("›", 24, palette.muted, Typeface.NORMAL);
+        arrow.setGravity(Gravity.CENTER);
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setOnClickListener(view -> action.run());
+        parent.addView(row, bottomMargin(dp(6)));
     }
 
     private void showThemePicker() {
