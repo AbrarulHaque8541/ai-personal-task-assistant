@@ -2040,17 +2040,23 @@ public final class MainActivity extends Activity {
     }
 
     private void showBrowserMediaDialog(org.json.JSONArray found) {
-        int count = found.length();
-        final String[] urls = new String[count];
-        String[] labels = new String[count];
-        for (int i = 0; i < count; i++) {
-            org.json.JSONArray item = found.getJSONArray(i);
-            String kind = item.getString(0);
-            urls[i] = item.getString(1);
-            String label = item.length() > 2 ? item.optString(2, "") : "";
-            String name = URLUtil.guessFileName(urls[i], null, null);
-            labels[i] = ("video".equals(kind) ? "Video · " : "audio".equals(kind) ? "Audio · " : "Link · ")
-                    + (label == null || label.isEmpty() ? name : label);
+        final String[] urls;
+        final String[] labels;
+        try {
+            urls = new String[found.length()];
+            labels = new String[urls.length];
+            for (int i = 0; i < urls.length; i++) {
+                org.json.JSONArray item = found.getJSONArray(i);
+                String kind = item.getString(0);
+                urls[i] = item.getString(1);
+                String label = item.length() > 2 ? item.optString(2, "") : "";
+                String name = URLUtil.guessFileName(urls[i], null, null);
+                labels[i] = ("video".equals(kind) ? "Video · " : "audio".equals(kind) ? "Audio · " : "Link · ")
+                        + (label == null || label.isEmpty() ? name : label);
+            }
+        } catch (Exception invalidMediaResult) {
+            showToast("Media search failed on this page.");
+            return;
         }
         new AlertDialog.Builder(this)
                 .setTitle("Videos & audio on this page")
