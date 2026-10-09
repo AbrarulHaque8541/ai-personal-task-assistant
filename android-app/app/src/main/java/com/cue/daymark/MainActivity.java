@@ -333,13 +333,10 @@ public final class MainActivity extends Activity {
     }
 
     private boolean readBrowserOnlinePreference() {
-        try {
-            return browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY,
-                    BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED);
-        } catch (ClassCastException invalidPreference) {
-            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
-            return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
-        }
+        // Older builds persisted an Offline opt-in switch that is no longer shown.
+        // Migrate those installs so removing the switch cannot leave the browser permanently blocked.
+        browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
+        return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
     }
 
     private boolean readSafeBrowsingPreference() {
@@ -1135,7 +1132,7 @@ public final class MainActivity extends Activity {
         panel.addView(toolbarScroll, bottomMargin(dp(2)));
 
         String disclosureText =
-                "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
+                "Browsing starts ready for explicit searches and sites; Daymark does not prefetch pages. Each search/site request starts only after you tap Go or a provider shortcut. Queries/URLs and normal connection data go to the chosen destination, which may log them; pages may contact third parties. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
         browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
         browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
         browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
@@ -2769,7 +2766,7 @@ public final class MainActivity extends Activity {
 
     private void showBrowserSettingsDialog() {
         TextView explanation = text(
-                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Online switch only blocks Daymark page/resource loads; this setting controls Safe Browsing separately.",
+                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. Each page request requires a tap. Safe Browsing is a separate platform-managed protection setting and may contact Google/Play Services.",
                 14, palette.text, Typeface.NORMAL);
         explanation.setLineSpacing(dp(3), 1f);
         explanation.setPadding(dp(16), dp(8), dp(16), dp(8));
