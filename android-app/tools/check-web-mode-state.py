@@ -4,10 +4,7 @@
 Fails if MainActivity stops persisting webMode, stops restoring it, or restores
 it after the interface is built (which would leave the UI in the wrong mode).
 
-The MainActivity wiring is delivered as an applyable patch
-(tools/patches/web-mode-state-restore-mainactivity.patch) because the file
-exceeds the commit payload cap, so on the un-patched branch this prints a
-PENDING note instead of failing.
+The MainActivity wiring is a required assertion: if the wiring marker is absent, this check fails (issue #196).
 """
 from pathlib import Path
 
@@ -40,8 +37,8 @@ if "STATE_WEB_MODE" in ACTIVITY:
           "the mode must be restored before buildInterface() so the UI reflects it")
     check(save_at > 0, "the save site must exist")
 else:
-    print("PENDING web mode state: apply "
-          "tools/patches/web-mode-state-restore-mainactivity.patch to persist "
-          "webMode across recreation")
+    raise AssertionError(
+        "web-mode-state: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
 print(f"PASS web mode state source checks: {checks} assertions")

@@ -4,10 +4,7 @@
 Fails if MainActivity stops folding the device font scale into its text scale, or
 if the pure TextScalePolicy loses its clamp.
 
-The MainActivity wiring is delivered as an applyable patch
-(tools/patches/system-font-scale-mainactivity.patch) because the file exceeds the
-commit payload cap, so on the un-patched branch this prints a PENDING note
-instead of failing.
+The MainActivity wiring is a required assertion: if the wiring marker is absent, this check fails (issue #196).
 """
 from pathlib import Path
 
@@ -35,8 +32,8 @@ if "TextScalePolicy.combined(" in ACTIVITY:
     check("getResources().getConfiguration().fontScale" in ACTIVITY,
           "the device font scale must be read from the configuration")
 else:
-    print("PENDING system font scale: apply "
-          "tools/patches/system-font-scale-mainactivity.patch to fold the device "
-          "font scale into the app text scale")
+    raise AssertionError(
+        "text-scale: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
 print(f"PASS text scale source checks: {checks} assertions")

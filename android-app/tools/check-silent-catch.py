@@ -5,10 +5,7 @@ The round-2 audit found two catch blocks that swallowed their exception with no
 record at all. This guard fails if either of those two sites stops recording a
 diagnostic, and fails if a NEW empty catch block appears in MainActivity.
 
-The MainActivity wiring is delivered as an applyable patch
-(tools/patches/silent-catch-observability-mainactivity.patch) because the file
-exceeds the commit payload cap, so on the un-patched branch this prints a
-PENDING note instead of failing.
+The MainActivity wiring is a required assertion: if the wiring marker is absent, this check fails (issue #196).
 """
 from pathlib import Path
 import re
@@ -41,8 +38,9 @@ if "StartupDiagnostics.record(" in ACTIVITY:
     check(not empty_sites,
           f"no empty catch block may remain in MainActivity: {empty_sites}")
 else:
-    print("PENDING silent-catch observability: apply "
-          "tools/patches/silent-catch-observability-mainactivity.patch to wire "
-          "StartupDiagnostics into MainActivity")
+    raise AssertionError(
+        "silent-catch: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
-print(f"PASS silent-catch source checks: {checks} assertions")
+print(f"PASS silent-catch source checks: {checks} as
+sertions")
