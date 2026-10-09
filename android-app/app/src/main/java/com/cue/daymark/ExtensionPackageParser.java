@@ -14,6 +14,9 @@ import java.util.zip.ZipInputStream;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /** Parses Daymark JSON packs and a minimal userscript header subset (@grant none only). */
 final class ExtensionPackageParser {
@@ -59,7 +62,8 @@ final class ExtensionPackageParser {
         return new BrowserExtension(
                 id, name, o.optString("version", "1.0.0"), o.optString("description", ""),
                 o.optBoolean("enabled", true), builtIn, matches, excludes, css, js,
-                o.optString("runAt", "document_end"), o.optString("warnings", ""), disabledSites);
+                effectiveRunAt(o.optString("runAt", "document_end")),
+                withTimingWarning(o.optString("warnings", ""), o.optString("runAt", "document_end")), disabledSites);
     }
 
     /**
@@ -117,6 +121,7 @@ final class ExtensionPackageParser {
         StringBuilder css = new StringBuilder();
         StringBuilder js = new StringBuilder();
         String runAt = "document_end";
+        boolean requestedDocumentStart = false;
         StringBuilder warnings = new StringBuilder("Imported in Daymark compatibility mode; only page-local content scripts are supported.");
         for (int i = 0; i < scripts.length() && i < 32; i++) {
             JSONObject item = scripts.optJSONObject(i);
@@ -124,18 +129,44 @@ final class ExtensionPackageParser {
             appendPatterns(matches, item.optJSONArray("matches"));
             appendPatterns(excludes, item.optJSONArray("exclude_matches"));
             String itemRunAt = item.optString("run_at", "document_idle").toLowerCase(Locale.ROOT);
-            if (itemRunAt.contains("start")) runAt = "document_start";
-            else if ("document_end".equals(itemRunAt)) runAt = "document_end";
+            if (itemRunAt.contains("start")) requestedDocumentStart = true;
             appendFiles(css, item.optJSONArray("css"), files, "CSS", warnings);
             appendFiles(js, item.optJSONArray("js"), files, "JS", warnings);
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
+        if (requestedDocumentStart) warnings.append(" Requested document_start timing is unsupported; Daymark injects after page load.");
         if (manifest.has("background")) warnings.append(" Background/service worker was not imported.");
         if (manifest.has("action") || manifest.has("browser_action") || manifest.has("page_action")) warnings.append(" Toolbar actions/popups were not imported.");
         if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Requested permissions were not granted.");
-        String id = "webext." + Integer.toHexString(manifest.toString().hashCode());
+        String id = stableId("webext.", manifest.toString() + "\nCSS\n" + css + "\nJS\n" + js);
         return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
+    }
+
+    private static String effectiveRunAt(String requested) {
+        return "document_end";
+    }
+
+    private static String withTimingWarning(String existing, String requested) {
+        if (requested == null || !requested.toLowerCase(Locale.ROOT).contains("start")) return existing;
+        String warning = "document_start timing is unsupported; Daymark injects after page load";
+        return existing == null || existing.trim().isEmpty() ? warning : existing + "; " + warning;
+    }
+
+    private static String stableId(String prefix, String material) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest((material == null ? "" : material).getBytes(StandardCharsets.UTF_8));
+            char[] hex = new char[digest.length * 2];
+            final char[] digits = "0123456789abcdef".toCharArray();
+            for (int i = 0; i < digest.length; i++) {
+                int value = digest[i] & 0xff;
+                hex[i * 2] = digits[value >>> 4];
+                hex[i * 2 + 1] = digits[value & 0x0f];
+            }
+            return prefix + new String(hex);
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
     }
 
     private static void appendPatterns(List<String> target, JSONArray values) {
@@ -195,7 +226,8 @@ final class ExtensionPackageParser {
         List<String> matches = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         List<String> grants = new ArrayList<>();
-        String id = "userscript." + Integer.toHexString(raw.hashCode());
+        String id = stableId("userscript.", raw);
+        boolean requestedDocumentStart = false;
         String body = raw.trim();
         if (header.find()) {
             String block = header.group(1);
@@ -217,8 +249,8 @@ final class ExtensionPackageParser {
                         break;
                     case "run-at":
                     case "runat":
-                        if (value.contains("start")) runAt = "document_start";
-                        else runAt = "document_end";
+                        if (value.contains("start")) requestedDocumentStart = true;
+                        runAt = "document_end";
                         break;
                     case "grant":
                         grants.add(value);
@@ -237,6 +269,10 @@ final class ExtensionPackageParser {
             unsafeGrant = true;
             if (warnings.length() > 0) warnings.append(';');
             warnings.append("unsupported @grant ").append(g);
+        }
+        if (requestedDocumentStart) {
+            if (warnings.length() > 0) warnings.append(';');
+            warnings.append("document_start timing is unsupported; Daymark injects after page load");
         }
         if (unsafeGrant) {
             description = description + " [Daymark: only @grant none / GM_addStyle; other GM APIs are not provided.]";
