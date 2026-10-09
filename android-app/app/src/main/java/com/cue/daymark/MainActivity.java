@@ -1997,13 +1997,13 @@ public final class MainActivity extends Activity {
         browserStatus.setText("Searching the page for downloadable videos and audio...");
         String mediaProbeScript = "(function(){"
                 + "var found=[];var seen={};"
-                + "function push(url,kind,label){"
+                + "function push(url,kind,label,quality){"
                 + "if(!url)return;var probe=document.createElement('a');probe.href=url;var abs=probe.href;"
                 + "if(abs.indexOf('https://')!==0)return;if(seen[abs])return;seen[abs]=1;"
-                + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60)]);}"
+                + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60),(quality||'')]);}"
                 + "var i,e,src,links;"
                 + "links=document.querySelectorAll('video');"
-                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'video',e.getAttribute('title')||'');"
+                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'video',e.getAttribute('title')||'',e.videoWidth&&e.videoHeight?(e.videoWidth+'x'+e.videoHeight):'');"
                 + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'video',src[j].getAttribute('title')||'');}}"
                 + "links=document.querySelectorAll('audio');"
                 + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'audio',e.getAttribute('title')||'');"
@@ -2044,9 +2044,10 @@ public final class MainActivity extends Activity {
                 urls[i] = item.getString(1);
                 String label = item.length() > 2 ? item.optString(2, "") : "";
                 String name = URLUtil.guessFileName(urls[i], null, null);
+                String quality = item.length() > 3 ? item.optString(3, "") : "";
                 String detail = label == null || label.isEmpty() ? name : label;
                 labels[i] = ("video".equals(kinds[i]) ? "Video · " : "audio".equals(kinds[i]) ? "Audio · " : "Media link · ")
-                        + detail;
+                        + detail + (quality.isEmpty() ? "" : " · " + quality);
             }
         } catch (Exception invalidMediaResult) {
             showToast("Media search failed on this page.");
