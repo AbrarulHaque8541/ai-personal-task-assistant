@@ -2009,7 +2009,7 @@ public final class MainActivity extends Activity {
                 + "function push(url,kind,label){"
                 + "try{if(!url)return;var abs=new URL(url,location.href).href;"
                 + "if(abs.indexOf('https://')!==0)return;if(seen[abs])return;seen[abs]=1;"
-                + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60)]);}catch(e){}}"
+                + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60)]);}catch(e){/* skipped */}}"
                 + "var i,e,src,links;"
                 + "links=document.querySelectorAll('video');"
                 + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'video',e.getAttribute('title')||'');"
