@@ -216,7 +216,7 @@ assert "browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDial
 assert "setTitle(\"Browser Settings\")" in activity and "Safe Browsing (recommended)" in activity
 assert "Disable Safe Browsing?" in activity and "Turning this off reduces protection" in activity
 assert 'setPositiveButton("Disable Safe Browsing"' in activity and "setBrowserSafeBrowsingEnabled(false)" in activity
-assert "browserWebView.getSettings().setSafeBrowsingEnabled(enabled)" in activity
+assert "for (DaymarkWebView tab : tabsToUpdate)" in activity and "tab.getSettings().setSafeBrowsingEnabled(enabled)" in activity, "Safe Browsing must be applied to every open tab"
 assert "browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener()" in activity
 assert "settings.setSafeBrowsingEnabled(safeBrowsingEnabled)" in webview
 assert "DEFAULT_SAFE_BROWSING_ENABLED = true" in settings_policy
