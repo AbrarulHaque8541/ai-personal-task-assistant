@@ -3764,7 +3764,7 @@ public final class MainActivity extends Activity {
 
         StringBuilder message = new StringBuilder();
         for (Task task : due) {
-            if (message.length() > 0) message.append("\\n\\n");
+            if (message.length() > 0) message.append("\n\n");
             message.append("• ").append(task.title).append(" — ").append(dueLabel(task));
         }
         AlertDialog reminderDialog = new AlertDialog.Builder(this)
