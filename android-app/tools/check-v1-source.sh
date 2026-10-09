@@ -22,6 +22,7 @@ python3 ./tools/check-extension-import-hardening.py "$ROOT"
 python3 ./tools/check-browser-tab-settings.py "$ROOT"
 python3 ./tools/check-reminder-lifecycle.py "$ROOT"
 python3 ./tools/check-reader-mode.py "$ROOT"
+python3 ./tools/check-find-in-page.py "$ROOT"
 python3 ./tools/check-release-updater-metadata.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 bash ./tools/check-release-identity.sh
