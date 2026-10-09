@@ -24,9 +24,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
-        // Same app as v1.0.2 — higher versionCode preserves data on update when signed with the same keystore.
-        versionCode = 4
-        versionName = "1.0.3"
+        // Same app as v1.0.3 — higher versionCode preserves data on update when signed with the same keystore.
+        versionCode = 5
+        versionName = "1.0.4"
     }
 
     signingConfigs {
@@ -49,7 +49,8 @@ android {
                     throw GradleException(
                         "Release signing configuration error: Missing required environment variable(s): " +
                         missing.joinToString(", ") +
-                        ". All four variables (KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) must be set."
+                        ". All four variables (KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) 
+must be set."
                     )
                 }
 
@@ -110,7 +111,8 @@ gradle.taskGraph.whenReady {
         if (System.getenv("KEY_ALIAS").isNullOrBlank()) missing.add("KEY_ALIAS")
         if (System.getenv("KEY_PASSWORD").isNullOrBlank()) missing.add("KEY_PASSWORD")
 
-        if (missing.isNotEmpty()) {
+        if (missing.isNotEmpty(
+)) {
             throw GradleException(
                 "Release build rejected: Missing required signing environment variable(s): " +
                 missing.joinToString(", ") +
