@@ -102,12 +102,18 @@ jobs:
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$apksigner" verify --verbose "$apk"
           badging="$( "$aapt" dump badging "$apk" )"
-          package_id="$(printf '%s\n' "$badging" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p")"
-          version_name="$(printf '%s\n' "$badging" | sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p")"
-          version_code="$(printf '%s\n' "$badging" | sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p")"
-          expected_name="$(sed -n 's/^[[:space:]]*versionName = "\\([^"]*\\)".*/\\1/p' app/build.gradle.kts | head -n 1)"
-          expected_code="$(sed -n 's/^[[:space:]]*versionCode = \\([0-9][0-9]*\\).*/\\1/p' app/build.gradle.kts | head -n 1)"
+          package_line="$(grep '^package: ' <<< "$badging")"
+          package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          expected_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          expected_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
           expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
+          echo "Package ID:       $package_id"
+          echo "Version Name:     $version_name"
+          echo "Version Code:     $version_code"
+          echo "Expected Name:    $expected_name"
+          echo "Expected Code:    $expected_code"
           [[ "$package_id" == "com.cue.daymark" ]]
           [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
