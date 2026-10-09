@@ -27,7 +27,22 @@ final class BrowserAddress {
         MOJEEK("Mojeek", "https://www.mojeek.com/search?q="),
         KAGI("Kagi", "https://kagi.com/search?q="),
         YOU("You.com", "https://you.com/search?q="),
-        YANDEX("Yandex", "https://yandex.com/search/?text=");
+        YANDEX("Yandex", "https://yandex.com/search/?text="),
+        BAIDU("Baidu", "https://www.baidu.com/s?wd="),
+        DUCKDUCKGO_LITE("DuckDuckGo Lite", "https://lite.duckduckgo.com/lite/?q="),
+        QWANT_AI("Qwant AI", "https://www.qwant.com/?q="),
+        CHATGPT("ChatGPT", "https://chatgpt.com/?q="),
+        PERPLEXITY("Perplexity", "https://www.perplexity.ai/search?q="),
+        GEMINI("Google Gemini", "https://gemini.google.com/app?query="),
+        CLAUDE("Claude", "https://claude.ai/new?q="),
+        COPILOT("Microsoft Copilot", "https://copilot.microsoft.com/?q="),
+        GROK("Grok", "https://grok.com/?q="),
+        DEEPSEEK("DeepSeek", "https://chat.deepseek.com/?q="),
+        PHIND("Phind", "https://www.phind.com/search?q="),
+        KIMI("Kimi", "https://www.kimi.com/?q="),
+        YOU_COM_AI("You.com AI", "https://you.com/search?q="),
+        WOLFRAM_ALPHA("WolframAlpha", "https://www.wolframalpha.com/input/?i="),
+        WIKIPEDIA("Wikipedia", "https://en.wikipedia.org/wiki/Special:Search?search=");
 
         final String label;
         private final String searchPrefix;
