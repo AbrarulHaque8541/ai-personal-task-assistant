@@ -34,6 +34,14 @@ for marker in (
 ):
     assert marker in reader, f"Reader Mode extraction guard missing: {marker}"
 for marker in (
+    'compactButton("A−", true)',
+    'compactButton("A+", true)',
+    'compactButton("Sans", true)',
+    'compactButton("Light", true)',
+    "readerFontSize[0] = Math.max(14f, readerFontSize[0] - 2f)",
+    "readerFontSize[0] = Math.min(28f, readerFontSize[0] + 2f)",
+    'String[] themeNames = {"Light", "Sepia", "Dark"}',
+    "readerSerif[0] ? Typeface.SERIF : Typeface.SANS_SERIF",
     "TextView article = text(body, 16, palette.text, Typeface.NORMAL)",
     "article.setTextIsSelectable(true)",
     'compactButton("Copy article text", true)',
