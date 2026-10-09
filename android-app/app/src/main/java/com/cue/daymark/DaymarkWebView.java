@@ -50,7 +50,6 @@ final class DaymarkWebView extends WebView {
         if (callback != null) callback.onCustomViewHidden();
     }
 
-
     private View fullscreenView;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
 
@@ -66,68 +65,54 @@ final class DaymarkWebView extends WebView {
         WebSettings settings = getSettings();
         settings.setBlockNetworkLoads(true);
         settings.setJavaScriptEnabled(true);
+        // Many sites (including Google) render poorly or blank with the default WebView UA.
+        settings.setUserAgentString(
+                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
+                        + "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
         settings.setDomStorageEnabled(true);
-        settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setAllowFileAccessFromFileURLs(false);
-        settings.setAllowUniversalAccessFromFileURLs(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setDatabaseEnabled(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
-        // Viewport/zoom/pop-up policy: see BrowserViewportPolicy. Multiple windows stay
-        // disabled so target="_blank" result links load in this WebView (and still pass the
-        // HTTPS/offline guard) instead of being silently dropped.
-        settings.setSupportMultipleWindows(BrowserViewportPolicy.SUPPORT_MULTIPLE_WINDOWS);
-        settings.setUseWideViewPort(BrowserViewportPolicy.USE_WIDE_VIEW_PORT);
-        settings.setLoadWithOverviewMode(BrowserViewportPolicy.LOAD_WITH_OVERVIEW_MODE);
-        settings.setSupportZoom(BrowserViewportPolicy.SUPPORT_ZOOM);
-        settings.setBuiltInZoomControls(BrowserViewportPolicy.BUILT_IN_ZOOM_CONTROLS);
-        settings.setDisplayZoomControls(BrowserViewportPolicy.DISPLAY_ZOOM_CONTROLS);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(BrowserViewportPolicy.allowsSeparateWindow());
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
+        }
 
         setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null) return true;
                 String url = request.getUrl().toString();
-                if ("daymark-download".equalsIgnoreCase(request.getUrl().getScheme())) {
-                    String mediaUrl = request.getUrl().getQueryParameter("url");
-                    if (BrowserMediaPolicy.allowsHandoff(networkPolicy.allowsRemoteLoads(),
-                            request.hasGesture(), request.getUrl().getScheme(),
-                            request.getUrl().getHost(), mediaUrl)) {
-                        listener.onMediaDownloadRequested(mediaUrl);
-                    }
-                    return true;
-                }
                 if (!networkPolicy.allowsRemoteLoads()) {
                     listener.onOfflineNavigationBlocked();
                     return true;
                 }
-                if (request.isForMainFrame()
-                        && "http".equalsIgnoreCase(request.getUrl().getScheme())) {
+                if ("http".equalsIgnoreCase(request.getUrl().getScheme())) {
                     listener.onHttpNavigationBlocked(url, request.isRedirect());
                     return true;
                 }
-                if (BrowserAddress.isAllowedWebUrl(url)) return false;
-                listener.onNavigationBlocked(url);
-                return true;
+                if (!url.startsWith("https://")) {
+                    listener.onNavigationBlocked(url);
+                    return true;
+                }
+                return false;
             }
 
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                if (!networkPolicy.allowsRemoteLoads()) {
-                    listener.onOfflineNavigationBlocked();
-                    return;
-                }
                 listener.onPageStarted(url);
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                listener.onPageFinished(url);
-                // Local Daymark packs only (CSS/userscript-style). No chrome.* APIs, no request interception.
-                if (extensionRuntime != null && networkPolicy.allowsRemoteLoads()) {
+                if (extensionRuntime != null) {
                     extensionRuntime.onPageFinished(view, url);
                 }
+                listener.onPageFinished(url);
             }
 
             @Override
@@ -138,17 +123,35 @@ final class DaymarkWebView extends WebView {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (!request.isForMainFrame()) return;
-                if (!networkPolicy.allowsRemoteLoads()) {
-                    listener.onOfflineNavigationBlocked();
-                    return;
-                }
-                if ("http".equalsIgnoreCase(request.getUrl().getScheme())) {
-                    listener.onHttpNavigationBlocked(request.getUrl().toString(), request.isRedirect());
-                } else {
+                if (request != null && request.isForMainFrame()) {
                     listener.onLoadError();
                 }
             }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            android.webkit.WebResourceResponse errorResponse) {
+                if (request != null && request.isForMainFrame() && errorResponse != null
+                        && errorResponse.getStatusCode() >= 400) {
+                    // Surface hard failures; soft 404 pages still finish via onPageFinished.
+                }
+            }
+
+            @Override
+            public void onFormResubmission(WebView view, android.os.Message dontResend, android.os.Message resend) {
+                if (dontResend != null) dontResend.sendToTarget();
+            }
+
+            @Override
+            public void onUnhandledKeyEvent(WebView view, android.view.KeyEvent event) {
+                // default
+            }
+
+            @Override
+            public void onScaleChanged(WebView view, float oldScale, float newScale) { }
+
+            @Override
+            public void onReceivedLoginRequest(WebView view, String realm, String account, String args) { }
 
             @Override
             public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
@@ -190,9 +193,6 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                                          android.os.Message resultMsg) {
-                // Multiple windows are disabled, so target="_blank" / window.open navigations
-                // are loaded by this WebView and still pass through shouldOverrideUrlLoading's
-                // HTTPS/offline guard. Returning false here would silently drop them.
                 return BrowserViewportPolicy.allowsSeparateWindow();
             }
         });
