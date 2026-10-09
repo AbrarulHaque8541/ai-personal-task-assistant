@@ -143,7 +143,7 @@ settings_policy = (main / "java/com/cue/daymark/BrowserSettingsPolicy.java").rea
 settings_smoke = (root / "tools/BrowserSettingsPolicySmoke.java").read_text(encoding="utf-8")
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
     assert expected in activity, f"missing task source feature marker: {expected}"
-for expected in ("Permission status:", "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "no Android permissions are declared"):
+for expected in ('addSettingsRow(content, "Permission status"', "showPermissionStatus()", "PackageManager.GET_PERMISSIONS", "no Android permissions are declared"):
     assert expected in activity, f"missing permission-status behavior: {expected}"
 for forbidden in ("requestPermissions(", "ActivityResultContracts.RequestPermission", "registerForActivityResult"):
     assert forbidden not in activity, f"browser must not add runtime permission prompt code: {forbidden}"
