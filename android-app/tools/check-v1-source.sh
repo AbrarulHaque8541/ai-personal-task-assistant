@@ -164,6 +164,11 @@ assert "private String browserLastSearchQuery = \"\";" in activity, "browser sho
 assert "panel.addView(browserProviderRow, bottomMargin(dp(3)));" in activity, "provider shortcuts should be positioned after the weighted WebView as a bottom strip"
 assert "browserLastSearchQuery" in activity and "selectSearchEngine(entry.searchEngine)" in activity, "provider shortcuts should reuse the previous query with the selected provider"
 assert 'compactButton("Media ↓", false)' in activity and "e.currentSrc" in activity and "e.videoWidth+'×'+e.videoHeight" in activity, "media discovery should expose direct sources and available video dimensions"
+assert "injectVideoDownloadOverlay(browserWebView);" in activity and "private void injectVideoDownloadOverlay(DaymarkWebView target)" in activity, "page finish should install the best-effort in-player download affordance"
+overlay = re.search(r"private void injectVideoDownloadOverlay\(DaymarkWebView target\)\s*\{(.*?)\n    \}", activity, re.S)
+assert overlay and "window.__daymarkVideoDownloadInstalled" in overlay.group(1) and "button.textContent='Download'" in overlay.group(1), "video overlay must be idempotent and visibly user-triggered"
+assert overlay and "target.evaluateJavascript(script, null)" in overlay.group(1) and "addEventListener('click'" in overlay.group(1), "video overlay must use a user click and avoid native JS bridges"
+assert "DRM/manifest/blob extraction" in activity, "video overlay limitations must be explicit in source"
 assert "browserReaderActionRow.setVisibility(View.GONE);" in activity, "reader action must not take space below the page"
 assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
