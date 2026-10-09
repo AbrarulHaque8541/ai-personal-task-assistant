@@ -181,6 +181,9 @@ public final class ExtensionPackageParserSmoke {
             check(restricted.matches.contains("https://example.com/*"), "valid scopes are imported");
             check(!restricted.matches.contains("*://*/*"), "imports never silently broaden to all sites");
             check(restricted.excludes.contains("https://example.com/private*"), "explicit exclusions still win");
+            BrowserExtension rootOnly = ExtensionPackageParser.parseWebExtensionManifest(
+                    "{\"name\":\"Root path\",\"content_scripts\":[{\"matches\":[\"https://example.com/\"],\"js\":[\"a.js\"]}]}");
+            check(rootOnly.matches.contains("https://example.com/"), "a root-only path is a valid explicit scope");
         } catch (IllegalArgumentException unexpected) {
             throw new AssertionError("valid restricted scopes must import: " + unexpected, unexpected);
         }
@@ -190,7 +193,7 @@ public final class ExtensionPackageParserSmoke {
         // "Aa" and "BB" collide under Java's 32-bit String.hashCode(); digests must not.
         check("Aa".hashCode() == "BB".hashCode(),
                 "the fixture strings really do collide under String.hashCode()");
-        String scriptA = "// ==UserScript==\\n// @name Aa\\n// @match https://example.com/*\\n// ==/UserScript==\\nrun();";
+        String scriptA = "// ==UserScript==\n// @name Aa\n// @match https://example.com/*\n// ==/UserScript==\nrun();";
         String scriptB = scriptA.replace("@name Aa", "@name BB");
         check(scriptA.hashCode() == scriptB.hashCode(), "userscript fixtures share a Java String hash");
         BrowserExtension first = ExtensionPackageParser.parseUserScript(scriptA);
@@ -200,7 +203,7 @@ public final class ExtensionPackageParserSmoke {
         check(first.id.matches("userscript\\.[0-9a-f]{64}")
                         && second.id.matches("userscript\\.[0-9a-f]{64}"),
                 "userscript ids are SHA-256 digests");
-        check(first.id.equals(ExtensionPackageParser.parseUserScript("Aa").id),
+        check(first.id.equals(ExtensionPackageParser.parseUserScript(scriptA).id),
                 "re-importing the same userscript keeps a stable id");
 
         String manifest = "{\"name\":\"Aa\",\"content_scripts\":[{\"matches\":[\"https://example.com/*\"],\"js\":[\"a.js\"]}]}";
@@ -323,6 +326,21 @@ public final class ExtensionPackageParserSmoke {
         } catch (IllegalArgumentException expected) {
             check(expected.getMessage().contains("decompressed"),
                     "the aggregate decompressed rejection explains the reason");
+        }
+
+        // Directory entries are also drained and counted even if the importer never stores them.
+        ByteArrayOutputStream directoryBytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(directoryBytes)) {
+            putEntry(zip, "manifest.json", manifest);
+            putEntry(zip, "script.js", "console.log('ok');");
+            putEntry(zip, "payload-dir/", new byte[2 * 1024 * 1024 + 1024]);
+        }
+        try {
+            ExtensionPackageParser.parseWebExtensionArchive(directoryBytes.toByteArray());
+            throw new AssertionError("oversized directory-entry expansion is rejected");
+        } catch (IllegalArgumentException expected) {
+            check(expected.getMessage().contains("decompressed"),
+                    "directory-entry decompression rejection explains the reason");
         }
 
         // A modest bounded archive still imports.
