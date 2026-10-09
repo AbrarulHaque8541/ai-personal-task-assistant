@@ -995,36 +995,11 @@ public final class MainActivity extends Activity {
     private View buildBrowserAddressBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
-        bar.setPadding(dp(8), dp(6), dp(8), dp(4));
-        bar.setBackground(shape(palette.surface, 18, palette.line));
+        bar.setPadding(dp(6), dp(5), dp(6), dp(5));
+        bar.setBackground(shape(palette.surface, 16, palette.line));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        browserAddressInput = new EditText(this);
-        browserAddressInput.setSingleLine(true);
-        browserAddressInput.setTextSize(14 * textScale);
-        browserAddressInput.setHint("Search or enter HTTPS address");
-        browserAddressInput.setImeOptions(EditorInfo.IME_ACTION_GO);
-        browserAddressInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        browserAddressInput.setPadding(dp(12), 0, dp(8), 0);
-        browserAddressInput.setTextColor(palette.text);
-        browserAddressInput.setHintTextColor(palette.muted);
-        browserAddressInput.setBackground(shape(palette.surfaceAlt, 16, palette.line));
-        browserAddressInput.setContentDescription("Browser address and search field");
-        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(46), 1f));
-
-        webGoButton = primaryButton("Go");
-        webGoButton.setContentDescription("Open the entered web address or search");
-        webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(58), dp(46));
-        goParams.leftMargin = dp(6);
-        top.addView(webGoButton, goParams);
-        bar.addView(top);
-
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.addView(text("Search with", 11, palette.muted, Typeface.NORMAL),
-                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         browserSearchEngineSpinner = new Spinner(this);
         String[] labels = new String[BrowserAddress.SearchEngine.values().length];
         for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
@@ -1033,39 +1008,60 @@ public final class MainActivity extends Activity {
         browserSearchEngineSpinner.setAdapter(adapter);
         int selected = java.util.Arrays.asList(labels).indexOf(searchEngine.label);
         browserSearchEngineSpinner.setSelection(Math.max(0, selected));
+        browserSearchEngineSpinner.setVisibility(View.GONE);
         browserSearchEngineSpinner.setContentDescription("Choose search engine");
         browserSearchEngineSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position < 0 || position >= BrowserAddress.SearchEngine.values().length) return;
-                selectSearchEngine(BrowserAddress.SearchEngine.values()[position]);
+                if (position >= 0 && position < BrowserAddress.SearchEngine.values().length) {
+                    selectSearchEngine(BrowserAddress.SearchEngine.values()[position]);
+                }
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        browserSearchEngineSpinner.setVisibility(View.GONE);
-        browserProviderPickerButton = compactButton(searchEngine.label + "  ▾", false);
-        browserProviderPickerButton.setTextSize(12 * textScale);
-        browserProviderPickerButton.setMinHeight(dp(38));
-        browserProviderPickerButton.setMinimumHeight(dp(38));
-        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
+
+        browserProviderPickerButton = compactButton(searchEngine.label + " ▾", false);
+        browserProviderPickerButton.setTextSize(11 * textScale);
+        browserProviderPickerButton.setMinHeight(dp(42));
+        browserProviderPickerButton.setMinimumHeight(dp(42));
+        browserProviderPickerButton.setPadding(dp(7), 0, dp(7), 0);
+        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 12, palette.surfaceAlt));
         browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
         browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
-        bottom.addView(browserProviderPickerButton, new LinearLayout.LayoutParams(0, dp(38), 1f));
+        top.addView(browserProviderPickerButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)));
 
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online");
-        browserOnlineToggle.setTextColor(palette.text);
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription("Enable or disable online browsing");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (checked) confirmBrowserOnlineAccess();
-            else setBrowserOnlineEnabled(false);
-        });
-        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
-        bar.addView(bottom);
+        browserAddressInput = new EditText(this);
+        browserAddressInput.setSingleLine(true);
+        browserAddressInput.setTextSize(14 * textScale);
+        browserAddressInput.setHint("Search or enter HTTPS address");
+        browserAddressInput.setImeOptions(EditorInfo.IME_ACTION_GO);
+        browserAddressInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        browserAddressInput.setPadding(dp(9), 0, dp(7), 0);
+        browserAddressInput.setTextColor(palette.text);
+        browserAddressInput.setHintTextColor(palette.muted);
+        browserAddressInput.setBackground(shape(palette.surfaceAlt, 14, palette.line));
+        browserAddressInput.setContentDescription("Browser address and search field");
+        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        addressParams.leftMargin = dp(5);
+        top.addView(browserAddressInput, addressParams);
+
+        webGoButton = primaryButton("Go");
+        webGoButton.setTextSize(13 * textScale);
+        webGoButton.setMinWidth(0);
+        webGoButton.setMinimumWidth(0);
+        webGoButton.setPadding(dp(7), 0, dp(7), 0);
+        webGoButton.setContentDescription("Open the entered web address or search");
+        webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(48), dp(42));
+        goParams.leftMargin = dp(5);
+        top.addView(webGoButton, goParams);
+        bar.addView(top);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH) {
+            boolean enter = event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                    && event.getAction() == KeyEvent.ACTION_DOWN;
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH || enter) {
                 navigateFromBrowserInput();
                 return true;
             }
@@ -1190,18 +1186,7 @@ public final class MainActivity extends Activity {
         panel.addView(browserStatus, bottomMargin(dp(4)));
 
         browserReaderActionRow = new LinearLayout(this);
-        browserReaderActionRow.setOrientation(LinearLayout.HORIZONTAL);
-        browserReaderActionRow.setGravity(Gravity.CENTER_VERTICAL);
-        browserReaderActionRow.setPadding(dp(2), 0, dp(2), 0);
-        browserReaderButton = compactButton("Read full screen", true);
-        browserReaderButton.setContentDescription("Open the current web page in a full-screen reader");
-        browserReaderButton.setEnabled(false);
-        browserReaderButton.setOnClickListener(view -> openFullScreenWebReader());
-        browserReaderActionRow.addView(browserReaderButton, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
         browserReaderActionRow.setVisibility(View.GONE);
-        panel.addView(browserReaderActionRow, bottomMargin(dp(4)));
-
         browserViewport = new FrameLayout(this);
         browserViewport.setBackgroundColor(palette.background);
         browserHomeView = buildBrowserHomeView();
@@ -2088,7 +2073,7 @@ public final class MainActivity extends Activity {
             browserExpandButton.setEnabled(available && hasPage);
         }
         if (browserReaderActionRow != null) {
-            browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
+            browserReaderActionRow.setVisibility(View.GONE);
         }
         if (browserReaderButton != null) {
             browserReaderButton.setEnabled(available && hasPage);
