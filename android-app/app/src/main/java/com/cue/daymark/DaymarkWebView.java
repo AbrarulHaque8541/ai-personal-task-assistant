@@ -1,6 +1,7 @@
 package com.cue.daymark;
 
 import android.app.Activity;
+import android.net.Uri;
 import android.net.http.SslError;
 import android.view.View;
 import android.webkit.GeolocationPermissions;
@@ -25,6 +26,7 @@ final class DaymarkWebView extends WebView {
         void onHttpNavigationBlocked(String url, boolean redirect);
         void onLoadError();
         void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength);
+        void onMediaDownloadRequested(String url);
         void onRendererGone();
     }
 
@@ -64,6 +66,12 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
+                Uri requestedUri = request.getUrl();
+                if ("daymark-media-download".equalsIgnoreCase(requestedUri.getScheme())) {
+                    String mediaUrl = requestedUri.getQueryParameter("url");
+                    listener.onMediaDownloadRequested(mediaUrl);
+                    return true;
+                }
                 if (!networkPolicy.allowsRemoteLoads()) {
                     listener.onOfflineNavigationBlocked();
                     return true;
