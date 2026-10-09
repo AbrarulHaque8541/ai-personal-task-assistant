@@ -52,6 +52,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebStorage;
 import android.webkit.URLUtil;
 
@@ -69,7 +70,9 @@ import java.io.OutputStream;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.text.NumberFormat;
 import java.util.UUID;
@@ -230,6 +233,12 @@ public final class MainActivity extends Activity {
     private FrameLayout browserViewport;
     private View browserHomeView;
     private DaymarkWebView browserWebView;
+    private final List<DaymarkWebView> browserTabs = new ArrayList<>();
+    private final Map<DaymarkWebView, String> browserTabQueries = new HashMap<>();
+    private Button browserTabButton;
+    private View browserFullscreenView;
+    private WebChromeClient.CustomViewCallback browserFullscreenCallback;
+    private int browserPreviousSystemUiVisibility;
     private Button taskModeButton;
     private Button webModeButton;
     private Button webGoButton;
@@ -252,6 +261,7 @@ public final class MainActivity extends Activity {
     private View browserProviderRow;
     private TextView browserPrivacyButton;
     private Button browserProviderPickerButton;
+    private String browserLastSearchQuery = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -366,6 +376,11 @@ public final class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (browserFullscreenView != null) {
+            if (browserWebView != null) browserWebView.hideCustomView();
+            else exitBrowserFullscreen();
+            return;
+        }
         if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) {
             closeFullScreenWebReader();
             return;
@@ -373,6 +388,10 @@ public final class MainActivity extends Activity {
         if (browserWebView != null && browserWebView.canGoBack()) {
             browserWebView.goBack();
             syncBrowserButtons();
+            return;
+        }
+        if (webMode && browserTabs.size() > 1) {
+            closeCurrentBrowserTab();
             return;
         }
         if (webMode) {
@@ -911,25 +930,14 @@ public final class MainActivity extends Activity {
 
         webActions = new LinearLayout(this);
         webActions.setOrientation(LinearLayout.VERTICAL);
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online browsing (off by default)");
-        browserOnlineToggle.setMinHeight(dp(48));
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
-                ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block Daymark page and resource loads; Android System WebView Safe Browsing may make separate Google/Play Services checks."
-                : "Online browsing is off by default. Turn it on after reviewing the disclosure to allow Daymark page and resource loads, then tap Go or a site to send a request. The switch does not control platform-managed Android System WebView Safe Browsing, which may make Google/Play Services URL-hash or update checks.");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (!checked) {
-                setBrowserOnlineEnabled(false);
-                return;
-            }
-            suppressBrowserOnlineToggleListener = true;
-            button.setChecked(false);
-            suppressBrowserOnlineToggleListener = false;
-            confirmBrowserOnlineAccess();
-        });
-        webActions.addView(browserOnlineToggle, bottomMargin(dp(2)));
+        browserOnlineToggle = null;
+        TextView connectionHint = text(
+                "Internet access is requested when you search or open a site.",
+                12, palette.muted, Typeface.NORMAL);
+        connectionHint.setPadding(dp(2), dp(5), dp(2), dp(5));
+        connectionHint.setContentDescription(
+                "Daymark asks before the first online page request. No website opens until you submit a search or tap a site.");
+        webActions.addView(connectionHint, bottomMargin(dp(2)));
         LinearLayout providerRow = new LinearLayout(this);
         providerRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView providerLabel = text("Search with", 12, palette.muted, Typeface.BOLD);
@@ -1011,20 +1019,18 @@ public final class MainActivity extends Activity {
         browserAddressInput.setHintTextColor(palette.muted);
         browserAddressInput.setBackground(shape(palette.surfaceAlt, 16, palette.line));
         browserAddressInput.setContentDescription("Browser address and search field");
-        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         webGoButton = primaryButton("Go");
         webGoButton.setContentDescription("Open the entered web address or search");
         webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(58), dp(46));
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(48), dp(42));
         goParams.leftMargin = dp(6);
         top.addView(webGoButton, goParams);
         bar.addView(top);
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.addView(text("Search with", 11, palette.muted, Typeface.NORMAL),
-                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         browserSearchEngineSpinner = new Spinner(this);
         String[] labels = new String[BrowserAddress.SearchEngine.values().length];
         for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
@@ -1049,19 +1055,11 @@ public final class MainActivity extends Activity {
         browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
         browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
         browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
-        bottom.addView(browserProviderPickerButton, new LinearLayout.LayoutParams(0, dp(38), 1f));
-
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online");
-        browserOnlineToggle.setTextColor(palette.text);
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription("Enable or disable online browsing");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (checked) confirmBrowserOnlineAccess();
-            else setBrowserOnlineEnabled(false);
-        });
-        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+        LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
+        browserProviderPickerButton.setMinHeight(dp(34));
+        browserProviderPickerButton.setMinimumHeight(dp(34));
+        bottom.addView(browserProviderPickerButton, providerParams);
         bar.addView(bottom);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
@@ -1078,13 +1076,11 @@ public final class MainActivity extends Activity {
         if (browserAddressInput == null) return;
         String value = browserAddressInput.getText() == null ? "" : browserAddressInput.getText().toString();
         if (value.trim().isEmpty()) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
         try {
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
+            browserLastSearchQuery = BrowserAddress.isLikelyWebAddress(value) ? "" : value.trim();
+            if (browserWebView != null) browserTabQueries.put(browserWebView, browserLastSearchQuery);
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             browserAddressInput.setError(exception.getMessage());
@@ -1121,9 +1117,9 @@ public final class MainActivity extends Activity {
                 browserWebView.reload();
             }
         });
-        browserHomeButton = compactButton("⌂", false);
-        browserHomeButton.setContentDescription("Return to the local browser home screen");
-        browserHomeButton.setOnClickListener(view -> showBrowserHome());
+        browserHomeButton = compactButton("+", false);
+        browserHomeButton.setContentDescription("Open a new browser tab");
+        browserHomeButton.setOnClickListener(view -> requestNewBrowserTab());
         browserHistoryButton = compactButton("Site history", false);
         browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
@@ -1133,9 +1129,12 @@ public final class MainActivity extends Activity {
         browserOverflowButton = compactButton("⋮", false);
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
-        browserMediaButton = compactButton("⤓", false);
+        browserTabButton = compactButton("Tabs (0)", false);
+        browserTabButton.setContentDescription("Switch between open browser tabs or create a new tab");
+        browserTabButton.setOnClickListener(view -> showBrowserTabsDialog());
+        browserMediaButton = compactButton("Media ↓", false);
         browserMediaButton.setEnabled(false);
-        browserMediaButton.setContentDescription("Find downloadable videos and audio on the current page");
+        browserMediaButton.setContentDescription("Find direct downloadable videos and audio on the current page");
         browserMediaButton.setOnClickListener(view -> findMediaOnPage());
         browserExpandButton = compactButton("Expand", false);
         browserExpandButton.setVisibility(View.GONE);
@@ -1146,8 +1145,8 @@ public final class MainActivity extends Activity {
         tasksButton.setContentDescription("Return to Daymark tasks");
         tasksButton.setOnClickListener(view -> setWebMode(false));
         for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton,
-                browserOverflowButton, browserMediaButton)) {
+                browserReloadButton, browserHomeButton, browserTabButton, browserHistoryButton,
+                browserSettingsButton, browserOverflowButton, browserMediaButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -1175,16 +1174,18 @@ public final class MainActivity extends Activity {
         sitesScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout sites = new LinearLayout(this);
         sites.setOrientation(LinearLayout.HORIZONTAL);
-        // Curated AI web providers from the shared catalog. These are normal HTTPS
-        // shortcuts, not API integrations; the catalog keeps every label/URL pair in
-        // one place so the row and the catalog cannot drift apart.
+        // Compact cross-provider strip: common web search engines first, followed by
+        // the AI sites. These are HTTPS website shortcuts, not native/API integrations.
+        for (BrowserAddress.SearchEngine engine : BrowserAddress.SearchEngine.values()) {
+            if (isBottomShortcutProvider(engine)) sites.addView(browserSearchShortcutButton(engine));
+        }
         for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
             sites.addView(browserSiteButton(entry));
         }
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
-        panel.addView(browserProviderRow, bottomMargin(dp(3)));
-
+        // The provider shortcuts are placed after the weighted WebView below so they
+        // remain a compact bottom strip while browsing.
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         panel.addView(browserStatus, bottomMargin(dp(4)));
@@ -1209,6 +1210,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         panel.addView(browserViewport, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        panel.addView(browserProviderRow, bottomMargin(dp(3)));
         return panel;
     }
 
@@ -1347,6 +1349,60 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private boolean isBottomShortcutProvider(BrowserAddress.SearchEngine engine) {
+        switch (engine) {
+            case GOOGLE: case YANDEX: case BING: case DUCKDUCKGO:
+            case BRAVE: case STARTPAGE: case YAHOO:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private Button browserSearchShortcutButton(BrowserAddress.SearchEngine engine) {
+        Button button = compactButton(engine.label, false);
+        button.setMinHeight(dp(34));
+        button.setMinimumHeight(dp(34));
+        button.setTextSize(11 * textScale);
+        button.setPadding(dp(9), 0, dp(9), 0);
+        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
+        button.setContentDescription("Search the current query with " + engine.label);
+        button.setOnClickListener(view -> {
+            if (!webMode) return;
+            String query = "";
+            if (browserAddressInput != null && browserAddressInput.getText() != null) {
+                String entered = browserAddressInput.getText().toString().trim();
+                if (!entered.isEmpty() && !BrowserAddress.isLikelyWebAddress(entered)) query = entered;
+            }
+            if (query.isEmpty()) {
+                query = browserLastSearchQuery == null ? "" : browserLastSearchQuery.trim();
+            }
+            selectSearchEngine(engine);
+            if (query.isEmpty()) {
+                if (browserAddressInput != null) {
+                    browserAddressInput.requestFocus();
+                    showToast("Enter a search first, then choose " + engine.label + ".");
+                }
+                return;
+            }
+            browserLastSearchQuery = query;
+            String address;
+            try {
+                address = BrowserAddress.requireAllowedWebUrl(engine.searchUrl(query));
+            } catch (IllegalArgumentException invalidQuery) {
+                showToast("This query could not be sent to " + engine.label + ".");
+                return;
+            }
+            if (browserAddressInput != null) browserAddressInput.setText(query);
+            navigateBrowserTo(address);
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
+        params.setMargins(0, 0, dp(5), 0);
+        button.setLayoutParams(params);
+        return button;
+    }
+
     private Button browserSiteButton(AiSiteCatalog.Entry entry) {
         Button button = compactButton(entry.label, false);
         button.setMinHeight(dp(34));
@@ -1357,12 +1413,11 @@ public final class MainActivity extends Activity {
         button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
-            if (!browserNetworkPolicy.allowsRemoteLoads()) {
-                showBrowserOfflineStatus();
-                return;
+            String value = browserLastSearchQuery == null ? "" : browserLastSearchQuery.trim();
+            if (value.isEmpty() && browserAddressInput != null && browserAddressInput.getText() != null) {
+                String addressText = browserAddressInput.getText().toString().trim();
+                if (!BrowserAddress.isLikelyWebAddress(addressText)) value = addressText;
             }
-            String value = browserAddressInput == null || browserAddressInput.getText() == null
-                    ? "" : browserAddressInput.getText().toString().trim();
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
             if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
@@ -1428,14 +1483,12 @@ public final class MainActivity extends Activity {
 
     private void navigateFromInput() {
         if (!webMode) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
         String input = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
         try {
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
+            browserLastSearchQuery = BrowserAddress.isLikelyWebAddress(input) ? "" : input.trim();
+            if (browserWebView != null) browserTabQueries.put(browserWebView, browserLastSearchQuery);
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
@@ -1445,15 +1498,15 @@ public final class MainActivity extends Activity {
 
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
         final String safeAddress;
         try {
             safeAddress = BrowserAddress.requireAllowedWebUrl(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
+            return;
+        }
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+            confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress));
             return;
         }
         loadBrowserAddress(safeAddress);
@@ -1478,7 +1531,7 @@ public final class MainActivity extends Activity {
             return;
         }
         browserHomeView.setVisibility(View.GONE);
-        if (browserProviderRow != null) browserProviderRow.setVisibility(View.GONE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
@@ -1489,30 +1542,35 @@ public final class MainActivity extends Activity {
     private boolean ensureBrowserWebView() {
         if (!browserNetworkPolicy.allowsRemoteLoads()) return false;
         if (browserWebView != null) return true;
+        final DaymarkWebView[] targetRef = new DaymarkWebView[1];
         browserWebView = new DaymarkWebView(this, browserNetworkPolicy,
                 browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
             @Override public void onPageStarted(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 syncBrowserButtons();
             }
 
             @Override public void onPageFinished(String url) {
-                if (extensionRuntime != null) extensionRuntime.onPageFinished(browserWebView, url);
                 if (!isActivityCallbackCurrent()) return;
-                if (browserAddressInput != null) browserAddressInput.setText(url);
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
                     String current = browserPreferences.getString(BROWSER_HISTORY_KEY, "");
                     browserPreferences.edit().putString(BROWSER_HISTORY_KEY,
                             BrowserHistory.add(current, safeHistoryUrl)).apply();
                 }
+                if (targetRef[0] != browserWebView) {
+                    injectVideoDownloadOverlay(targetRef[0]);
+                    return;
+                }
+                if (browserAddressInput != null) browserAddressInput.setText(url);
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
+                injectVideoDownloadOverlay(browserWebView);
                 syncBrowserButtons();
             }
 
             @Override public void onNavigationBlocked(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
@@ -1532,7 +1590,7 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onLoadError() {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
             }
 
@@ -1541,8 +1599,40 @@ public final class MainActivity extends Activity {
                 queueBrowserDownload(url, userAgent, contentDisposition, mimeType);
             }
 
+            @Override public void onMediaDownloadRequested(String url) {
+                if (!isActivityCallbackCurrent() || !BrowserAddress.isAllowedWebUrl(url)) return;
+                queueBrowserDownload(url, null, null, null);
+            }
+
+            @Override public void onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback) {
+                if (!isActivityCallbackCurrent() || view == null || browserFullscreenView != null) {
+                    if (callback != null) callback.onCustomViewHidden();
+                    return;
+                }
+                browserFullscreenView = view;
+                browserFullscreenCallback = callback;
+                browserPreviousSystemUiVisibility = getWindow().getDecorView().getSystemUiVisibility();
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                getWindow().addContentView(view, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
+
+            @Override public void onHideFullscreen() {
+                exitBrowserFullscreen();
+            }
+
             @Override public void onRendererGone() {
                 if (!isActivityCallbackCurrent()) return;
+                if (targetRef[0] != browserWebView) {
+                    browserTabs.remove(targetRef[0]);
+                    browserTabQueries.remove(targetRef[0]);
+                    destroyBrowserWebView(targetRef[0], false);
+                    updateBrowserTabButton();
+                    return;
+                }
                 discardBrowserWebView(false);
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
                 if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
@@ -1550,17 +1640,141 @@ public final class MainActivity extends Activity {
                 browserStatus.setText("The page stopped unexpectedly. Return to browser home and try again.");
             }
         });
+        targetRef[0] = browserWebView;
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        browserTabs.add(browserWebView);
+        browserTabQueries.put(browserWebView, browserLastSearchQuery);
+        updateBrowserTabButton();
         return true;
+    }
+
+    private void updateBrowserTabButton() {
+        if (browserTabButton == null) return;
+        browserTabButton.setText("Tabs (" + browserTabs.size() + ")");
+        browserTabButton.setContentDescription("Open tabs. " + browserTabs.size() + " tab(s) open.");
+    }
+
+    private void showBrowserTabsDialog() {
+        List<String> labels = new ArrayList<>();
+        labels.add("+ New tab");
+        for (int i = 0; i < browserTabs.size(); i++) {
+            DaymarkWebView tab = browserTabs.get(i);
+            String title = tab.getTitle();
+            String url = tab.getUrl();
+            String label = title == null || title.trim().isEmpty() ? url : title.trim();
+            if (label == null || label.trim().isEmpty()) label = "New tab";
+            if (tab == browserWebView) label = "● " + label;
+            labels.add(label);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Browser tabs")
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                    if (which == 0) {
+                        requestNewBrowserTab();
+                        return;
+                    }
+                    int index = which - 1;
+                    if (index >= 0 && index < browserTabs.size()) switchBrowserTab(browserTabs.get(index));
+                })
+                .setNeutralButton("Close current tab", (dialog, which) -> closeCurrentBrowserTab())
+                .setNegativeButton("Done", null)
+                .show();
+    }
+
+    private void requestNewBrowserTab() {
+        if (!webMode) return;
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+            confirmBrowserOnlineAccess(this::createBrowserTab);
+        } else {
+            createBrowserTab();
+        }
+    }
+
+    private void createBrowserTab() {
+        if (!webMode || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        if (!BrowserTabPolicy.canCreate(browserTabs.size())) {
+            showToast("You can keep up to " + BrowserTabPolicy.MAX_TABS + " tabs open. Close a tab first.");
+            return;
+        }
+        if (browserWebView != null) browserWebView.setVisibility(View.GONE);
+        browserWebView = null;
+        browserLastSearchQuery = "";
+        if (!ensureBrowserWebView()) {
+            showBrowserOfflineStatus();
+            return;
+        }
+        browserWebView.setVisibility(View.GONE);
+        if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+        if (browserAddressInput != null) browserAddressInput.setText("");
+        if (browserStatus != null) browserStatus.setText("New tab. Enter a website or search.");
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
+    private void switchBrowserTab(DaymarkWebView tab) {
+        if (tab == null || !browserTabs.contains(tab) || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        if (browserFullscreenView != null) {
+            if (browserWebView != null) browserWebView.hideCustomView();
+            else exitBrowserFullscreen();
+        }
+        browserWebView = tab;
+        browserLastSearchQuery = browserTabQueries.getOrDefault(tab, "");
+        boolean hasPage = tab.getUrl() != null && !tab.getUrl().isEmpty();
+        for (DaymarkWebView openTab : browserTabs) {
+            openTab.setVisibility(openTab == tab && hasPage ? View.VISIBLE : View.GONE);
+        }
+        if (browserHomeView != null) browserHomeView.setVisibility(hasPage ? View.GONE : View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(hasPage ? View.GONE : View.VISIBLE);
+        if (browserAddressInput != null) browserAddressInput.setText(hasPage ? tab.getUrl() : "");
+        if (browserStatus != null) browserStatus.setText(hasPage
+                ? (tab.getTitle() == null || tab.getTitle().trim().isEmpty() ? tab.getUrl() : tab.getTitle())
+                : "New tab. Enter a website or search.");
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
+    private void closeCurrentBrowserTab() {
+        if (browserWebView == null) {
+            if (!browserTabs.isEmpty()) {
+                switchBrowserTab(browserTabs.get(browserTabs.size() - 1));
+            } else {
+                showBrowserHome();
+            }
+            return;
+        }
+        DaymarkWebView closing = browserWebView;
+        int oldIndex = browserTabs.indexOf(closing);
+        browserTabs.remove(closing);
+        browserTabQueries.remove(closing);
+        browserWebView = null;
+        if (browserFullscreenView != null) exitBrowserFullscreen();
+        destroyBrowserWebView(closing, true);
+        if (browserTabs.isEmpty()) {
+            browserLastSearchQuery = "";
+            if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+            if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+            if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+            if (browserAddressInput != null) browserAddressInput.setText("");
+            if (browserStatus != null) browserStatus.setText("No tabs open. Create a new tab to browse.");
+        } else {
+            int nextIndex = BrowserTabPolicy.indexAfterClose(oldIndex, browserTabs.size());
+            if (nextIndex >= 0) switchBrowserTab(browserTabs.get(nextIndex));
+        }
+        updateBrowserTabButton();
+        syncBrowserButtons();
     }
 
     private void showBrowserOverflowMenu(View anchor) {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
-                "Open in external browser", "Desktop site", "Downloads", "Extensions", "Browser settings"
+                "Open in external browser", "Desktop site", "Downloads", "Extensions",
+                "Browser settings", "Turn off online browsing"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -1595,6 +1809,14 @@ public final class MainActivity extends Activity {
                             break;
                         case 8:
                             showBrowserSettingsDialog();
+                            break;
+                        case 9:
+                            if (browserNetworkPolicy.isOnlineEnabled()) {
+                                setBrowserOnlineEnabled(false);
+                                showToast("Online browsing is off. Pages and tabs were closed.");
+                            } else {
+                                showToast("Online browsing is already off.");
+                            }
                             break;
                         default:
                             break;
@@ -1971,7 +2193,13 @@ public final class MainActivity extends Activity {
             request.setTitle(filename);
             request.setDescription("Daymark browser download");
             if (mimeType != null && !mimeType.isEmpty()) request.setMimeType(mimeType);
-            if (userAgent != null && !userAgent.isEmpty()) request.addRequestHeader("User-Agent", userAgent);
+            String effectiveUserAgent = userAgent;
+            if ((effectiveUserAgent == null || effectiveUserAgent.isEmpty()) && browserWebView != null) {
+                effectiveUserAgent = browserWebView.getSettings().getUserAgentString();
+            }
+            if (effectiveUserAgent != null && !effectiveUserAgent.isEmpty()) {
+                request.addRequestHeader("User-Agent", effectiveUserAgent);
+            }
             String cookies = CookieManager.getInstance().getCookie(url);
             if (cookies != null && !cookies.isEmpty()) request.addRequestHeader("Cookie", cookies);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
@@ -1994,6 +2222,54 @@ public final class MainActivity extends Activity {
     // links on the current page so they can be downloaded even when the site
     // itself offers no download button. Protected streaming players (DRM or
     // hidden stream manifests) stay out of scope by design.
+    /**
+     * Best-effort in-player download affordance for direct HTTPS HTML5 media.
+     * It creates only a user-clicked page button and a normal HTTPS anchor; there is
+     * no JavaScript-to-native bridge and no DRM/manifest/blob extraction.
+     */
+    private void exitBrowserFullscreen() {
+        View view = browserFullscreenView;
+        browserFullscreenView = null;
+        browserFullscreenCallback = null;
+        if (view != null && view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(browserPreviousSystemUiVisibility);
+    }
+
+    private void injectVideoDownloadOverlay(DaymarkWebView target) {
+        if (target == null || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        String script = "(function(){"
+                + "if(window.__daymarkVideoDownloadInstalled)return;window.__daymarkVideoDownloadInstalled=true;"
+                + "var button=null,active=null,raf=0;"
+                + "function direct(v){var u='';try{u=v.currentSrc||v.src||'';}catch(e){return '' ;}"
+                + "return /^https:\\/\\//i.test(u)?u:'';}"
+                + "function ensure(){if(button)return;button=document.createElement('button');"
+                + "button.type='button';button.textContent='Download';button.setAttribute('aria-label','Download this video');"
+                + "button.style.cssText='position:fixed;z-index:2147483647;display:none;border:0;border-radius:18px;padding:9px 13px;background:#171717;color:#fff;font:600 13px sans-serif;box-shadow:0 2px 10px #0008;';"
+                + "button.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();"
+                + "var url=active&&direct(active);if(!url)return;"
+                + "window.location.href='daymark-download://media?url='+encodeURIComponent(url);});"
+                + "document.documentElement.appendChild(button);}"
+                + "function place(){raf=0;if(!button||!active||!document.documentElement.contains(active)||!direct(active)){if(button)button.style.display='none';return;}"
+                + "var r=active.getBoundingClientRect();if(r.width<100||r.height<70||r.bottom<0||r.top>innerHeight){button.style.display='none';return;}"
+                + "button.style.display='block';button.style.left=Math.max(6,Math.min(innerWidth-100,r.right-90))+'px';"
+                + "button.style.top=Math.max(6,Math.min(innerHeight-48,r.bottom-48))+'px';}"
+                + "function schedule(){if(!raf)raf=requestAnimationFrame(place);}"
+                + "function bind(v){if(v.__daymarkDownloadBound)return;v.__daymarkDownloadBound=true;"
+                + "['play','pause','timeupdate','loadedmetadata','emptied'].forEach(function(n){v.addEventListener(n,function(){if(!active||!active.paused)active=v;schedule();},{passive:true});});"
+                + "v.addEventListener('click',function(){active=v;schedule();},{passive:true});}"
+                + "function scan(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){bind(vs[i]);}"
+                + "if(!active||!document.documentElement.contains(active)){for(var j=0;j<vs.length;j++){if(!vs[j].paused&&direct(vs[j])){active=vs[j];break;}}}"
+                + "schedule();}"
+                + "ensure();scan();window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);"
+                + "document.addEventListener('play',function(e){if(e.target&&e.target.tagName==='VIDEO'){active=e.target;scan();} },true);"
+                + "try{new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true});}catch(e){if(button)button.style.display='none';}"
+                + "})();";
+        target.evaluateJavascript(script, null);
+    }
+
     private void findMediaOnPage() {
         if (!browserNetworkPolicy.allowsRemoteLoads() || browserWebView == null) {
             showToast("Open a page first, with Online enabled.");
@@ -2012,11 +2288,14 @@ public final class MainActivity extends Activity {
                 + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60)]);}"
                 + "var i,e,src,links;"
                 + "links=document.querySelectorAll('video');"
-                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'video',e.getAttribute('title')||'');"
-                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'video',src[j].getAttribute('title')||'');}}"
+                + "for(i=0;i<links.length;i++){e=links[i];var videoLabel=e.getAttribute('title')||'';"
+                + "if(e.videoWidth&&e.videoHeight)videoLabel+=(videoLabel?' · ':'')+e.videoWidth+'×'+e.videoHeight;"
+                + "push(e.currentSrc,'video',videoLabel);push(e.src,'video',videoLabel);"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){var sourceLabel=src[j].getAttribute('title')||src[j].type||videoLabel;"
+                + "push(src[j].src,'video',sourceLabel);}}"
                 + "links=document.querySelectorAll('audio');"
-                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'audio',e.getAttribute('title')||'');"
-                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio','');}}"
+                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc,'audio',e.getAttribute('title')||'');push(e.src,'audio',e.getAttribute('title')||'');"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio',src[j].type||'');}}"
                 + "links=document.querySelectorAll('a[href]');"
                 + "var media=/\\.(mp4|webm|m4v|mov|mkv|mp3|m4a|aac|ogg|oga|opus|wav|flac)([?#]|$)/i;"
                 + "for(i=0;i<links.length;i++){var href=links[i].getAttribute('href');"
@@ -2088,7 +2367,7 @@ public final class MainActivity extends Activity {
             browserExpandButton.setEnabled(available && hasPage);
         }
         if (browserReaderActionRow != null) {
-            browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
+            browserReaderActionRow.setVisibility(View.GONE);
         }
         if (browserReaderButton != null) {
             browserReaderButton.setEnabled(available && hasPage);
@@ -2103,6 +2382,8 @@ public final class MainActivity extends Activity {
         if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+        browserLastSearchQuery = "";
+        if (browserAddressInput != null) browserAddressInput.setText("");
         if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
         if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
         syncBrowserButtons();
@@ -2187,12 +2468,28 @@ public final class MainActivity extends Activity {
             }
             fullScreenWebDialog = null;
         }
-        discardBrowserWebView(true);
+        if (browserFullscreenView != null) exitBrowserFullscreen();
+        List<DaymarkWebView> openTabs = new ArrayList<>(browserTabs);
+        browserTabs.clear();
+        browserTabQueries.clear();
+        browserWebView = null;
+        for (DaymarkWebView tab : openTabs) destroyBrowserWebView(tab, true);
+        updateBrowserTabButton();
+        syncBrowserButtons();
     }
 
     private void discardBrowserWebView(boolean stopLoading) {
         DaymarkWebView current = browserWebView;
         browserWebView = null;
+        if (current != null) {
+            browserTabs.remove(current);
+            destroyBrowserWebView(current, stopLoading);
+        }
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
+    private void destroyBrowserWebView(DaymarkWebView current, boolean stopLoading) {
         if (current != null) {
             try {
                 current.getSettings().setBlockNetworkLoads(true);
@@ -2205,7 +2502,6 @@ public final class MainActivity extends Activity {
             }
             current.destroy();
         }
-        syncBrowserButtons();
     }
 
     private void showBrowserOfflineStatus() {
@@ -2678,7 +2974,7 @@ public final class MainActivity extends Activity {
         }
         if (!webMode) {
             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
-        } else if (browserWebView != null) {
+        } else if (browserWebView != null || !browserTabs.isEmpty()) {
             discardBrowserWebView();
         }
         webMode = enabled;
@@ -2722,6 +3018,10 @@ public final class MainActivity extends Activity {
     }
 
     private void confirmBrowserOnlineAccess() {
+        confirmBrowserOnlineAccess(null);
+    }
+
+    private void confirmBrowserOnlineAccess(Runnable afterEnable) {
         new AlertDialog.Builder(this)
                 .setTitle("Enable online browsing?")
                 .setMessage("Online browsing sends a search query or requested URL, plus normal connection data such as your IP address and browser identification, to the selected provider/site; those services may log requests. Pages may contact their own or third-party endpoints, which may also be logged. The Online switch blocks Daymark page/resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks; its provider is not selectable in Daymark, though its protection setting is available in Browser Settings. WebView M126+ may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This is not a claim that every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text and adds no app analytics; WebView diagnostic metrics are opted out. HTTP remains blocked. Enabling Online alone makes no page request; each search or site still requires a tap. This choice is saved on this device. Turning Online off stops and closes the active page.")
@@ -2733,6 +3033,7 @@ public final class MainActivity extends Activity {
                         browserOnlineToggle.setChecked(true);
                         suppressBrowserOnlineToggleListener = false;
                     }
+                    if (afterEnable != null) afterEnable.run();
                 })
                 .setOnCancelListener(dialog -> showBrowserOfflineStatus())
                 .show();

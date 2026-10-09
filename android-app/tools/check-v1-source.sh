@@ -130,6 +130,10 @@ assert "transaction.reconcile();" in grant_recovery and "releaseAndClear(journal
 assert "ACTIVE_SELECTIONS" in grant_recovery and "isValidLiveSelection" in grant_recovery
 assert "restorePendingActivitySelection" in grant_recovery and "operationToken" in grant_recovery
 webview = (main / "java/com/cue/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
+media_policy = (main / "java/com/cue/daymark/BrowserMediaPolicy.java").read_text(encoding="utf-8")
+tab_policy = (main / "java/com/cue/daymark/BrowserTabPolicy.java").read_text(encoding="utf-8")
+media_smoke = (root / "tools/BrowserMediaPolicySmoke.java").read_text(encoding="utf-8")
+tab_smoke = (root / "tools/BrowserTabPolicySmoke.java").read_text(encoding="utf-8")
 address = (main / "java/com/cue/daymark/BrowserAddress.java").read_text(encoding="utf-8")
 history_source = (main / "java/com/cue/daymark/BrowserHistory.java").read_text(encoding="utf-8")
 browser_smoke = (root / "tools/BrowserAddressSmoke.java").read_text(encoding="utf-8")
@@ -156,8 +160,38 @@ assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePrefere
 assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "missing/corrupt online preference must default Offline"
 assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY," in activity, "browser Online preference must be read locally"
 assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
-assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
+assert "browserOnlineToggle = null;" in activity and "Internet access is requested when you search or open a site." in activity, "browser UI must not expose an Online/Offline toggle"
+assert "new CheckBox(this)" not in activity[activity.index("private View buildBrowserAddressBar()"):activity.index("private void navigateFromBrowserInput()")], "address bar must not create an Online/Offline checkbox"
+assert "confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress))" in activity, "first navigation should continue after explicit network consent"
 assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
+assert "private String browserLastSearchQuery = \"\";" in activity, "browser should retain the last submitted query for provider switching"
+assert "panel.addView(browserProviderRow, bottomMargin(dp(3)));" in activity, "provider shortcuts should be positioned after the weighted WebView as a bottom strip"
+assert "browserLastSearchQuery" in activity and "selectSearchEngine(entry.searchEngine)" in activity, "provider shortcuts should reuse the previous query with the selected provider"
+assert 'compactButton("Media ↓", false)' in activity and "e.currentSrc" in activity and "e.videoWidth+'×'+e.videoHeight" in activity, "media discovery should expose direct sources and available video dimensions"
+assert "injectVideoDownloadOverlay(browserWebView);" in activity and "private void injectVideoDownloadOverlay(DaymarkWebView target)" in activity, "page finish should install the best-effort in-player download affordance"
+overlay = re.search(r"private void injectVideoDownloadOverlay\(DaymarkWebView target\)\s*\{(.*?)\n    \}", activity, re.S)
+assert overlay and "window.__daymarkVideoDownloadInstalled" in overlay.group(1) and "button.textContent='Download'" in overlay.group(1), "video overlay must be idempotent and visibly user-triggered"
+assert overlay and "target.evaluateJavascript(script, null)" in overlay.group(1) and "addEventListener('click'" in overlay.group(1), "video overlay must use a user click and avoid native JS bridges"
+assert "DRM/manifest/blob extraction" in activity, "video overlay limitations must be explicit in source"
+assert "browserReaderActionRow.setVisibility(View.GONE);" in activity, "reader action must not take space below the page"
+assert "browserTabs = new ArrayList<>()" in activity and "showBrowserTabsDialog()" in activity, "browser must expose a tab switcher"
+assert "createBrowserTab()" in activity and "switchBrowserTab(browserTabs.get(index))" in activity, "browser must create and switch tabs"
+assert 'compactButton("+", false)' in activity and "requestNewBrowserTab()" in activity, "toolbar New Tab action must preserve other open tabs"
+assert "if (webMode && browserTabs.size() > 1)" in activity and "closeCurrentBrowserTab()" in activity, "Android Back should close the current tab after its page history is exhausted"
+assert "browserTabs.remove(current)" in activity and "destroyBrowserWebView(current, stopLoading)" in activity, "closing tabs must stop and destroy only the intended WebView"
+assert "targetRef[0] != browserWebView" in activity, "inactive tabs must not overwrite the active tab UI"
+assert "daymark-download://media?url=" in activity, "in-player download button must hand direct media to the native download pipeline"
+assert "window.location.href='daymark-download://media?url='" in activity, "overlay click must use a bounded custom-scheme handoff rather than a fake HTML download"
+assert "onMediaDownloadRequested(String url)" in webview and "request.hasGesture()" in webview, "media handoff must require a user gesture"
+assert "BrowserMediaPolicy.allowsHandoff" in webview and "BrowserAddress.isAllowedWebUrl(mediaUrl)" in media_policy, "media handoff must centralize HTTPS validation"
+for expected in ("offline mode must block media handoff", "media handoff must require a user gesture", "cleartext media must be rejected"):
+    assert expected in media_smoke, f"missing executable media-policy regression: {expected}"
+assert "BrowserTabPolicy.MAX_TABS = 6" in tab_policy or "MAX_TABS = 6" in tab_policy, "browser tabs must have a memory-conscious limit"
+for expected in ("tab count must be bounded", "closing the last tab should leave no selection", "selection must remain within the remaining tab list"):
+    assert expected in tab_smoke, f"missing executable tab-policy regression: {expected}"
+assert '"daymark-download".equalsIgnoreCase(request.getUrl().getScheme())' in webview, "custom media handoff must be intercepted before normal web navigation"
+assert "onShowCustomView(View view, CustomViewCallback callback)" in webview and "onHideCustomView()" in webview, "WebView must support HTML5 full-screen video"
+assert "onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback)" in activity and "FLAG_FULLSCREEN" in activity, "host Activity must display full-screen media and restore the system UI"
 assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
 assert "may log it" in activity and "may contact and be logged by third-party endpoints" in activity, "provider and page endpoint logging must not be ruled out"
@@ -211,15 +245,23 @@ for secret_case in ("/reset/secret-reset-token", "/oauth/secret-authorization-co
 assert "BrowserAddress.isAllowedWebUrl(sites.get(0))" in browser_smoke, "a stored site origin must remain reopenable"
 assert "active browsing URL" in browser_smoke, "history redaction must not mutate the current route/query"
 assert "uri.getRawUserInfo() != null" in address, "browser navigation must continue to reject userinfo"
-for method in ("navigateFromInput", "navigateBrowserTo", "loadBrowserAddress"):
+# Input handlers route through navigateBrowserTo, which requests explicit consent when
+# the persisted network choice is Offline. The final load boundary still fails closed.
+for method in ("navigateFromInput", "navigateFromBrowserInput"):
     body = re.search(r"private void " + method + r"\([^)]*\)\s*\{(.*?)\n    \}", activity, re.S)
-    assert body and "browserNetworkPolicy.allowsRemoteLoads()" in body.group(1), f"{method} must fail closed while Offline"
+    assert body and "navigateBrowserTo(address)" in body.group(1), f"{method} must use the validated browser navigation path"
+navigate_browser = re.search(r"private void navigateBrowserTo\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
+assert navigate_browser and "confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress))" in navigate_browser.group(1), "first navigation from Offline must request consent then continue the requested page"
+load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
+assert load_address and "browserNetworkPolicy.allowsRemoteLoads()" in load_address.group(1), "final page-load boundary must still fail closed while Offline"
 online_setting = re.search(r"private void setBrowserOnlineEnabled\(boolean enabled\)\s*\{(.*?)\n    \}", activity, re.S)
 assert online_setting and "browserNetworkPolicy.setOnlineEnabled(enabled)" in online_setting.group(1)
 assert online_setting and "showBrowserHome()" in online_setting.group(1)
 assert online_setting and "loadUrl(" not in online_setting.group(1) and "loadBrowserAddress(" not in online_setting.group(1), "enabling Online must not itself load a page"
 discard = re.search(r"private void discardBrowserWebView\(boolean stopLoading\)\s*\{(.*?)\n    \}", activity, re.S)
-assert discard and "setBlockNetworkLoads(true)" in discard.group(1) and "stopLoading()" in discard.group(1), "offline/background teardown must block and stop the page"
+destroy_webview = re.search(r"private void destroyBrowserWebView\(DaymarkWebView current, boolean stopLoading\)\s*\{(.*?)\n    \}", activity, re.S)
+assert discard and "destroyBrowserWebView(current, stopLoading)" in discard.group(1), "tab teardown must route through the common WebView destroy path"
+assert destroy_webview and "setBlockNetworkLoads(true)" in destroy_webview.group(1) and "stopLoading()" in destroy_webview.group(1), "offline/background teardown must block and stop each closed page"
 on_pause = re.search(r"protected void onPause\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert on_pause and "discardBrowserWebView()" in on_pause.group(1), "backgrounding must close the page"
 ensure_webview = re.search(r"private boolean ensureBrowserWebView\(\)\s*\{(.*?)\n    \}", activity, re.S)
@@ -331,7 +373,8 @@ assert "postActivityCallback(() -> {" in load_callback and "postActivityCallback
 assert attachment_callback.count("postActivityCallback(() -> {") == 2
 assert "postActivityCallback(() -> {" in remove_callback
 browser_listener = activity.split("new DaymarkWebView.Listener()", 1)[1].split("browserWebView.setBackgroundColor", 1)[0]
-assert browser_listener.count("if (!isActivityCallbackCurrent()) return;") == 6
+assert (browser_listener.count("if (!isActivityCallbackCurrent()) return;")
+        + browser_listener.count("if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;")) == 6
 cleanup_callback = activity.split("private void reconcileAndReleasePortableImportSelection", 1)[1].split(
     "private void releasePersistablePortableReadGrant", 1
 )[0]

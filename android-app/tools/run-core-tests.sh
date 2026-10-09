@@ -25,6 +25,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserAddress.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserMediaPolicy.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserTabPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserSettingsPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserViewportPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/ExtensionPackageParser.java" \
@@ -44,6 +46,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/GitHubTransportSmoke.java" \
   "$ROOT/tools/BrowserAddressSmoke.java" \
   "$ROOT/tools/BrowserNetworkPolicySmoke.java" \
+  "$ROOT/tools/BrowserMediaPolicySmoke.java" \
+  "$ROOT/tools/BrowserTabPolicySmoke.java" \
   "$ROOT/tools/BrowserSettingsPolicySmoke.java" \
   "$ROOT/tools/BrowserViewportPolicySmoke.java" \
   "$ROOT/tools/ExtensionPackageParserSmoke.java" \
@@ -56,6 +60,8 @@ java -ea -cp "$BUILD_DIR" com.cue.daymark.UpdaterSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.GitHubTransportSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserAddressSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserNetworkPolicySmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserMediaPolicySmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserTabPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSettingsPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserViewportPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.ExtensionPackageParserSmoke

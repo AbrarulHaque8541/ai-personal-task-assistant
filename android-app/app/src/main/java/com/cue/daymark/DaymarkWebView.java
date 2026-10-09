@@ -3,6 +3,9 @@ package com.cue.daymark;
 import android.app.Activity;
 import android.net.http.SslError;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
@@ -25,14 +28,36 @@ final class DaymarkWebView extends WebView {
         void onHttpNavigationBlocked(String url, boolean redirect);
         void onLoadError();
         void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength);
+        void onMediaDownloadRequested(String url);
+        void onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback);
+        void onHideFullscreen();
         void onRendererGone();
     }
 
     private final ExtensionRuntime extensionRuntime;
+    private final Listener listener;
+
+    boolean isShowingCustomView() {
+        return fullscreenView != null;
+    }
+
+    void hideCustomView() {
+        if (fullscreenView == null) return;
+        WebChromeClient.CustomViewCallback callback = fullscreenCallback;
+        fullscreenView = null;
+        fullscreenCallback = null;
+        listener.onHideFullscreen();
+        if (callback != null) callback.onCustomViewHidden();
+    }
+
+
+    private View fullscreenView;
+    private WebChromeClient.CustomViewCallback fullscreenCallback;
 
     DaymarkWebView(Activity activity, BrowserNetworkPolicy networkPolicy,
                    boolean safeBrowsingEnabled, Listener listener) {
         super(activity);
+        this.listener = listener;
         this.extensionRuntime = ExtensionRuntime.create(activity);
         setFocusable(true);
         setFocusableInTouchMode(true);
@@ -64,6 +89,15 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
+                if ("daymark-download".equalsIgnoreCase(request.getUrl().getScheme())) {
+                    String mediaUrl = request.getUrl().getQueryParameter("url");
+                    if (BrowserMediaPolicy.allowsHandoff(networkPolicy.allowsRemoteLoads(),
+                            request.hasGesture(), request.getUrl().getScheme(),
+                            request.getUrl().getHost(), mediaUrl)) {
+                        listener.onMediaDownloadRequested(mediaUrl);
+                    }
+                    return true;
+                }
                 if (!networkPolicy.allowsRemoteLoads()) {
                     listener.onOfflineNavigationBlocked();
                     return true;
@@ -124,6 +158,25 @@ final class DaymarkWebView extends WebView {
         });
 
         setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (fullscreenView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                fullscreenView = view;
+                fullscreenCallback = callback;
+                listener.onShowFullscreen(view, callback);
+            }
+
+            @Override
+            public void onHideCustomView() {
+                if (fullscreenView == null) return;
+                fullscreenView = null;
+                fullscreenCallback = null;
+                listener.onHideFullscreen();
+            }
+
             @Override
             public void onPermissionRequest(PermissionRequest request) {
                 request.deny();

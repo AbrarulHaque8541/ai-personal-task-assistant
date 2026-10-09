@@ -19,4 +19,4 @@ Installing a production APK over a **debug** (or other-key) install fails with *
 - Latest production: **v1.0.2** / versionCode **3**
 - Cert pin: `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`
 
-Next release must be versionCode **≥ 4** and tag matching `versionName`.
+The current source candidate in the browser-fix PR is versionName **1.0.5** / versionCode **6**. Any later release must use a strictly higher versionCode and a tag matching `versionName`. Source version does not prove that a release is published.
