@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "UC China Lite",
+  "version": "1.0.0",
+  "description": "Lightweight, modular client-side features: adblock, reader, no-image, dark mode, AI button, translate, speed dial, gestures.",
+  "permissions": ["storage", "declarativeNetRequest", "declarativeNetRequestFeedback"],
+  "optional_permissions": ["scripting"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/loader.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["features/*.js"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "rules_1", "enabled": true, "path": "rules/rules.json" }
+    ]
+  },
+  "action": { "default_popup": "popup/popup.html" },
+  "options_ui": { "page": "options/options.html", "open_in_tab": false },
+  "chrome_url_overrides": { "newtab": "features/speeddial/newtab.html" }
+}
