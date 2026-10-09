@@ -388,9 +388,7 @@ public final class MainActivity extends Activity {
             discardBrowserWebView();
             if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
             if (browserStatus != null) {
-                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
-                        ? "The page closed when Daymark went into the background. Online remains enabled; no page was restored."
-                        : "The page closed when Daymark went into the background. Offline; WebView network loads are blocked.");
+                browserStatus.setText("The page closed when Daymark went into the background. Reopen a page when you return.");
             }
         }
         activityResumed = false;
@@ -911,25 +909,7 @@ public final class MainActivity extends Activity {
 
         webActions = new LinearLayout(this);
         webActions.setOrientation(LinearLayout.VERTICAL);
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online browsing (off by default)");
-        browserOnlineToggle.setMinHeight(dp(48));
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
-                ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block Daymark page and resource loads; Android System WebView Safe Browsing may make separate Google/Play Services checks."
-                : "Online browsing is off by default. Turn it on after reviewing the disclosure to allow Daymark page and resource loads, then tap Go or a site to send a request. The switch does not control platform-managed Android System WebView Safe Browsing, which may make Google/Play Services URL-hash or update checks.");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (!checked) {
-                setBrowserOnlineEnabled(false);
-                return;
-            }
-            suppressBrowserOnlineToggleListener = true;
-            button.setChecked(false);
-            suppressBrowserOnlineToggleListener = false;
-            confirmBrowserOnlineAccess();
-        });
-        webActions.addView(browserOnlineToggle, bottomMargin(dp(2)));
+        // Network policy is configured explicitly in Browser Settings; no confusing Online/Offline checkbox in the browsing UI.
         LinearLayout providerRow = new LinearLayout(this);
         providerRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView providerLabel = text("Search with", 12, palette.muted, Typeface.BOLD);
@@ -1016,15 +996,14 @@ public final class MainActivity extends Activity {
         webGoButton = primaryButton("Go");
         webGoButton.setContentDescription("Open the entered web address or search");
         webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(58), dp(46));
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(50), dp(44));
         goParams.leftMargin = dp(6);
         top.addView(webGoButton, goParams);
         bar.addView(top);
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.addView(text("Search with", 11, palette.muted, Typeface.NORMAL),
-                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+        // Compact provider picker sits at the leading edge; no oversized "Search with" row.
         browserSearchEngineSpinner = new Spinner(this);
         String[] labels = new String[BrowserAddress.SearchEngine.values().length];
         for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
@@ -1049,19 +1028,11 @@ public final class MainActivity extends Activity {
         browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
         browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
         browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
-        bottom.addView(browserProviderPickerButton, new LinearLayout.LayoutParams(0, dp(38), 1f));
+        LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+        providerParams.width = dp(132);
+        bottom.addView(browserProviderPickerButton, providerParams);
 
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online");
-        browserOnlineToggle.setTextColor(palette.text);
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription("Enable or disable online browsing");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (checked) confirmBrowserOnlineAccess();
-            else setBrowserOnlineEnabled(false);
-        });
-        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+        // Network policy is configured explicitly in Browser Settings; no confusing Online/Offline checkbox in the browsing UI.
         bar.addView(bottom);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
@@ -1416,7 +1387,7 @@ public final class MainActivity extends Activity {
         chooseParams.gravity = Gravity.CENTER_HORIZONTAL;
         home.addView(chooseProvider, chooseParams);
 
-        TextView privacyHint = text("Offline until you enable Online. Privacy details are above.", 11,
+        TextView privacyHint = text("Browsing uses HTTPS. Privacy details are above.", 11,
                 palette.muted, Typeface.NORMAL);
         privacyHint.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams privacyParams = new LinearLayout.LayoutParams(
@@ -2088,7 +2059,7 @@ public final class MainActivity extends Activity {
             browserExpandButton.setEnabled(available && hasPage);
         }
         if (browserReaderActionRow != null) {
-            browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
+            browserReaderActionRow.setVisibility(View.GONE);
         }
         if (browserReaderButton != null) {
             browserReaderButton.setEnabled(available && hasPage);
