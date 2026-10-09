@@ -390,6 +390,10 @@ public final class MainActivity extends Activity {
             syncBrowserButtons();
             return;
         }
+        if (webMode && browserTabs.size() > 1) {
+            closeCurrentBrowserTab();
+            return;
+        }
         if (webMode) {
             setWebMode(false);
             return;
@@ -1113,9 +1117,9 @@ public final class MainActivity extends Activity {
                 browserWebView.reload();
             }
         });
-        browserHomeButton = compactButton("⌂", false);
-        browserHomeButton.setContentDescription("Return to the local browser home screen");
-        browserHomeButton.setOnClickListener(view -> showBrowserHome());
+        browserHomeButton = compactButton("+", false);
+        browserHomeButton.setContentDescription("Open a new browser tab");
+        browserHomeButton.setOnClickListener(view -> requestNewBrowserTab());
         browserHistoryButton = compactButton("Site history", false);
         browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
@@ -1669,11 +1673,7 @@ public final class MainActivity extends Activity {
                 .setTitle("Browser tabs")
                 .setItems(labels.toArray(new String[0]), (dialog, which) -> {
                     if (which == 0) {
-                        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-                            confirmBrowserOnlineAccess(this::createBrowserTab);
-                        } else {
-                            createBrowserTab();
-                        }
+                        requestNewBrowserTab();
                         return;
                     }
                     int index = which - 1;
@@ -1682,6 +1682,15 @@ public final class MainActivity extends Activity {
                 .setNeutralButton("Close current tab", (dialog, which) -> closeCurrentBrowserTab())
                 .setNegativeButton("Done", null)
                 .show();
+    }
+
+    private void requestNewBrowserTab() {
+        if (!webMode) return;
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+            confirmBrowserOnlineAccess(this::createBrowserTab);
+        } else {
+            createBrowserTab();
+        }
     }
 
     private void createBrowserTab() {
@@ -1732,7 +1741,11 @@ public final class MainActivity extends Activity {
 
     private void closeCurrentBrowserTab() {
         if (browserWebView == null) {
-            showBrowserHome();
+            if (!browserTabs.isEmpty()) {
+                switchBrowserTab(browserTabs.get(browserTabs.size() - 1));
+            } else {
+                showBrowserHome();
+            }
             return;
         }
         DaymarkWebView closing = browserWebView;
