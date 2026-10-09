@@ -1759,7 +1759,8 @@ public final class MainActivity extends Activity {
     private void showBrowserOverflowMenu(View anchor) {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
-                "Open in external browser", "Desktop site", "Downloads", "Extensions", "Browser settings"
+                "Open in external browser", "Desktop site", "Downloads", "Extensions",
+                "Browser settings", "Turn off online browsing"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -1794,6 +1795,14 @@ public final class MainActivity extends Activity {
                             break;
                         case 8:
                             showBrowserSettingsDialog();
+                            break;
+                        case 9:
+                            if (browserNetworkPolicy.isOnlineEnabled()) {
+                                setBrowserOnlineEnabled(false);
+                                showToast("Online browsing is off. Pages and tabs were closed.");
+                            } else {
+                                showToast("Online browsing is already off.");
+                            }
                             break;
                         default:
                             break;
