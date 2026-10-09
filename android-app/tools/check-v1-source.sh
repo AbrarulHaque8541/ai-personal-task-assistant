@@ -17,6 +17,7 @@ sh ./tools/run-check-guard-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-browser-catalog.py "$ROOT"
 python3 ./tools/check-extension-trust-confirmation.py "$ROOT"
+python3 ./tools/check-extension-store-safety.py "$ROOT"
 python3 ./tools/check-browser-image-policy.py "$ROOT"
 python3 ./tools/check-reader-mode.py "$ROOT"
 python3 ./tools/check-release-updater-metadata.py "$ROOT"
