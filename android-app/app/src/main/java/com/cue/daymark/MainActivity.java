@@ -118,6 +118,7 @@ public final class MainActivity extends Activity {
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
+    private static final String BROWSER_BLOCK_IMAGES_KEY = "block_network_images";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -181,6 +182,7 @@ public final class MainActivity extends Activity {
     private boolean webMode;
     private BrowserNetworkPolicy browserNetworkPolicy = new BrowserNetworkPolicy();
     private BrowserSettingsPolicy browserSettingsPolicy = new BrowserSettingsPolicy();
+    private boolean browserImagesBlocked;
     private boolean suppressBrowserOnlineToggleListener;
     private boolean suppressSafeBrowsingToggleListener;
     private String taskDraft = "";
@@ -316,6 +318,7 @@ public final class MainActivity extends Activity {
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
         browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
         browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
+        browserImagesBlocked = readBrowserImagesBlockedPreference();
         sanitizeStoredBrowserHistory();
         buildInterface();
         loadEncryptedTasks();
@@ -355,6 +358,15 @@ public final class MainActivity extends Activity {
         } catch (ClassCastException invalidPreference) {
             browserPreferences.edit().remove(SAFE_BROWSING_ENABLED_KEY).apply();
             return BrowserSettingsPolicy.DEFAULT_SAFE_BROWSING_ENABLED;
+        }
+    }
+
+    private boolean readBrowserImagesBlockedPreference() {
+        try {
+            return browserPreferences.getBoolean(BROWSER_BLOCK_IMAGES_KEY, false);
+        } catch (ClassCastException invalidPreference) {
+            browserPreferences.edit().remove(BROWSER_BLOCK_IMAGES_KEY).apply();
+            return false;
         }
     }
 
@@ -1638,6 +1650,7 @@ public final class MainActivity extends Activity {
             }
         });
         targetRef[0] = browserWebView;
+        browserWebView.getSettings().setBlockNetworkImage(browserImagesBlocked);
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
@@ -3087,12 +3100,43 @@ public final class MainActivity extends Activity {
         return true;
     }
 
+    private boolean setBrowserImagesBlocked(boolean enabled) {
+        if (browserImagesBlocked == enabled) return true;
+        boolean previous = browserImagesBlocked;
+        for (DaymarkWebView tab : browserTabs) {
+            try {
+                tab.getSettings().setBlockNetworkImage(enabled);
+            } catch (RuntimeException applyFailed) {
+                for (DaymarkWebView rollback : browserTabs) {
+                    try { rollback.getSettings().setBlockNetworkImage(previous); }
+                    catch (RuntimeException ignored) { /* A destroyed WebView cannot be repaired here. */ }
+                }
+                showToast("Image setting could not be applied. The previous preference remains active.");
+                return false;
+            }
+        }
+        browserImagesBlocked = enabled;
+        browserPreferences.edit().putBoolean(BROWSER_BLOCK_IMAGES_KEY, enabled).apply();
+        showToast(enabled
+                ? "Network images blocked. Reload the current page to apply it to images already loaded."
+                : "Network images allowed again. Reload a page to load images that were blocked.");
+        return true;
+    }
+
     private void showBrowserSettingsDialog() {
         TextView explanation = text(
-                "Safe Browsing is enabled by default and helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. Daymark's browser network policy controls page/resource loads; this setting controls Safe Browsing separately.",
+                "Safe Browsing helps protect against known harmful pages. Its platform-managed provider is not selectable in Daymark and may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The image option blocks network image resources; it does not block all ads or tracking. Page/resource requests remain governed by Daymark's HTTPS-only browser policy.",
                 14, palette.text, Typeface.NORMAL);
         explanation.setLineSpacing(dp(3), 1f);
         explanation.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        CheckBox imagesToggle = new CheckBox(this);
+        imagesToggle.setText("Block network images (save data)");
+        imagesToggle.setMinHeight(dp(48));
+        imagesToggle.setChecked(browserImagesBlocked);
+        imagesToggle.setContentDescription(browserImagesBlocked
+                ? "Network images are blocked for page loads. Turn off to allow images."
+                : "Network images are allowed. Turn on to block network image resources.");
 
         CheckBox safeBrowsingToggle = new CheckBox(this);
         safeBrowsingToggle.setText("Safe Browsing (recommended)");
@@ -3105,6 +3149,8 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(explanation);
+        content.addView(imagesToggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
         content.addView(safeBrowsingToggle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
 
@@ -3124,6 +3170,15 @@ public final class MainActivity extends Activity {
                             .setPositiveButton("Clear", (d, w) -> clearBrowserData())
                             .show();
                 }));
+
+        imagesToggle.setOnCheckedChangeListener((button, enabled) -> {
+            if (!setBrowserImagesBlocked(enabled)) {
+                button.setChecked(browserImagesBlocked);
+            }
+            button.setContentDescription(browserImagesBlocked
+                    ? "Network images are blocked for page loads. Turn off to allow images."
+                    : "Network images are allowed. Turn on to block network image resources.");
+        });
 
         safeBrowsingToggle.setOnCheckedChangeListener((button, enabled) -> {
             if (suppressSafeBrowsingToggleListener) return;
