@@ -6,30 +6,33 @@ Local-first Android task assistant (`com.cue.daymark`).
 
 | Release | APK |
 |---------|-----|
-| **Current production** | [v1.0.3](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.3) — [Daymark-v1.0.3-githubSideload.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.3/Daymark-v1.0.3-githubSideload.apk) |
-| Previous | [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.2) — [Daymark-v1.0.2.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) |
-| Older | [v1.0.1](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.1) |
+| **Current stable production** | [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.2) — [Daymark-v1.0.2.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) |
+| Previous | [v1.0.1](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.1) — [Daymark-v1.0.1.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.1/Daymark-v1.0.1.apk) |
+
+**Next release status:** v1.0.3 is configured in source (`versionCode = 4`) but is **not yet published as a stable production release**. Do not distribute an APK as a production update until the production signer matches the pinned v1.0.2 certificate and the release verification workflow passes. Follow [issue #145](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/145) and [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
 **Same package + same production signing key + higher versionCode = in-place update (data kept).**  
-Uninstalling the app deletes local encrypted data. Prefer export backup first if you must reinstall.
+Uninstalling the app deletes local encrypted data. Prefer exporting a portable backup before reinstalling.
 
-If install fails with *package conflicts*, the phone has Daymark signed with a **different key** (often a debug build). Uninstall that copy, then install the production APK above. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
+If installation fails with *package conflicts*, the installed copy is signed with a different key (often a debug build). Do not uninstall without first considering/exporting a backup. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
 ## Secrets (GitHub Actions)
 
-`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` — **do not rotate** without a planned migration.
+`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` — **do not rotate** without a planned migration.
 
 ## Publish next production update
 
-1. On `main`, bump `versionCode` and `versionName` in `android-app/app/build.gradle.kts`.
-2. Tag and push:
+1. Resolve the production signing blocker and confirm the signer SHA-256 matches the pinned certificate.
+2. Confirm the source version and CI metadata checks agree.
+3. Merge the release-ready changes into `main`.
+4. Create and push the tag matching the Gradle `versionName`, for example:
 
 ```bash
-git tag -a v1.0.3 -m "Daymark 1.0.3"
-git push origin v1.0.3
+git tag -a vX.Y.Z -m "Daymark X.Y.Z"
+git push origin vX.Y.Z
 ```
 
-3. Workflow **Android production release** attaches `Daymark-v1.0.3.apk`.
+5. Confirm **Android production release** succeeds and the expected APK is attached to that exact GitHub Release before announcing it.
 
 Full rules for humans and agents: **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** · **[AGENTS.md](AGENTS.md)**
 
