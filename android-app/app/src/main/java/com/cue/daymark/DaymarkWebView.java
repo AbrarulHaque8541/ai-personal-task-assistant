@@ -92,7 +92,8 @@ final class DaymarkWebView extends WebView {
                 if ("daymark-download".equalsIgnoreCase(request.getUrl().getScheme())) {
                     String mediaUrl = request.getUrl().getQueryParameter("url");
                     if (BrowserMediaPolicy.allowsHandoff(networkPolicy.allowsRemoteLoads(),
-                            request.hasGesture(), request.getUrl().getScheme(), mediaUrl)) {
+                            request.hasGesture(), request.getUrl().getScheme(),
+                            request.getUrl().getHost(), mediaUrl)) {
                         listener.onMediaDownloadRequested(mediaUrl);
                     }
                     return true;
