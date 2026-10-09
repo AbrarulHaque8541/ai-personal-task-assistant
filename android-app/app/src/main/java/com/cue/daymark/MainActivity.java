@@ -1119,9 +1119,9 @@ public final class MainActivity extends Activity {
         browserOverflowButton = compactButton("⋮", false);
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
-        browserMediaButton = compactButton("⤓", false);
+        browserMediaButton = compactButton("Media ↓", false);
         browserMediaButton.setEnabled(false);
-        browserMediaButton.setContentDescription("Find downloadable videos and audio on the current page");
+        browserMediaButton.setContentDescription("Find direct downloadable videos and audio on the current page");
         browserMediaButton.setOnClickListener(view -> findMediaOnPage());
         browserExpandButton = compactButton("Expand", false);
         browserExpandButton.setVisibility(View.GONE);
@@ -1994,11 +1994,14 @@ public final class MainActivity extends Activity {
                 + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60)]);}"
                 + "var i,e,src,links;"
                 + "links=document.querySelectorAll('video');"
-                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'video',e.getAttribute('title')||'');"
-                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'video',src[j].getAttribute('title')||'');}}"
+                + "for(i=0;i<links.length;i++){e=links[i];var videoLabel=e.getAttribute('title')||'';"
+                + "if(e.videoWidth&&e.videoHeight)videoLabel+=(videoLabel?' · ':'')+e.videoWidth+'×'+e.videoHeight;"
+                + "push(e.currentSrc,'video',videoLabel);push(e.src,'video',videoLabel);"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){var sourceLabel=src[j].getAttribute('title')||src[j].type||videoLabel;"
+                + "push(src[j].src,'video',sourceLabel);}}"
                 + "links=document.querySelectorAll('audio');"
-                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'audio',e.getAttribute('title')||'');"
-                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio','');}}"
+                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc,'audio',e.getAttribute('title')||'');push(e.src,'audio',e.getAttribute('title')||'');"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio',src[j].type||'');}}"
                 + "links=document.querySelectorAll('a[href]');"
                 + "var media=/\\.(mp4|webm|m4v|mov|mkv|mp3|m4a|aac|ogg|oga|opus|wav|flac)([?#]|$)/i;"
                 + "for(i=0;i<links.length;i++){var href=links[i].getAttribute('href');"
