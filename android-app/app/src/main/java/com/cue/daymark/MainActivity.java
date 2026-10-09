@@ -2001,11 +2001,15 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(content);
-        new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Extensions")
                 .setView(scroll)
                 .setPositiveButton("Done", null)
-                .show();
+                .create();
+        content.setAlpha(0f);
+        content.setTranslationY(dp(8));
+        dialog.show();
+        content.animate().alpha(1f).translationY(0f).setDuration(160L).start();
     }
 
     private void showExtensionDetailsDialog(BrowserExtension ext) {
@@ -5382,7 +5386,8 @@ public final class MainActivity extends Activity {
                 () -> showPortableBackupDialog());
 
         addSettingsSection(content, "POWER FEATURES");
-        addSettingsRow(content, "Browser & extensions", "WebView, site tools, and compatible page scripts",
+        addSettingsRow(content, "Browser & extensions",
+                webMode ? "Manage page scripts and matching sites" : "Switch to Web mode; open Extensions from browser actions",
                 () -> {
                     if (webMode) showBrowserExtensionsManager();
                     else setWebMode(true);
