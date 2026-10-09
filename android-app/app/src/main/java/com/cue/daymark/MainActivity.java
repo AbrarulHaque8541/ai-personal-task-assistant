@@ -248,6 +248,8 @@ public final class MainActivity extends Activity {
     private Spinner searchEngineSpinner;
     private CheckBox browserOnlineToggle;
     private TextView browserStatus;
+    private View browserProviderRow;
+    private TextView browserPrivacyButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -991,36 +993,36 @@ public final class MainActivity extends Activity {
     private View buildBrowserAddressBar() {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
-        bar.setPadding(dp(10), dp(8), dp(10), dp(6));
-        bar.setBackground(shape(palette.surface, 12, palette.line));
+        bar.setPadding(dp(8), dp(6), dp(8), dp(4));
+        bar.setBackground(shape(palette.surface, 18, palette.line));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         browserAddressInput = new EditText(this);
         browserAddressInput.setSingleLine(true);
-        browserAddressInput.setTextSize(15 * textScale);
+        browserAddressInput.setTextSize(14 * textScale);
         browserAddressInput.setHint("Search or enter HTTPS address");
         browserAddressInput.setImeOptions(EditorInfo.IME_ACTION_GO);
         browserAddressInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         browserAddressInput.setPadding(dp(12), 0, dp(8), 0);
         browserAddressInput.setTextColor(palette.text);
         browserAddressInput.setHintTextColor(palette.muted);
-        browserAddressInput.setBackground(shape(palette.background, 10, palette.line));
+        browserAddressInput.setBackground(shape(palette.surfaceAlt, 16, palette.line));
         browserAddressInput.setContentDescription("Browser address and search field");
-        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(50), 1f));
+        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(46), 1f));
 
         webGoButton = primaryButton("Go");
         webGoButton.setContentDescription("Open the entered web address or search");
         webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(68), dp(50));
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(58), dp(46));
         goParams.leftMargin = dp(6);
         top.addView(webGoButton, goParams);
         bar.addView(top);
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.addView(text("Search", 12, palette.muted, Typeface.BOLD),
-                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        bottom.addView(text("Search with", 11, palette.muted, Typeface.NORMAL),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         browserSearchEngineSpinner = new Spinner(this);
         String[] labels = new String[BrowserAddress.SearchEngine.values().length];
         for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
@@ -1037,7 +1039,7 @@ public final class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
-        bottom.addView(browserSearchEngineSpinner, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        bottom.addView(browserSearchEngineSpinner, new LinearLayout.LayoutParams(0, dp(38), 1f));
 
         browserOnlineToggle = new CheckBox(this);
         browserOnlineToggle.setText("Online");
@@ -1049,7 +1051,7 @@ public final class MainActivity extends Activity {
             if (checked) confirmBrowserOnlineAccess();
             else setBrowserOnlineEnabled(false);
         });
-        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         bar.addView(bottom);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
@@ -1089,17 +1091,17 @@ public final class MainActivity extends Activity {
         toolbarScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        browserBackButton = compactButton("Back", false);
+        browserBackButton = compactButton("‹", false);
         browserBackButton.setContentDescription("Go back one page");
         browserBackButton.setOnClickListener(view -> {
             if (browserWebView != null && browserWebView.canGoBack()) browserWebView.goBack();
         });
-        browserForwardButton = compactButton("Forward", false);
+        browserForwardButton = compactButton("›", false);
         browserForwardButton.setContentDescription("Go forward one page");
         browserForwardButton.setOnClickListener(view -> {
             if (browserWebView != null && browserWebView.canGoForward()) browserWebView.goForward();
         });
-        browserReloadButton = compactButton("Reload", false);
+        browserReloadButton = compactButton("↻", false);
         browserReloadButton.setContentDescription("Reload the current page");
         browserReloadButton.setOnClickListener(view -> {
             if (browserWebView == null) return;
@@ -1109,13 +1111,13 @@ public final class MainActivity extends Activity {
                 browserWebView.reload();
             }
         });
-        browserHomeButton = compactButton("Home", false);
+        browserHomeButton = compactButton("⌂", false);
         browserHomeButton.setContentDescription("Return to the local browser home screen");
         browserHomeButton.setOnClickListener(view -> showBrowserHome());
-        browserHistoryButton = compactButton("Site history", false);
+        browserHistoryButton = compactButton("History", false);
         browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
-        browserSettingsButton = compactButton("Settings", false);
+        browserSettingsButton = compactButton("Privacy", false);
         browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
         browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog());
         browserOverflowButton = compactButton("⋮", false);
@@ -1129,24 +1131,31 @@ public final class MainActivity extends Activity {
         Button tasksButton = compactButton("Tasks", false);
         tasksButton.setContentDescription("Return to Daymark tasks");
         tasksButton.setOnClickListener(view -> setWebMode(false));
-        toolbar.addView(tasksButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
-        for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
+        for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
                 browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton, browserOverflowButton)) {
+            button.setMinHeight(dp(38));
+            button.setMinimumHeight(dp(38));
+            button.setTextSize(12 * textScale);
+            button.setPadding(dp(10), 0, dp(10), 0);
+            button.setBackground(shape(palette.surfaceAlt, 18, palette.surfaceAlt));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
-            params.setMargins(0, 0, dp(5), 0);
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
+            params.setMargins(0, 0, dp(4), 0);
             toolbar.addView(button, params);
         }
         toolbarScroll.addView(toolbar);
         panel.addView(toolbarScroll, bottomMargin(dp(2)));
 
-        TextView disclosure = text(
-                "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked.",
-                11, palette.muted, Typeface.NORMAL);
-        disclosure.setPadding(dp(8), dp(4), dp(8), dp(4));
-        disclosure.setBackground(shape(palette.accentSoft, 10, palette.accentSoft));
-        disclosure.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
-        panel.addView(disclosure, bottomMargin(dp(2)));
+        String disclosureText =
+                "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked.";
+        browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
+        browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
+        browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
+        browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
+        browserPrivacyButton.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
+        browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText
+                + "\\n\\nThe selected provider may log queries. Daymark does not send task text or run searches in the background."));
+        panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
         sitesScroll.setHorizontalScrollBarEnabled(false);
@@ -1159,7 +1168,8 @@ public final class MainActivity extends Activity {
             sites.addView(browserSiteButton(entry));
         }
         sitesScroll.addView(sites);
-        panel.addView(sitesScroll, bottomMargin(dp(3)));
+        browserProviderRow = sitesScroll;
+        panel.addView(browserProviderRow, bottomMargin(dp(3)));
 
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
@@ -1179,7 +1189,7 @@ public final class MainActivity extends Activity {
         panel.addView(browserReaderActionRow, bottomMargin(dp(4)));
 
         browserViewport = new FrameLayout(this);
-        browserViewport.setBackground(shape(palette.surface, 12, palette.line));
+        browserViewport.setBackgroundColor(palette.background);
         browserHomeView = buildBrowserHomeView();
         browserViewport.addView(browserHomeView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -1205,6 +1215,11 @@ public final class MainActivity extends Activity {
 
     private Button browserSiteButton(AiSiteCatalog.Entry entry) {
         Button button = compactButton(entry.label, false);
+        button.setMinHeight(dp(34));
+        button.setMinimumHeight(dp(34));
+        button.setTextSize(11 * textScale);
+        button.setPadding(dp(9), 0, dp(9), 0);
+        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
         button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
@@ -1229,7 +1244,7 @@ public final class MainActivity extends Activity {
             navigateBrowserTo(address);
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
         params.setMargins(0, 0, dp(5), 0);
         button.setLayoutParams(params);
         return button;
@@ -1306,6 +1321,8 @@ public final class MainActivity extends Activity {
             return;
         }
         browserHomeView.setVisibility(View.GONE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.GONE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
         browserWebView.loadUrl(address);
@@ -1371,6 +1388,8 @@ public final class MainActivity extends Activity {
                 if (!isActivityCallbackCurrent()) return;
                 discardBrowserWebView(false);
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+                if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+                if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
                 browserStatus.setText("The page stopped unexpectedly. Return to browser home and try again.");
             }
         });
@@ -1838,6 +1857,8 @@ public final class MainActivity extends Activity {
     private void showBrowserHome() {
         discardBrowserWebView();
         if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
         if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
         if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
         syncBrowserButtons();
