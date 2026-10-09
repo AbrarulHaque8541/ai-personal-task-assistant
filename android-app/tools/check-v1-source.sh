@@ -343,7 +343,11 @@ assert "static boolean isLikelyWebAddress(String value)" in address, "provider t
 assert "BROWSER_HISTORY_KEY" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity
 clear = re.search(r"private void clearBrowserData\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert clear, "explicit browser data clear action is required"
-for expected in ("clearHistory()", "clearCache(true)", "WebStorage.getInstance().deleteAllData()", "removeAllCookies("):
+clear_tab = re.search(r"private boolean clearBrowserTabData\(DaymarkWebView tab\)\s*\{(.*?)\n    \}", activity, re.S)
+assert clear_tab, "best-effort per-tab browser cleanup helper is required"
+for expected in ("clearHistory()", "clearCache(true)", "clearFormData()", "clearSslPreferences()"):
+    assert expected in clear_tab.group(1), f"per-tab clear helper must include {expected}"
+for expected in ("WebStorage.getInstance().deleteAllData()", "removeAllCookies("):
     assert expected in clear.group(1), f"clear action must include {expected}"
 assert "BrowserHistory.clear()" in clear.group(1), "clear action must erase local history"
 assert 'compactButton("Site history", false)' in activity and "Clear site history & data" in activity
