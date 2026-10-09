@@ -22,6 +22,6 @@ public final class BrowserNetworkPolicySmoke {
         assert !restored.allowsRemoteLoads() : "turning offline blocks future remote loads";
         assert restored.shouldBlockWebViewLoads() : "turning offline blocks WebView resources";
 
-        System.out.println("PASS browser network policy: offline default, explicit online, saved-choice restore, and Daymark page/resource-load blocking");
+        System.out.println("PASS browser network policy: normal browsing default, explicit offline fail-closed behavior, saved-choice restore, and Daymark page/resource-load blocking");
     }
 }
