@@ -1784,7 +1784,7 @@ public final class MainActivity extends Activity {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
                 "Open in external browser", "Desktop site", "Downloads", "Extensions",
-                "Browser settings", "Turn off online browsing"
+                "Browser settings", "Site info", "Turn off online browsing"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -1821,6 +1821,9 @@ public final class MainActivity extends Activity {
                             showBrowserSettingsDialog();
                             break;
                         case 9:
+                            showBrowserSiteInfoDialog();
+                            break;
+                        case 10:
                             if (browserNetworkPolicy.isOnlineEnabled()) {
                                 setBrowserOnlineEnabled(false);
                                 showToast("Online browsing is off. Pages and tabs were closed.");
@@ -2291,6 +2294,41 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void showBrowserSiteInfoDialog() {
+        DaymarkWebView target = browserWebView;
+        String url = target == null ? null : target.getUrl();
+        if (target == null || !BrowserAddress.isAllowedWebUrl(url)) {
+            showToast("Open an HTTPS page before viewing site information.");
+            return;
+        }
+
+        Uri uri = Uri.parse(url);
+        String host = uri.getHost();
+        StringBuilder details = new StringBuilder();
+        details.append("Address: ").append(url)
+                .append("\n\nConnection: HTTPS")
+                .append("\nHost: ").append(host == null ? "Unavailable" : host)
+                .append("\n\nDaymark blocks HTTP navigation/downgrades and does not bypass SSL certificate errors.")
+                .append("\n\nHTTPS does not guarantee that page content is safe. This summary is not a phishing, reputation, or third-party request audit.");
+
+        android.net.http.SslCertificate certificate = target.getCertificate();
+        if (certificate != null) {
+            android.net.http.SslCertificate.DName subject = certificate.getIssuedTo();
+            android.net.http.SslCertificate.DName issuer = certificate.getIssuedBy();
+            details.append("\n\nCertificate metadata supplied by Android WebView (not a full safety assessment):")
+                    .append("\nSubject: ").append(subject == null ? "Unavailable" : subject.getDName())
+                    .append("\nIssuer: ").append(issuer == null ? "Unavailable" : issuer.getDName());
+        } else {
+            details.append("\n\nCertificate metadata is unavailable for this page.");
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Site information")
+                .setMessage(details.toString())
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
     private void toggleDesktopSite() {
         if (browserWebView == null) return;
         android.webkit.WebSettings settings = browserWebView.getSettings();
@@ -2699,12 +2737,12 @@ public final class MainActivity extends Activity {
                 + "if(/^(script|style|noscript|nav|aside|footer|form|button|svg|iframe)$/i.test(tag)||node.getAttribute('aria-hidden')==='true')return NodeFilter.FILTER_REJECT;}"
                 + "return NodeFilter.FILTER_ACCEPT;}});"
                 + "var heading=document.querySelector('h1');"
-                + "var title=((heading&&heading.innerText)||document.title||'Reader mode').trim().slice(0,120);"
-                + "var parts=[],length=0,node;"
-                + "while((node=walker.nextNode())&&length<60000){"
-                + "if(node.nodeType===3){var value=node.nodeValue||'';if(value.trim()){parts.push(value);length+=value.length;}}"
-                + "else if(/^(p|div|li|h1|h2|h3|br|section|article)$/i.test(node.tagName)){parts.push('\\n');}}"
-                + "var body=parts.join('').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,60000);"
+                + "var title=((heading&&heading.innerText)||document.title||'Reader mode').slice(0,120).trim();"
+                + "var parts=[],length=0,node,visited=0,maxChars=60000,maxNodes=10000;"
+                + "while((node=walker.nextNode())&&length<maxChars&&visited<maxNodes){visited++;"
+                + "if(node.nodeType===3){var value=node.nodeValue||'';if(value.trim()){var remaining=maxChars-length;if(value.length>remaining)value=value.slice(0,remaining);if(value.trim()){parts.push(value);length+=value.length;}}}"
+                + "else if(/^(p|div|li|h1|h2|h3|br|section|article)$/i.test(node.tagName)){if(length<maxChars){parts.push('\\n');length++;}}}"
+                + "var body=parts.join('').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,maxChars);"
                 + "return [title,body];"
                 + "}catch(e){return ['Reader mode',''];}})()";
         source.evaluateJavascript(script, value -> {
