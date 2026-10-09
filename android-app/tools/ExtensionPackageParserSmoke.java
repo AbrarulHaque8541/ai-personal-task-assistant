@@ -10,6 +10,7 @@ import java.util.zip.ZipOutputStream;
  * Host-side tests for the extension package parser: the app's riskiest
  * untrusted-input path (Daymark JSON packs, userscript headers, WebExtension
  * manifests, ZIP/XPI/CRX3 archives). Runs on the host org.json stubs.
+ * Regression coverage for issues #190, #192, #193, #194.
  */
 public final class ExtensionPackageParserSmoke {
     private static int assertions;
