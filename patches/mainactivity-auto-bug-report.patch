@@ -1,0 +1,15 @@
+Apply against android-app/app/src/main/java/com/cue/daymark/MainActivity.java on main.
+
+See docs/BUG_REPORT_AUTO_ISSUE.md.
+
+This patch file is informational; full methods live in the same commit series.
+If MainActivity binary push is blocked by size, apply the following anchors manually:
+
+1. import Sensor*
+2. fields: sensorManager, shakeListener, lastShakeMs, bugReportTokenStore
+3. onCreate: sensorManager + bugReportTokenStore + DaymarkBugReporter.install/flushPending
+4. onResume: registerShakeToReport
+5. onPause: unregisterShakeToReport
+6. More settings: Report a bug + Bug report GitHub token
+7. Methods: registerShakeToReport, unregisterShakeToReport, showBugReportTokenDialog,
+   openBugReportFlow, submitBugReportApi, openBugReportInWebView
