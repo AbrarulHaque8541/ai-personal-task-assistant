@@ -176,6 +176,8 @@ assert "DRM/manifest/blob extraction" in activity, "video overlay limitations mu
 assert "browserReaderActionRow.setVisibility(View.GONE);" in activity, "reader action must not take space below the page"
 assert "browserTabs = new ArrayList<>()" in activity and "showBrowserTabsDialog()" in activity, "browser must expose a tab switcher"
 assert "createBrowserTab()" in activity and "switchBrowserTab(browserTabs.get(index))" in activity, "browser must create and switch tabs"
+assert 'compactButton("+", false)' in activity and "requestNewBrowserTab()" in activity, "toolbar New Tab action must preserve other open tabs"
+assert "if (webMode && browserTabs.size() > 1)" in activity and "closeCurrentBrowserTab()" in activity, "Android Back should close the current tab after its page history is exhausted"
 assert "browserTabs.remove(current)" in activity and "destroyBrowserWebView(current, stopLoading)" in activity, "closing tabs must stop and destroy only the intended WebView"
 assert "targetRef[0] != browserWebView" in activity, "inactive tabs must not overwrite the active tab UI"
 assert "daymark-download://media?url=" in activity, "in-player download button must hand direct media to the native download pipeline"
