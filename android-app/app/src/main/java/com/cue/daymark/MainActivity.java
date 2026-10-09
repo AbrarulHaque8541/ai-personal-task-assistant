@@ -3761,23 +3761,38 @@ public final class MainActivity extends Activity {
             due.add(task);
         }
         if (due.isEmpty()) return;
-        for (Task task : due) {
-            Instant fire = TaskLogic.reminderFireInstant(task, zone);
-            if (fire != null) {
-                replaceTask(task.withReminderShown(fire.toString(), Instant.now().toString()));
-            }
-        }
-        saveTasksAsync();
+
         StringBuilder message = new StringBuilder();
         for (Task task : due) {
             if (message.length() > 0) message.append("\n\n");
             message.append("• ").append(task.title).append(" — ").append(dueLabel(task));
         }
-        new AlertDialog.Builder(this)
+        AlertDialog reminderDialog = new AlertDialog.Builder(this)
                 .setTitle(due.size() == 1 ? "Reminder" : "Reminders (" + due.size() + ")")
                 .setMessage(message.toString())
                 .setPositiveButton("Done", null)
-                .show();
+                .create();
+        // Do not persist the shown marker until the dialog is actually visible. If Android
+        // refuses to show it (for example while the Activity is finishing), the reminder
+        // remains eligible to be shown the next time Daymark is opened.
+        reminderDialog.setOnShowListener(shown -> {
+            Instant shownAt = Instant.now();
+            boolean changed = false;
+            for (Task dueTask : due) {
+                Task current = findTask(dueTask.id);
+                if (current == null || current.completed || current.reminderLeadMinutes == null) continue;
+                Instant fire = TaskLogic.reminderFireInstant(current, zone);
+                if (fire == null || shownAt.isBefore(fire) || fire.toString().equals(current.reminderShownFire)) continue;
+                replaceTask(current.withReminderShown(fire.toString(), shownAt.toString()));
+                changed = true;
+            }
+            if (changed) saveTasksAsync();
+        });
+        try {
+            reminderDialog.show();
+        } catch (RuntimeException showFailed) {
+            showToast("Reminder could not be shown. It will be retried the next time you open Daymark.");
+        }
     }
 
     private void showTaskActions(Task task) {
