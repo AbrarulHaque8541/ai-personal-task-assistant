@@ -1,0 +1,33 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -929,5 +929,9 @@
+         addTaskButton = primaryButton("Add task");
+         addTaskButton.setContentDescription("Add this task with no due date and medium priority");
+-        addTaskButton.setOnClickListener(view -> addQuickTask());
++        addTaskButton.setOnClickListener(view -> {
++            String draft = quickCaptureInput.getText() == null
++                    ? "" : quickCaptureInput.getText().toString();
++            showTaskEditor(null, draft);
++        });
+         taskActions.addView(addTaskButton, bottomMargin(dp(5)));
+ 
+@@ -1088,5 +1092,7 @@
+ 
+         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
+-            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH) {
++            boolean enter = event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
++                    && (event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP);
++            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH || enter) {
+                 navigateFromBrowserInput();
+                 return true;
+@@ -3586,7 +3592,7 @@
+         if (!webMode) {
+             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
+-        } else if (browserWebView != null || !browserTabs.isEmpty()) {
+-            discardBrowserWebView();
+-        }
++        }
++        // Keep WebView/tabs when switching to Tasks — only hide via syncModeUi.
++        // Discard only on explicit clear/close (not mode toggle).
+         webMode = enabled;
+         quickCaptureInput.setText(enabled ? "" : taskDraft);
