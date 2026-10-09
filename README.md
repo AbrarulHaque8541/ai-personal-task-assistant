@@ -9,7 +9,7 @@ Local-first Android task assistant (`com.cue.daymark`).
 | **Current stable production** | [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.2) — [Daymark-v1.0.2.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) |
 | Previous | [v1.0.1](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.1) — [Daymark-v1.0.1.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.1/Daymark-v1.0.1.apk) |
 
-**Next release status:** v1.0.3 is configured in source (`versionCode = 4`) but is **not yet published as a stable production release**. Do not distribute an APK as a production update until the production signer matches the pinned v1.0.2 certificate and the release verification workflow passes. Follow [issue #145](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/145) and [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
+**Next release status:** v1.0.3 is configured in source (`versionCode = 4`) but is **not yet published as a stable production release**. Do not distribute an APK as a production update until the production signer matches the pinned v1.0.2 certificate and the release verification workflow passes. Follow [RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
 **Same package + same production signing key + higher versionCode = in-place update (data kept).**  
 Uninstalling the app deletes local encrypted data. Prefer exporting a portable backup before reinstalling.
