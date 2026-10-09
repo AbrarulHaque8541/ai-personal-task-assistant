@@ -2449,12 +2449,17 @@ public final class MainActivity extends Activity {
         browserStatus.setText("Preparing a local text-only reading view...");
         String script = "(function(){try{"
                 + "var root=document.querySelector('article')||document.querySelector('main')||document.body;"
-                + "var clone=root.cloneNode(true);"
-                + "var junk=clone.querySelectorAll('script,style,noscript,nav,aside,footer,form,button,svg,iframe');"
-                + "for(var i=junk.length-1;i>=0;i--){if(junk[i].parentNode)junk[i].parentNode.removeChild(junk[i]);}"
+                + "var walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{acceptNode:function(node){"
+                + "if(node.nodeType===1){var tag=node.tagName.toLowerCase();"
+                + "if(/^(script|style|noscript|nav|aside|footer|form|button|svg|iframe)$/i.test(tag)||node.getAttribute('aria-hidden')==='true')return NodeFilter.FILTER_REJECT;}"
+                + "return NodeFilter.FILTER_ACCEPT;}});"
                 + "var heading=document.querySelector('h1');"
                 + "var title=((heading&&heading.innerText)||document.title||'Reader mode').trim().slice(0,120);"
-                + "var body=(clone.innerText||clone.textContent||'').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,60000);"
+                + "var parts=[],length=0,node;"
+                + "while((node=walker.nextNode())&&length<60000){"
+                + "if(node.nodeType===3){var value=node.nodeValue||'';if(value.trim()){parts.push(value);length+=value.length;}}"
+                + "else if(/^(p|div|li|h1|h2|h3|br|section|article)$/i.test(node.tagName)){parts.push('\\n');}}"
+                + "var body=parts.join('').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,60000);"
                 + "return [title,body];"
                 + "}catch(e){return ['Reader mode',''];}})()";
         source.evaluateJavascript(script, value -> {
