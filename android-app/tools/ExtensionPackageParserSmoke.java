@@ -39,7 +39,8 @@ public final class ExtensionPackageParserSmoke {
                 Arrays.asList("example.com"));
         String json = ExtensionPackageParser.toDaymarkJson(original);
         BrowserExtension parsed = ExtensionPackageParser.parseDaymarkJson(json, false);
-        check(original.id.equals(parsed.id), "pack id survives a JSON round trip");
+        check(original.id.equals(parsed.id), "pack id survives a JSON round trip"
+);
         check(original.name.equals(parsed.name), "pack name survives a JSON round trip");
         check(original.version.equals(parsed.version), "pack version survives a JSON round trip");
         check(original.description.equals(parsed.description), "pack description survives a JSON round trip");
@@ -68,7 +69,8 @@ public final class ExtensionPackageParserSmoke {
         expectRejected(huge.toString(), "packs over the 200 KB text cap are rejected");
     }
 
-    private static void userscriptHeaderParsesAndGrantPolicyIsWarned() throws Exception {
+    private static void user
+scriptHeaderParsesAndGrantPolicyIsWarned() throws Exception {
         String script = "// ==UserScript==\n"
                 + "// @name        Demo script\n"
                 + "// @version     2.1\n"
@@ -96,7 +98,8 @@ public final class ExtensionPackageParserSmoke {
         check(warned.warnings.contains("unsupported @grant GM_setValue"),
                 "privileged GM_* grants become warnings, not APIs");
         check(warned.description.contains("Daymark:"),
-                "the description tells the user only DOM-level APIs are provided");
+                "th
+e description tells the user only DOM-level APIs are provided");
     }
 
     private static void bareUserscriptGetsSafeDefaults() throws Exception {
@@ -123,7 +126,8 @@ public final class ExtensionPackageParserSmoke {
                 "background workers are refused with a warning");
         check(ext.warnings.contains("Toolbar actions/popups were not imported"),
                 "toolbar popups are refused with a warning");
-        check(ext.warnings.contains("Requested permissions were not granted"),
+        check(ext.warnings.contains("Requested permissions were not
+ granted"),
                 "manifest permissions are refused with a warning");
         check(ext.warnings.contains("CSS file style.css was not found in the archive"),
                 "manifest-only imports warn that referenced files were not supplied");
@@ -152,7 +156,8 @@ public final class ExtensionPackageParserSmoke {
         check(ext.css.contains(".ad{display:none}"), "packaged CSS is imported from the archive");
         check(ext.warnings.contains("JS file ../evil.js was not found in the archive"),
                 "a traversal-referenced file is reported as absent");
-        check(ext.warnings.contains("compatibility mode"),
+        check(ext.warnings.contains("compatib
+ility mode"),
                 "archive imports always carry the compatibility-mode warning");
     }
 
@@ -191,14 +196,15 @@ public final class ExtensionPackageParserSmoke {
         ByteArrayOutputStream crx = new ByteArrayOutputStream();
         crx.write(new byte[] { 'C', 'r', '2', '4' });
         crx.write(new byte[] { 3, 0, 0, 0 });
-        crx.write(new byte[] { 0, 0, 0, 0 });
+        crx.write(new byte[] 
+{ 0, 0, 0, 0 });
         crx.write(zipBytes);
         BrowserExtension ext = ExtensionPackageParser.parseWebExtensionArchive(crx.toByteArray());
         check("From CRX3".equals(ext.name), "the CRX3 container header is stripped before unzip");
         check(ext.js.contains("console.log('packaged');"), "CRX3-packaged JS is imported");
     }
 
-    private static void oversizedArchivesAreRejected() {
+    private static void oversizedArchivesAreRejected() throws Exception {
         try {
             ExtensionPackageParser.parseWebExtensionArchive(new byte[5 * 1024 * 1024 + 1]);
             throw new AssertionError("archives over 5 MB are rejected");
@@ -231,7 +237,8 @@ public final class ExtensionPackageParserSmoke {
         zip.closeEntry();
     }
 
-    private static void expectRejected(String raw, String message) {
+    private static void expectReje
+cted(String raw, String message) {
         assertions++;
         try {
             ExtensionPackageParser.parseDaymarkJson(raw, false);
