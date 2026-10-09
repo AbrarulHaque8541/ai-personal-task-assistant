@@ -25,7 +25,7 @@ for method in ("clearHistory()", "clearCache(true)", "clearFormData()", "clearSs
     assert f"tab.{method}" in clear, f"every tab must receive {method}"
 assert "allTabDataCleared" in clear and "Site-data cleanup was partial" in clear, "partial failure must not be reported as full success"
 assert "browserWebView.clearHistory()" not in clear, "avoid clearing only the active WebView"
-assert "This action also closes all open Daymark browser tabs and returns to browser home." in SOURCE, "destructive tab-closing side effect must be disclosed before clearing site data"
+assert SOURCE.count("This action also closes all open Daymark browser tabs and returns to browser home.") >= 2, "both clear-data confirmation surfaces must disclose that all open tabs close"
 assert "private boolean clearBrowserTabData(DaymarkWebView tab)" in clear, "each tab should use a best-effort cleanup helper"
 assert clear.count("catch (RuntimeException clearFailed)") >= 4, "each WebView cleanup operation must fail independently"
 assert "siteStorageCleared" in clear and "catch (RuntimeException storageClearFailed)" in clear, "WebStorage failures must be handled"
