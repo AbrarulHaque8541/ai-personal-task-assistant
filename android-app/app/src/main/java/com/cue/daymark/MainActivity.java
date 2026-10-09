@@ -1859,18 +1859,18 @@ public final class MainActivity extends Activity {
     private void confirmAndInstallExtension(BrowserExtension ext) {
         if (ext == null) return;
         StringBuilder review = new StringBuilder();
-        review.append("Daymark supports only page-local CSS and JavaScript. This is not a full Chrome/Firefox extension runtime.\\n\\n");
-        review.append("Name: ").append(ext.name).append('\\n');
-        review.append("Version: ").append(ext.version).append('\\n');
-        review.append("Source: ").append(ext.builtIn ? "built-in" : "imported file").append('\\n');
-        review.append("JavaScript: ").append(ext.js.length()).append(" characters\\n");
-        review.append("CSS: ").append(ext.css.length()).append(" characters\\n");
-        review.append("Run time: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\\n');
-        review.append("Site match rules: ").append(ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size()).append('\\n');
+        review.append("Daymark supports only page-local CSS and JavaScript. This is not a full Chrome/Firefox extension runtime.\n\n");
+        review.append("Name: ").append(ext.name).append('\n');
+        review.append("Version: ").append(ext.version).append('\n');
+        review.append("Source: ").append(ext.builtIn ? "built-in" : "imported file").append('\n');
+        review.append("JavaScript: ").append(ext.js.length()).append(" characters\n");
+        review.append("CSS: ").append(ext.css.length()).append(" characters\n");
+        review.append("Run time: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\n');
+        review.append("Site match rules: ").append(ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size()).append('\n');
         if (ext.warnings != null && !ext.warnings.trim().isEmpty()) {
-            review.append("\\nImport warnings: ").append(ext.warnings).append('\\n');
+            review.append("\nImport warnings: ").append(ext.warnings).append('\n');
         }
-        review.append("\\nTRUST WARNING\\n");
+        review.append("\nTRUST WARNING\n");
         review.append("When enabled, this script can read and change matching website page content. On a site where you are signed in, page scripts may be able to access information visible to that page and send it to an external service. Only add code from a source you trust. Daymark does not execute the script during this review.");
         new AlertDialog.Builder(this)
                 .setTitle("Review before adding")
