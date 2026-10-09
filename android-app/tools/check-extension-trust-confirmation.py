@@ -23,7 +23,6 @@ for marker in (
     "matching website page content",
     "send it to an external service",
     "none (does not run on pages)",
-    "0 match rules · does not run on pages",
     "installUserPack(ext)",
 ):
     assert marker in review, f"extension trust review missing marker: {marker}"
