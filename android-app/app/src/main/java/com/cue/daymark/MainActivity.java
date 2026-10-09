@@ -1,5 +1,3 @@
-{"keys":["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48","49","50","51","52","53","54","55","56","57","58","59","60","61","62","63","64","65","66","67","68","69","70","71","72","73","74","75","76","77","78","79","80"],"r":"\"successfully downloaded text file (SHA: a27f275b0872ae63fbc3b9d52f298c30778e7009)\""}
-Additional content from `tools.github_app.get_file_contents` (call 1):
 package com.cue.daymark;
 
 import android.app.Activity;
@@ -1190,6 +1188,21 @@ public final class MainActivity extends Activity {
         return panel;
     }
 
+    private void selectSearchEngine(BrowserAddress.SearchEngine engine) {
+        if (engine == null) return;
+        searchEngine = engine;
+        browserPreferences.edit().putString(SEARCH_ENGINE_KEY, searchEngine.name()).apply();
+        int position = java.util.Arrays.asList(BrowserAddress.SearchEngine.values()).indexOf(engine);
+        if (position >= 0) {
+            if (searchEngineSpinner != null && searchEngineSpinner.getSelectedItemPosition() != position) {
+                searchEngineSpinner.setSelection(position);
+            }
+            if (browserSearchEngineSpinner != null && browserSearchEngineSpinner.getSelectedItemPosition() != position) {
+                browserSearchEngineSpinner.setSelection(position);
+            }
+        }
+    }
+
     private Button browserSiteButton(AiSiteCatalog.Entry entry) {
         Button button = compactButton(entry.label, false);
         button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
@@ -1255,30 +1268,6 @@ public final class MainActivity extends Activity {
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
             browserStatus.setText("Nothing was opened. Check the search or web address.");
-        }
-    }
-
-    /**
-     * Selects and persists the active search engine, keeping both engine
-     * spinners (task-side composer and browser address bar) in sync.
-     * Spinner listeners call back into this method when their selection
-     * changes programmatically; the same-engine early return makes that
-     * re-entrant call harmless.
-     */
-    private void selectSearchEngine(BrowserAddress.SearchEngine engine) {
-        if (engine == null || engine == searchEngine) return;
-        searchEngine = engine;
-        browserPreferences.edit().putString(SEARCH_ENGINE_KEY, engine.name()).apply();
-        BrowserAddress.SearchEngine[] engines = BrowserAddress.SearchEngine.values();
-        if (searchEngineSpinner != null) {
-            for (int i = 0; i < engines.length; i++) {
-                if (engines[i] == engine) { searchEngineSpinner.setSelection(i, false); break; }
-            }
-        }
-        if (browserSearchEngineSpinner != null) {
-            for (int i = 0; i < engines.length; i++) {
-                if (engines[i] == engine) { browserSearchEngineSpinner.setSelection(i, false); break; }
-            }
         }
     }
 
@@ -2171,7 +2160,10 @@ public final class MainActivity extends Activity {
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
                 Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                root.setPadding(dp(8) + bars.left, bars.top, dp(8) + bars.right, bars.bottom);
+                int imeBottom = WindowInsetsPolicy.CONSUME_IME_INSETS
+                        ? insets.getInsets(WindowInsets.Type.ime()).bottom : 0;
+                root.setPadding(dp(8) + bars.left, bars.top, dp(8) + bars.right,
+                        WindowInsetsPolicy.bottomPadding(bars.bottom, imeBottom));
             } else {
                 // API 26-29: the decor view still fits the system windows by
                 // default, so content is already positioned below the status bar.
@@ -5543,4 +5535,3 @@ public final class MainActivity extends Activity {
         }
     }
 }
-
