@@ -24,7 +24,7 @@ PR #181 was merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`; main CI run #3
 
 ## Reader Mode merged; release candidate state
 
-PR #182 added a real local text-only Reader Mode, separate from the live full-screen WebView. It uses a bounded DOM tree walk, renders native selectable text, provides explicit copy, and adds source guards. It was merged at `b9279e26f35b72db00c124955caee8775cb0cf31`; main CI run #345 passed signed candidate APK/AAB generation and release artifact metadata verification. No exact `v1.0.5` tag or public v1.0.5 release exists yet. Physical-device QA remains outstanding.
+PR #182 added a real local text-only Reader Mode, separate from the live full-screen WebView. PR #184 added adjustable text size, sans/serif font choice, light/sepia/dark themes, and compact mobile controls. The appearance update was merged at `e3033ef74e370bd5b4c06b1b20c1fcc927386fb6`; main CI run #351 passed signed candidate APK/AAB generation and release artifact metadata verification. No exact `v1.0.5` tag or public v1.0.5 release exists yet. Physical-device QA remains outstanding.
 
 ## Evidence boundaries
 
