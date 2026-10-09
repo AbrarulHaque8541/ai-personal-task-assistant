@@ -20,8 +20,10 @@ final class ExtensionPackageParser {
     private static final int MAX_PACK_CHARS = 200_000;
     private static final Pattern USERSCRIPT_HEADER = Pattern.compile(
             "(?s)==UserScript==\\s*(.*?)==/UserScript==");
+    // Keys may contain hyphens (@run-at); w alone never matched them, so
+    // @run-at directives were silently ignored before this character class.
     private static final Pattern META = Pattern.compile(
-            "@(\\w+)\\s+(.+)");
+            "@([\\w-]+)\\s+(.+)");
 
     private ExtensionPackageParser() { }
 
