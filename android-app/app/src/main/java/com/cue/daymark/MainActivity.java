@@ -1092,8 +1092,8 @@ public final class MainActivity extends Activity {
             }
         });
         browserHomeButton = compactButton("⌂", false);
-        browserHomeButton.setContentDescription("Return to the local browser home screen");
-        browserHomeButton.setOnClickListener(view -> showBrowserHome());
+        browserHomeButton.setContentDescription("Open a new browser tab at the local home screen");
+        browserHomeButton.setOnClickListener(view -> startNewBrowserTab());
         browserTabsButton = compactButton("Tabs 0", false);
         browserTabsButton.setContentDescription("Switch between open browser tabs or create a new tab");
         browserTabsButton.setOnClickListener(view -> showBrowserTabsDialog());
