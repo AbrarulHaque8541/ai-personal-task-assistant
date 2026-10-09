@@ -1979,7 +1979,7 @@ public final class MainActivity extends Activity {
         String script = "(function(){"
                 + "if(window.__daymarkVideoDownloadInstalled)return;window.__daymarkVideoDownloadInstalled=true;"
                 + "var button=null,active=null,raf=0;"
-                + "function direct(v){var u='';try{u=v.currentSrc||v.src||'';}catch(e){}"
+                + "function direct(v){var u='';try{u=v.currentSrc||v.src||'';}catch(e){return '' ;}"
                 + "return /^https:\\/\\//i.test(u)?u:'';}"
                 + "function ensure(){if(button)return;button=document.createElement('button');"
                 + "button.type='button';button.textContent='Download';button.setAttribute('aria-label','Download this video');"
@@ -2001,7 +2001,7 @@ public final class MainActivity extends Activity {
                 + "schedule();}"
                 + "ensure();scan();window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);"
                 + "document.addEventListener('play',function(e){if(e.target&&e.target.tagName==='VIDEO'){active=e.target;scan();} },true);"
-                + "try{new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
+                + "try{new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true});}catch(e){if(button)button.style.display='none';}"
                 + "})();";
         target.evaluateJavascript(script, null);
     }
