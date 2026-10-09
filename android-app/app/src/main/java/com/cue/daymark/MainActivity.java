@@ -231,6 +231,8 @@ public final class MainActivity extends Activity {
     private FrameLayout browserViewport;
     private View browserHomeView;
     private DaymarkWebView browserWebView;
+    private final List<DaymarkWebView> browserTabs = new ArrayList<>();
+    private Button browserTabButton;
     private View browserFullscreenView;
     private WebChromeClient.CustomViewCallback browserFullscreenCallback;
     private int browserPreviousSystemUiVisibility;
@@ -1119,6 +1121,9 @@ public final class MainActivity extends Activity {
         browserOverflowButton = compactButton("⋮", false);
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
+        browserTabButton = compactButton("Tabs (0)", false);
+        browserTabButton.setContentDescription("Switch between open browser tabs or create a new tab");
+        browserTabButton.setOnClickListener(view -> showBrowserTabsDialog());
         browserMediaButton = compactButton("Media ↓", false);
         browserMediaButton.setEnabled(false);
         browserMediaButton.setContentDescription("Find direct downloadable videos and audio on the current page");
@@ -1132,8 +1137,8 @@ public final class MainActivity extends Activity {
         tasksButton.setContentDescription("Return to Daymark tasks");
         tasksButton.setOnClickListener(view -> setWebMode(false));
         for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton,
-                browserOverflowButton, browserMediaButton)) {
+                browserReloadButton, browserHomeButton, browserTabButton, browserHistoryButton,
+                browserSettingsButton, browserOverflowButton, browserMediaButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -1563,6 +1568,8 @@ public final class MainActivity extends Activity {
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        browserTabs.add(browserWebView);
+        updateBrowserTabButton();
         return true;
     }
 
@@ -2248,12 +2255,27 @@ public final class MainActivity extends Activity {
             }
             fullScreenWebDialog = null;
         }
-        discardBrowserWebView(true);
+        if (browserFullscreenView != null) exitBrowserFullscreen();
+        List<DaymarkWebView> openTabs = new ArrayList<>(browserTabs);
+        browserTabs.clear();
+        browserWebView = null;
+        for (DaymarkWebView tab : openTabs) destroyBrowserWebView(tab, true);
+        updateBrowserTabButton();
+        syncBrowserButtons();
     }
 
     private void discardBrowserWebView(boolean stopLoading) {
         DaymarkWebView current = browserWebView;
         browserWebView = null;
+        if (current != null) {
+            browserTabs.remove(current);
+            destroyBrowserWebView(current, stopLoading);
+        }
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
+    private void destroyBrowserWebView(DaymarkWebView current, boolean stopLoading) {
         if (current != null) {
             try {
                 current.getSettings().setBlockNetworkLoads(true);
@@ -2266,7 +2288,6 @@ public final class MainActivity extends Activity {
             }
             current.destroy();
         }
-        syncBrowserButtons();
     }
 
     private void showBrowserOfflineStatus() {
@@ -2739,7 +2760,7 @@ public final class MainActivity extends Activity {
         }
         if (!webMode) {
             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
-        } else if (browserWebView != null) {
+        } else if (browserWebView != null || !browserTabs.isEmpty()) {
             discardBrowserWebView();
         }
         webMode = enabled;
