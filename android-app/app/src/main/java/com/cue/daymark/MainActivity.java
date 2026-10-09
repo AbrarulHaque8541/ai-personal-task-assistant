@@ -1484,6 +1484,7 @@ public final class MainActivity extends Activity {
                 }
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
                 syncBrowserButtons();
+                installMediaDownloadOverlay();
             }
 
             @Override public void onNavigationBlocked(String url) {
@@ -1514,6 +1515,16 @@ public final class MainActivity extends Activity {
             @Override public void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 if (!isActivityCallbackCurrent()) return;
                 queueBrowserDownload(url, userAgent, contentDisposition, mimeType);
+            }
+
+            @Override public void onMediaDownloadRequested(String url) {
+                if (!isActivityCallbackCurrent()) return;
+                if (!BrowserAddress.isAllowedWebUrl(url)) {
+                    showToast("This video source is not a direct HTTPS file that Daymark can download.");
+                    return;
+                }
+                String agent = browserWebView == null ? null : browserWebView.getSettings().getUserAgentString();
+                queueBrowserDownload(url, agent, null, "video/*");
             }
 
             @Override public void onRendererGone() {
@@ -1969,6 +1980,34 @@ public final class MainActivity extends Activity {
     // links on the current page so they can be downloaded even when the site
     // itself offers no download button. Protected streaming players (DRM or
     // hidden stream manifests) stay out of scope by design.
+    // Adds a page-local download affordance only when an HTML5 video exposes a direct HTTPS source.
+    // The click navigates to a private app scheme; no JavaScript-to-native bridge is exposed to page scripts.
+    private void installMediaDownloadOverlay() {
+        if (browserWebView == null || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        String script = "(function(){"
+                + "if(window.__daymarkMediaOverlayInstalled)return;window.__daymarkMediaOverlayInstalled=true;"
+                + "var button=document.createElement('button');button.type='button';button.textContent='↓ Download';"
+                + "button.setAttribute('aria-label','Download this video with Daymark');"
+                + "button.style.cssText='position:fixed;z-index:2147483647;display:none;padding:9px 12px;border:0;border-radius:18px;background:#12442e;color:#fff;font:600 14px sans-serif;box-shadow:0 2px 8px #0006;';"
+                + "document.documentElement.appendChild(button);var active=null;"
+                + "function direct(v){var u=v&&(v.currentSrc||v.src);return u&&u.indexOf('https://')===0?u:'';}"
+                + "function place(v){active=v;var u=direct(v),r=v&&v.getBoundingClientRect();"
+                + "if(!u||!r||r.width<80||r.height<45||r.bottom<0||r.top>innerHeight){button.style.display='none';return;}"
+                + "button.style.display='block';button.style.top=Math.max(4,Math.min(innerHeight-48,r.top+8))+'px';"
+                + "button.style.left=Math.max(4,Math.min(innerWidth-120,r.right-116))+'px';}"
+                + "function attach(v){if(v.__daymarkMediaAttached)return;v.__daymarkMediaAttached=true;"
+                + "['play','playing','loadedmetadata','emptied'].forEach(function(n){v.addEventListener(n,function(){place(v);});});"
+                + "v.addEventListener('pause',function(){if(active===v)button.style.display='none';});"
+                + "v.addEventListener('ended',function(){if(active===v)button.style.display='none';});}"
+                + "function scan(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){attach(vs[i]);if(!vs[i].paused&&direct(vs[i]))place(vs[i]);}}"
+                + "button.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var u=direct(active);"
+                + "if(u)window.location.href='daymark-media-download://request?url='+encodeURIComponent(u);else button.style.display='none';});"
+                + "addEventListener('scroll',function(){if(active)place(active);},true);addEventListener('resize',function(){if(active)place(active);});"
+                + "new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true});scan();"
+                + "})();";
+        browserWebView.evaluateJavascript(script, null);
+    }
+
     private void findMediaOnPage() {
         if (!browserNetworkPolicy.allowsRemoteLoads() || browserWebView == null) {
             showToast("Open a page first, with Online enabled.");
