@@ -211,9 +211,15 @@ for secret_case in ("/reset/secret-reset-token", "/oauth/secret-authorization-co
 assert "BrowserAddress.isAllowedWebUrl(sites.get(0))" in browser_smoke, "a stored site origin must remain reopenable"
 assert "active browsing URL" in browser_smoke, "history redaction must not mutate the current route/query"
 assert "uri.getRawUserInfo() != null" in address, "browser navigation must continue to reject userinfo"
-for method in ("navigateFromInput", "navigateBrowserTo", "loadBrowserAddress"):
+# Input handlers route through navigateBrowserTo, which requests explicit consent when
+# the persisted network choice is Offline. The final load boundary still fails closed.
+for method in ("navigateFromInput", "navigateFromBrowserInput"):
     body = re.search(r"private void " + method + r"\([^)]*\)\s*\{(.*?)\n    \}", activity, re.S)
-    assert body and "browserNetworkPolicy.allowsRemoteLoads()" in body.group(1), f"{method} must fail closed while Offline"
+    assert body and "navigateBrowserTo(address)" in body.group(1), f"{method} must use the validated browser navigation path"
+navigate_browser = re.search(r"private void navigateBrowserTo\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
+assert navigate_browser and "confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress))" in navigate_browser.group(1), "first navigation from Offline must request consent then continue the requested page"
+load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
+assert load_address and "browserNetworkPolicy.allowsRemoteLoads()" in load_address.group(1), "final page-load boundary must still fail closed while Offline"
 online_setting = re.search(r"private void setBrowserOnlineEnabled\(boolean enabled\)\s*\{(.*?)\n    \}", activity, re.S)
 assert online_setting and "browserNetworkPolicy.setOnlineEnabled(enabled)" in online_setting.group(1)
 assert online_setting and "showBrowserHome()" in online_setting.group(1)
