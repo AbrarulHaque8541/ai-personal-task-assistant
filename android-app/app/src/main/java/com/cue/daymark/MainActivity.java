@@ -5399,10 +5399,10 @@ public final class MainActivity extends Activity {
                 .setView(scroll)
                 .setNegativeButton("Done", null)
                 .create();
+        content.setAlpha(0f);
+        content.setTranslationY(dp(8));
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        }
+        content.animate().alpha(1f).translationY(0f).setDuration(160L).start();
     }
 
     private void addSettingsSection(LinearLayout parent, String label) {
