@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -146,7 +148,32 @@ final class ExtensionStore {
         }
         String json = ExtensionPackageParser.toDaymarkJson(ext);
         File out = new File(userDir, sanitizeFileName(ext.id) + ".daymark-ext.json");
+        if (out.exists()) {
+            // Import ids are content-derived, but the install path still fails closed when a
+            // different pack already lives at the same filename (issue #193).
+            BrowserExtension existing = null;
+            try {
+                existing = ExtensionPackageParser.parseDaymarkJson(readFile(out), false);
+            } catch (Exception unreadable) {
+                // A corrupt stored pack is replaced by the fresh confirmed import.
+            }
+            if (existing != null && !isSamePack(existing, ext)) {
+                throw new IllegalArgumentException("A different extension pack is already installed with id "
+                        + ext.id + ". Uninstall it before importing a different pack.");
+            }
+        }
         writeFile(out, json);
+    }
+
+    /** Content comparison used by the install conflict guard; storage-derived metadata is ignored. */
+    private static boolean isSamePack(BrowserExtension a, BrowserExtension b) {
+        return a.id.equals(b.id)
+                && a.name.equals(b.name)
+                && a.version.equals(b.version)
+                && a.matches.equals(b.matches)
+                && a.excludes.equals(b.excludes)
+                && a.css.equals(b.css)
+                && a.js.equals(b.js);
     }
 
     void setUserPackEnabled(String id, boolean enabled) {
@@ -221,14 +248,18 @@ final class ExtensionStore {
 
     private static void writeFile(File file, String content) throws Exception {
         File tmp = new File(file.getAbsolutePath() + ".tmp");
-        try (FileOutputStream out = new FileOutputStream(tmp)) {
-            out.write(content.getBytes(StandardCharsets.UTF_8));
-            out.getFD().sync();
-        }
-        if (!tmp.renameTo(file)) {
-            //noinspection ResultOfMethodCallIgnored
-            file.delete();
-            if (!tmp.renameTo(file)) throw new Exception("Could not save extension pack.");
+        try {
+            try (FileOutputStream out = new FileOutputStream(tmp)) {
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.getFD().sync();
+            }
+            // Same-directory replacement. A failed move leaves the previous pack untouched.
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            if (tmp.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+            }
         }
     }
 }
