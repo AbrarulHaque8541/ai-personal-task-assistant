@@ -1158,7 +1158,7 @@ public final class MainActivity extends Activity {
         }
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
-        panel.addView(browserProviderRow, bottomMargin(dp(3)));
+        // Provider shortcuts are attached after the viewport so they remain a bottom strip on every result.
 
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
@@ -1184,6 +1184,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         panel.addView(browserViewport, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        panel.addView(browserProviderRow, topMargin(dp(3)));
         return panel;
     }
 
