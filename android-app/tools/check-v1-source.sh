@@ -130,6 +130,10 @@ assert "transaction.reconcile();" in grant_recovery and "releaseAndClear(journal
 assert "ACTIVE_SELECTIONS" in grant_recovery and "isValidLiveSelection" in grant_recovery
 assert "restorePendingActivitySelection" in grant_recovery and "operationToken" in grant_recovery
 webview = (main / "java/com/cue/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
+media_policy = (main / "java/com/cue/daymark/BrowserMediaPolicy.java").read_text(encoding="utf-8")
+tab_policy = (main / "java/com/cue/daymark/BrowserTabPolicy.java").read_text(encoding="utf-8")
+media_smoke = (root / "tools/BrowserMediaPolicySmoke.java").read_text(encoding="utf-8")
+tab_smoke = (root / "tools/BrowserTabPolicySmoke.java").read_text(encoding="utf-8")
 address = (main / "java/com/cue/daymark/BrowserAddress.java").read_text(encoding="utf-8")
 history_source = (main / "java/com/cue/daymark/BrowserHistory.java").read_text(encoding="utf-8")
 browser_smoke = (root / "tools/BrowserAddressSmoke.java").read_text(encoding="utf-8")
@@ -177,6 +181,12 @@ assert "targetRef[0] != browserWebView" in activity, "inactive tabs must not ove
 assert "daymark-download://media?url=" in activity, "in-player download button must hand direct media to the native download pipeline"
 assert "window.location.href='daymark-download://media?url='" in activity, "overlay click must use a bounded custom-scheme handoff rather than a fake HTML download"
 assert "onMediaDownloadRequested(String url)" in webview and "request.hasGesture()" in webview, "media handoff must require a user gesture"
+assert "BrowserMediaPolicy.allowsHandoff" in webview and "BrowserAddress.isAllowedWebUrl(mediaUrl)" in media_policy, "media handoff must centralize HTTPS validation"
+for expected in ("offline mode must block media handoff", "media handoff must require a user gesture", "cleartext media must be rejected"):
+    assert expected in media_smoke, f"missing executable media-policy regression: {expected}"
+assert "BrowserTabPolicy.MAX_TABS = 6" in tab_policy or "MAX_TABS = 6" in tab_policy, "browser tabs must have a memory-conscious limit"
+for expected in ("tab count must be bounded", "closing the last tab should leave no selection", "selection must remain within the remaining tab list"):
+    assert expected in tab_smoke, f"missing executable tab-policy regression: {expected}"
 assert '"daymark-download".equalsIgnoreCase(request.getUrl().getScheme())' in webview, "custom media handoff must be intercepted before normal web navigation"
 assert "onShowCustomView(View view, CustomViewCallback callback)" in webview and "onHideCustomView()" in webview, "WebView must support HTML5 full-screen video"
 assert "onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback)" in activity and "FLAG_FULLSCREEN" in activity, "host Activity must display full-screen media and restore the system UI"
