@@ -2512,9 +2512,9 @@ public final class MainActivity extends Activity {
         smaller.setContentDescription("Decrease reader text size");
         Button larger = compactButton("A+", true);
         larger.setContentDescription("Increase reader text size");
-        Button font = compactButton("Font: Sans", true);
+        Button font = compactButton("Sans", true);
         font.setContentDescription("Switch between sans serif and serif reader fonts");
-        Button theme = compactButton("Theme: Light", true);
+        Button theme = compactButton("Light", true);
         theme.setContentDescription("Cycle reader background between light, sepia, and dark");
 
         for (Button control : new Button[]{smaller, larger, font, theme}) {
@@ -2567,8 +2567,8 @@ public final class MainActivity extends Activity {
             article.setTextColor(foreground);
             article.setTextSize(readerFontSize[0]);
             article.setTypeface(readerSerif[0] ? Typeface.SERIF : Typeface.SANS_SERIF);
-            font.setText(readerSerif[0] ? "Font: Serif" : "Font: Sans");
-            theme.setText("Theme: " + themeNames[readerTheme[0]]);
+            font.setText(readerSerif[0] ? "Serif" : "Sans");
+            theme.setText(themeNames[readerTheme[0]]);
         };
 
         smaller.setOnClickListener(view -> {
