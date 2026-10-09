@@ -93,3 +93,42 @@ Work by: ChatGPT
 Model: GPT-6
 Tooling: GitHub MCP tools
 Timestamp (UTC): 2026-10-09T16:07Z
+
+
+## Live audit delta — 2026-10-09T17:48Z
+
+This section supersedes older PR/CI state in earlier sections above. Reconcile live GitHub state before acting.
+
+### Newly merged current-main work
+
+- PR [#195](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/195) merged: refreshed handoff and agent instructions.
+- PR [#197](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/197) merged: HTTPS numeric ports 0 and above 65535 are rejected; valid custom ports remain accepted. Its initial CI failures were from accidental unrelated source corruption on an earlier branch; the corrected final head passed both Android CI and device-test build workflows.
+- PR [#198](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/198) merged: source wiring guards now fail non-zero instead of silently reporting PENDING; a meta-test removes each marker from a temporary source copy to prove fail-closed behavior.
+- PR [#201](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/201) merged: Safe Browsing preference and clear-site-data cleanup are applied consistently across open tabs, with partial failure disclosed.
+- PR [#203](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/203) and PR [#210](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/210) merged: extension archive decompression budgets, effective run-time disclosure, collision-resistant IDs, fail-closed scopes, and safe idempotent re-import settings.
+- PR [#216](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/216) merged at `250a133ed89d872b4e6b1d916bd9d46085750474`: honest HTTPS Site information panel.
+- PR [#217](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/217) merged at `e2b7e12ef4639ca3849106bc563713d5fdd51166`: Reader Mode caps each retained text node, counts separators, and visits at most 10,000 DOM nodes within the 60,000-character output budget.
+- PR [#218](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/218) merged at `2440f6baaba13cdf8da216d78bff0d6f2038d089`: in-app DownloadManager list with queued/running/paused/completed/failed states, manual refresh, explicit empty/error states, user-tap file opening, and confirmation-gated HTTPS retry. Stale PR #212 was closed as superseded, not merged.
+
+### Latest checks and CI interpretation
+
+- PR #216: Android CI run 426 and device-test APK run 253 passed on its head.
+- PR #217: after updating a stale Reader Mode source assertion, Android CI run 431 and device-test APK run 257 passed on head `8fcc45e278ffda419a8430ac4e9bf47089578a58`.
+- PR #218: after updating the stale Downloads destination guard, Android CI run 435 and device-test APK run 259 passed on head `4f49da0c247cc25377fb8058a9bbcc106c054ef2`.
+- Main push workflow run 436 on merge commit `2440f6baaba13cdf8da216d78bff0d6f2038d089` was still in progress at the time this section was written. Check the live run before claiming main CI is green.
+- These workflows compile/test and produce a device-test APK artifact; they do **not** establish physical-device acceptance. OEM DownloadManager routing, TalkBack, large text, actual WebView certificate details, long-page latency/memory, same-signer upgrade, SAF providers, and API 26/API 36 runtime remain NOT TESTED unless #160 records evidence.
+
+### Remaining release gates
+
+- [#187](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/187) remains OPEN. Google Play's official policy states ordinary new app submissions and app updates must target Android 16 / API 36 or higher from 2026-08-31: https://support.google.com/googleplay/android-developer/answer/11926878?hl=en-IN. The current project still sets `compileSdk = 35` / `targetSdk = 35` and the device-test workflow asserts target SDK 35. Coordinate the API 36 migration with AGP/Gradle compatibility and test edge-to-edge, predictive Back, and IME behavior; do not claim Play-ready before that work.
+- [#160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160) remains the source of truth for device/emulator acceptance. Mark unrun cases NOT TESTED.
+- [#147](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/147) remains open for recurrence and actual reminder-delivery lifecycle. Stored/in-app reminder state is not proof of Android notification delivery.
+- [#150](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/150) remains a future GeckoView/WebExtension-engine proposal, not a v1.0.5 promise.
+- [#135](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/135) remains an open browser/provider backlog; compare each item with current main before coding.
+- Source candidate remains `versionName 1.0.5` / `versionCode 6`. Do not create a tag or claim v1.0.5 published until the owner-authorized exact-tag workflow completes and verified APK/AAB assets exist.
+
+---
+Work by: ChatGPT
+Model: GPT-6
+Tooling: GitHub MCP tools
+Timestamp (UTC): 2026-10-09T17:48:00Z
