@@ -182,9 +182,19 @@ assert "settings.setSafeBrowsingEnabled(safeBrowsingEnabled)" in webview
 assert "DEFAULT_SAFE_BROWSING_ENABLED = true" in settings_policy
 assert "Safe Browsing must default on for new installs" in settings_smoke
 assert "explicit opt-out should be restorable" in settings_smoke and "user must be able to re-enable" in settings_smoke
-assert "Site history keeps only validated HTTPS origins" in activity
-assert "Paths, queries, fragments, URL credentials, and page titles are not saved" in activity
-assert "Selecting a saved site opens its origin, not its last route" in activity
+# Browser home now keeps privacy copy compact and opens the full disclosure on demand.
+# Keep asserting the complete disclosure text without depending on the old always-visible paragraph layout.
+privacy_disclosure = re.search(r'String disclosureText\s*=\s*"(.*?)";', activity, re.S)
+assert privacy_disclosure, "browser home must retain an explicit privacy disclosure"
+disclosure_text = privacy_disclosure.group(1)
+for expected in (
+    "Site history keeps only validated HTTPS origins",
+    "Paths, queries, fragments, URL credentials, and page titles are not saved",
+    "Selecting a saved site opens its origin, not its last route",
+):
+    assert expected in disclosure_text, f"privacy disclosure must cover: {expected}"
+assert 'text("ⓘ Privacy & connection details"' in activity, "full privacy details must be available from a compact home row"
+assert 'showInfo("Privacy & connection details", disclosureText)' in activity, "privacy details must open on tap"
 assert "sanitizeStoredBrowserHistory();" in activity and "BrowserHistory.sanitizeSerialized(existing)" in activity, "legacy history must be sanitized on launch"
 assert "BrowserHistory.sanitizeUrl(url)" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity, "each history write must pass through the sanitizer"
 history_dialog = re.search(r"private void showBrowserHistoryDialog\(\)\s*\{(.*?)\n    \}", activity, re.S)
