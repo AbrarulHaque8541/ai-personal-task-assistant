@@ -1011,20 +1011,18 @@ public final class MainActivity extends Activity {
         browserAddressInput.setHintTextColor(palette.muted);
         browserAddressInput.setBackground(shape(palette.surfaceAlt, 16, palette.line));
         browserAddressInput.setContentDescription("Browser address and search field");
-        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         webGoButton = primaryButton("Go");
         webGoButton.setContentDescription("Open the entered web address or search");
         webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(58), dp(46));
+        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(48), dp(42));
         goParams.leftMargin = dp(6);
         top.addView(webGoButton, goParams);
         bar.addView(top);
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.addView(text("Search with", 11, palette.muted, Typeface.NORMAL),
-                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
         browserSearchEngineSpinner = new Spinner(this);
         String[] labels = new String[BrowserAddress.SearchEngine.values().length];
         for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
@@ -1049,19 +1047,11 @@ public final class MainActivity extends Activity {
         browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
         browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
         browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
-        bottom.addView(browserProviderPickerButton, new LinearLayout.LayoutParams(0, dp(38), 1f));
-
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online");
-        browserOnlineToggle.setTextColor(palette.text);
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription("Enable or disable online browsing");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (checked) confirmBrowserOnlineAccess();
-            else setBrowserOnlineEnabled(false);
-        });
-        bottom.addView(browserOnlineToggle, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(38)));
+        LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
+        browserProviderPickerButton.setMinHeight(dp(34));
+        browserProviderPickerButton.setMinimumHeight(dp(34));
+        bottom.addView(browserProviderPickerButton, providerParams);
         bar.addView(bottom);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
@@ -1078,10 +1068,6 @@ public final class MainActivity extends Activity {
         if (browserAddressInput == null) return;
         String value = browserAddressInput.getText() == null ? "" : browserAddressInput.getText().toString();
         if (value.trim().isEmpty()) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
         try {
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
@@ -1428,10 +1414,6 @@ public final class MainActivity extends Activity {
 
     private void navigateFromInput() {
         if (!webMode) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
         String input = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
         try {
             String address = BrowserAddress.resolveInput(input, searchEngine);
@@ -1445,15 +1427,15 @@ public final class MainActivity extends Activity {
 
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
         final String safeAddress;
         try {
             safeAddress = BrowserAddress.requireAllowedWebUrl(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
+            return;
+        }
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+            confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress));
             return;
         }
         loadBrowserAddress(safeAddress);
@@ -2088,7 +2070,7 @@ public final class MainActivity extends Activity {
             browserExpandButton.setEnabled(available && hasPage);
         }
         if (browserReaderActionRow != null) {
-            browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);
+            browserReaderActionRow.setVisibility(View.GONE);
         }
         if (browserReaderButton != null) {
             browserReaderButton.setEnabled(available && hasPage);
@@ -2722,6 +2704,10 @@ public final class MainActivity extends Activity {
     }
 
     private void confirmBrowserOnlineAccess() {
+        confirmBrowserOnlineAccess(null);
+    }
+
+    private void confirmBrowserOnlineAccess(Runnable afterEnable) {
         new AlertDialog.Builder(this)
                 .setTitle("Enable online browsing?")
                 .setMessage("Online browsing sends a search query or requested URL, plus normal connection data such as your IP address and browser identification, to the selected provider/site; those services may log requests. Pages may contact their own or third-party endpoints, which may also be logged. The Online switch blocks Daymark page/resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks; its provider is not selectable in Daymark, though its protection setting is available in Browser Settings. WebView M126+ may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This is not a claim that every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text and adds no app analytics; WebView diagnostic metrics are opted out. HTTP remains blocked. Enabling Online alone makes no page request; each search or site still requires a tap. This choice is saved on this device. Turning Online off stops and closes the active page.")
@@ -2733,6 +2719,7 @@ public final class MainActivity extends Activity {
                         browserOnlineToggle.setChecked(true);
                         suppressBrowserOnlineToggleListener = false;
                     }
+                    if (afterEnable != null) afterEnable.run();
                 })
                 .setOnCancelListener(dialog -> showBrowserOfflineStatus())
                 .show();
