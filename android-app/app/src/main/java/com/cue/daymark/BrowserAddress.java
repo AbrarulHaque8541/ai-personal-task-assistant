@@ -50,7 +50,8 @@ final class BrowserAddress {
         POE("Poe", "https://poe.com/?q="),
         HUGGINGCHAT("HuggingChat", "https://huggingface.co/chat/?q="),
         DUCK_AI("Duck.ai", "https://duck.ai/?q="),
-        QWEN_CHAT("Qwen Chat", "https://chat.qwen.ai/?q=");
+        QWEN_CHAT("Qwen Chat", "https://chat.qwen.ai/?q="),
+        CHARACTER_AI("Character AI", "https://character.ai/?q=");
 
         final String label;
         private final String searchPrefix;
@@ -118,6 +119,12 @@ final class BrowserAddress {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Enter a valid HTTPS web address.");
         }
+    }
+
+    static boolean isLikelyWebAddress(String value) {
+        if (value == null) return false;
+        String candidate = value.trim();
+        return SCHEME.matcher(candidate).find() || looksLikeBareDomain(candidate);
     }
 
     static boolean isAllowedWebUrl(String value) {
