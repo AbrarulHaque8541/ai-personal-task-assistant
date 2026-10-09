@@ -52,6 +52,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebStorage;
 import android.webkit.URLUtil;
 
@@ -230,6 +231,9 @@ public final class MainActivity extends Activity {
     private FrameLayout browserViewport;
     private View browserHomeView;
     private DaymarkWebView browserWebView;
+    private View browserFullscreenView;
+    private WebChromeClient.CustomViewCallback browserFullscreenCallback;
+    private int browserPreviousSystemUiVisibility;
     private Button taskModeButton;
     private Button webModeButton;
     private Button webGoButton;
@@ -367,6 +371,11 @@ public final class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (browserFullscreenView != null) {
+            if (browserWebView != null) browserWebView.hideCustomView();
+            else exitBrowserFullscreen();
+            return;
+        }
         if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) {
             closeFullScreenWebReader();
             return;
@@ -1516,6 +1525,31 @@ public final class MainActivity extends Activity {
                 queueBrowserDownload(url, userAgent, contentDisposition, mimeType);
             }
 
+            @Override public void onMediaDownloadRequested(String url) {
+                if (!isActivityCallbackCurrent() || !BrowserAddress.isAllowedWebUrl(url)) return;
+                queueBrowserDownload(url, null, null, null);
+            }
+
+            @Override public void onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback) {
+                if (!isActivityCallbackCurrent() || view == null || browserFullscreenView != null) {
+                    if (callback != null) callback.onCustomViewHidden();
+                    return;
+                }
+                browserFullscreenView = view;
+                browserFullscreenCallback = callback;
+                browserPreviousSystemUiVisibility = getWindow().getDecorView().getSystemUiVisibility();
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                getWindow().addContentView(view, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            }
+
+            @Override public void onHideFullscreen() {
+                exitBrowserFullscreen();
+            }
+
             @Override public void onRendererGone() {
                 if (!isActivityCallbackCurrent()) return;
                 discardBrowserWebView(false);
@@ -1974,6 +2008,17 @@ public final class MainActivity extends Activity {
      * It creates only a user-clicked page button and a normal HTTPS anchor; there is
      * no JavaScript-to-native bridge and no DRM/manifest/blob extraction.
      */
+    private void exitBrowserFullscreen() {
+        View view = browserFullscreenView;
+        browserFullscreenView = null;
+        browserFullscreenCallback = null;
+        if (view != null && view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(browserPreviousSystemUiVisibility);
+    }
+
     private void injectVideoDownloadOverlay(DaymarkWebView target) {
         if (target == null || !browserNetworkPolicy.allowsRemoteLoads()) return;
         String script = "(function(){"
@@ -1985,9 +2030,9 @@ public final class MainActivity extends Activity {
                 + "button.type='button';button.textContent='Download';button.setAttribute('aria-label','Download this video');"
                 + "button.style.cssText='position:fixed;z-index:2147483647;display:none;border:0;border-radius:18px;padding:9px 13px;background:#171717;color:#fff;font:600 13px sans-serif;box-shadow:0 2px 10px #0008;';"
                 + "button.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();"
-                + "var url=active&&direct(active);if(!url)return;var a=document.createElement('a');a.href=url;"
-                + "a.download=(url.split('/').pop().split(/[?#]/)[0]||'video');a.rel='noopener';"
-                + "document.body.appendChild(a);a.click();a.remove();});document.documentElement.appendChild(button);}"
+                + "var url=active&&direct(active);if(!url)return;"
+                + "window.location.href='daymark-download://media?url='+encodeURIComponent(url);});"
+                + "document.documentElement.appendChild(button);}"
                 + "function place(){raf=0;if(!button||!active||!document.documentElement.contains(active)||!direct(active)){if(button)button.style.display='none';return;}"
                 + "var r=active.getBoundingClientRect();if(r.width<100||r.height<70||r.bottom<0||r.top>innerHeight){button.style.display='none';return;}"
                 + "button.style.display='block';button.style.left=Math.max(6,Math.min(innerWidth-100,r.right-90))+'px';"
