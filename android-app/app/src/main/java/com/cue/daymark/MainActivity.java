@@ -1573,6 +1573,108 @@ public final class MainActivity extends Activity {
         return true;
     }
 
+    private void updateBrowserTabButton() {
+        if (browserTabButton == null) return;
+        browserTabButton.setText("Tabs (" + browserTabs.size() + ")");
+        browserTabButton.setContentDescription("Open tabs. " + browserTabs.size() + " tab(s) open.");
+    }
+
+    private void showBrowserTabsDialog() {
+        List<String> labels = new ArrayList<>();
+        labels.add("+ New tab");
+        for (int i = 0; i < browserTabs.size(); i++) {
+            DaymarkWebView tab = browserTabs.get(i);
+            String title = tab.getTitle();
+            String url = tab.getUrl();
+            String label = title == null || title.trim().isEmpty() ? url : title.trim();
+            if (label == null || label.trim().isEmpty()) label = "New tab";
+            if (tab == browserWebView) label = "● " + label;
+            labels.add(label);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Browser tabs")
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
+                    if (which == 0) {
+                        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+                            confirmBrowserOnlineAccess(this::createBrowserTab);
+                        } else {
+                            createBrowserTab();
+                        }
+                        return;
+                    }
+                    int index = which - 1;
+                    if (index >= 0 && index < browserTabs.size()) switchBrowserTab(browserTabs.get(index));
+                })
+                .setNeutralButton("Close current tab", (dialog, which) -> closeCurrentBrowserTab())
+                .setNegativeButton("Done", null)
+                .show();
+    }
+
+    private void createBrowserTab() {
+        if (!webMode || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        if (browserWebView != null) browserWebView.setVisibility(View.GONE);
+        browserWebView = null;
+        if (!ensureBrowserWebView()) {
+            showBrowserOfflineStatus();
+            return;
+        }
+        browserWebView.setVisibility(View.GONE);
+        if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+        if (browserAddressInput != null) browserAddressInput.setText("");
+        if (browserStatus != null) browserStatus.setText("New tab. Enter a website or search.");
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
+    private void switchBrowserTab(DaymarkWebView tab) {
+        if (tab == null || !browserTabs.contains(tab) || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        if (browserFullscreenView != null) {
+            if (browserWebView != null) browserWebView.hideCustomView();
+            else exitBrowserFullscreen();
+        }
+        browserWebView = tab;
+        boolean hasPage = tab.getUrl() != null && !tab.getUrl().isEmpty();
+        for (DaymarkWebView openTab : browserTabs) {
+            openTab.setVisibility(openTab == tab && hasPage ? View.VISIBLE : View.GONE);
+        }
+        if (browserHomeView != null) browserHomeView.setVisibility(hasPage ? View.GONE : View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(hasPage ? View.GONE : View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(hasPage ? View.GONE : View.VISIBLE);
+        if (browserAddressInput != null) browserAddressInput.setText(hasPage ? tab.getUrl() : "");
+        if (browserStatus != null) browserStatus.setText(hasPage
+                ? (tab.getTitle() == null || tab.getTitle().trim().isEmpty() ? tab.getUrl() : tab.getTitle())
+                : "New tab. Enter a website or search.");
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
+    private void closeCurrentBrowserTab() {
+        if (browserWebView == null) {
+            showBrowserHome();
+            return;
+        }
+        DaymarkWebView closing = browserWebView;
+        int oldIndex = browserTabs.indexOf(closing);
+        browserTabs.remove(closing);
+        browserWebView = null;
+        if (browserFullscreenView != null) exitBrowserFullscreen();
+        destroyBrowserWebView(closing, true);
+        if (browserTabs.isEmpty()) {
+            if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+            if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+            if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+            if (browserAddressInput != null) browserAddressInput.setText("");
+            if (browserStatus != null) browserStatus.setText("No tabs open. Create a new tab to browse.");
+        } else {
+            int nextIndex = Math.min(Math.max(oldIndex - 1, 0), browserTabs.size() - 1);
+            switchBrowserTab(browserTabs.get(nextIndex));
+        }
+        updateBrowserTabButton();
+        syncBrowserButtons();
+    }
+
     private void showBrowserOverflowMenu(View anchor) {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
