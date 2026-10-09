@@ -3412,7 +3412,7 @@ public final class MainActivity extends Activity {
                     settingsDialog.dismiss();
                     new AlertDialog.Builder(this)
                             .setTitle("Clear site data?")
-                            .setMessage("This clears Daymark's HTTPS site history, WebView cache, cookies, storage, form data, and current page history. It can sign you out of websites opened in Daymark. Android Autofill and password-manager data are not changed.")
+                            .setMessage("This clears Daymark's HTTPS site history, WebView cache, cookies, storage, form data, and current page history. This action also closes all open Daymark browser tabs and returns to browser home. It can sign you out of websites opened in Daymark. Android Autofill and password-manager data are not changed.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear", (d, w) -> clearBrowserData())
                             .show();
