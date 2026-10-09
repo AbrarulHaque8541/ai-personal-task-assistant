@@ -37,7 +37,7 @@ assert 'MessageDigest.getInstance("SHA-256")' in parser, "imported ids must deri
 assert "already installed with id" in install, "installing a different pack under an existing id must fail"
 assert install.index("already installed with id") < install.index("writeFile(out, json)"), \
     "the install conflict check must run before the write"
-writer = store.split("private static void writeFile", 1)[1].split("\\n    }", 1)[0]
+writer = store.split("private static void writeFile", 1)[1]
 assert "Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)" in writer, \
     "failed extension saves must preserve the previous pack"
 assert "file.delete()" not in writer, "failed extension saves must not delete the previous pack"
