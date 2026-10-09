@@ -16,6 +16,7 @@ sh ./tools/run-text-scale-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-browser-catalog.py "$ROOT"
 python3 ./tools/check-extension-trust-confirmation.py "$ROOT"
+python3 ./tools/check-browser-image-policy.py "$ROOT"
 python3 ./tools/check-release-updater-metadata.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 bash ./tools/check-release-identity.sh
