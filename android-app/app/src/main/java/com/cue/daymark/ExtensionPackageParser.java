@@ -44,13 +44,13 @@ final class ExtensionPackageParser {
             throw new IllegalArgumentException("Extension id must be 1–80 safe characters.");
         }
         List<String> matches = readStringList(o.optJSONArray("matches"), 32);
+        requireValidMatchScopes(matches, "Daymark extension");
         List<String> excludes = readStringList(o.optJSONArray("excludes"), 32);
         List<String> disabledSites = new ArrayList<>();
         for (String site : readStringList(o.optJSONArray("disabledSites"), 64)) {
             String host = BrowserExtension.normalizeSiteHost(site);
             if (host != null && !disabledSites.contains(host)) disabledSites.add(host);
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
         String css = o.optString("css", "");
         String js = o.optString("js", "");
         if (css.length() + js.length() > MAX_PACK_CHARS) {
@@ -129,13 +129,49 @@ final class ExtensionPackageParser {
             appendFiles(css, item.optJSONArray("css"), files, "CSS", warnings);
             appendFiles(js, item.optJSONArray("js"), files, "JS", warnings);
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
+        requireValidMatchScopes(matches, "WebExtension manifest");
         if (manifest.has("background")) warnings.append(" Background/service worker was not imported.");
         if (manifest.has("action") || manifest.has("browser_action") || manifest.has("page_action")) warnings.append(" Toolbar actions/popups were not imported.");
         if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Requested permissions were not granted.");
         String id = "webext." + Integer.toHexString(manifest.toString().hashCode());
         return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
+    }
+
+    /** Reject absent or unsupported scopes instead of silently widening an import to every HTTPS site. */
+    private static void requireValidMatchScopes(List<String> matches, String source) {
+        if (matches == null || matches.isEmpty()) {
+            throw new IllegalArgumentException(source + " requires at least one supported match scope; no all-sites default is applied.");
+        }
+        for (String pattern : matches) {
+            if (!isSupportedMatchPattern(pattern)) {
+                throw new IllegalArgumentException(source + " contains an unsupported match scope: " + pattern);
+            }
+        }
+    }
+
+    private static boolean isSupportedMatchPattern(String pattern) {
+        if (pattern == null) return false;
+        String value = pattern.trim();
+        if ("<all_urls>".equals(value) || "*://*/*".equals(value)) return true;
+        String rest;
+        if (value.startsWith("https://")) rest = value.substring("https://".length());
+        else if (value.startsWith("*://")) rest = value.substring("*://".length());
+        else return false;
+
+        int slash = rest.indexOf('/');
+        if (slash <= 0) return false;
+        String host = rest.substring(0, slash);
+        String path = rest.substring(slash);
+        if (host.isEmpty() || path.isEmpty() || path.indexOf('?') >= 0 || path.indexOf('#') >= 0
+                || path.indexOf('\\') >= 0 || path.chars().anyMatch(Character::isWhitespace)) return false;
+        if (host.contains("@") || host.contains(":") || host.contains("..")) return false;
+        String hostBody = host.startsWith("*.") ? host.substring(2) : host;
+        if (!"*".equals(host) && !host.matches("[A-Za-z0-9.-]+")
+                && !host.matches("\\*\\.[A-Za-z0-9.-]+")) return false;
+        if (hostBody.startsWith(".") || hostBody.endsWith(".") || hostBody.isEmpty()) return false;
+        if (path.indexOf('*') >= 0 && !(path.endsWith("*") && path.indexOf('*') == path.length() - 1)) return false;
+        return true;
     }
 
     private static void appendPatterns(List<String> target, JSONArray values) {
@@ -227,7 +263,7 @@ final class ExtensionPackageParser {
                 }
             }
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
+        requireValidMatchScopes(matches, "Userscript");
 
         StringBuilder warnings = new StringBuilder();
         boolean unsafeGrant = false;
