@@ -1866,7 +1866,7 @@ public final class MainActivity extends Activity {
         review.append("JavaScript: ").append(ext.js.length()).append(" characters\n");
         review.append("CSS: ").append(ext.css.length()).append(" characters\n");
         review.append("Run time: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\n');
-        review.append("Site match rules: ").append(ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size()).append('\n');
+        review.append("Site match rules: ").append(ext.matches.isEmpty() ? "none (does not run on pages)" : ext.matches.size() + " rule(s)").append('\n');
         if (ext.warnings != null && !ext.warnings.trim().isEmpty()) {
             review.append("\nImport warnings: ").append(ext.warnings).append('\n');
         }
@@ -1945,7 +1945,7 @@ public final class MainActivity extends Activity {
             row.addView(enabled);
 
             String detail = "v" + ext.version + " · " +
-                    (ext.matches.isEmpty() ? "all HTTPS pages" : ext.matches.size() + " match rule(s)");
+                    (ext.matches.isEmpty() ? "0 match rules · does not run on pages" : ext.matches.size() + " match rule(s)");
             if (ext.warnings != null && !ext.warnings.isEmpty()) detail += "\nWarning: " + ext.warnings;
             TextView description = text(
                     (ext.description.isEmpty() ? detail : ext.description + "\n" + detail),
