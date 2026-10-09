@@ -25,6 +25,7 @@ This audit was prepared against the live repository after main CI run #314. It i
 
 1. The More screen was an old-style flat `AlertDialog.setItems` list. This branch replaces it with grouped settings rows, explanatory subtitles, clearer labels, and a restrained entrance transition.
 2. The extension import path previously called `installUserPack` immediately after parsing. This branch adds a pre-install review showing source/type, CSS/JS size, run timing, match scope, parser warnings, and an explicit **Trust & add** confirmation warning about logged-in page content and script network effects.
+4. Adds an opt-in **Block network images (save data)** preference using Android `WebSettings.setBlockNetworkImage`, persisted locally and applied to current/new WebViews. This is a real native feature, but not a full ad/tracker blocker; already loaded images need a reload to disappear.
 3. Regression coverage must verify the import flow always routes through the confirmation method and does not persist an imported pack directly. The dialog is a user-facing risk gate, not a sandbox or static security proof; scripts remain untrusted.
 
 ### P1 — Browser security and capability honesty
@@ -71,6 +72,7 @@ This audit was prepared against the live repository after main CI run #314. It i
 - [Android WebView unsafe file inclusion](https://developer.android.com/privacy-and-security/risks/webview-unsafe-file-inclusion)
 - [Android WebView native bridge risks](https://developer.android.com/privacy-and-security/risks/insecure-webview-native-bridges)
 - [Android WebView management and Safe Browsing](https://developer.android.com/develop/ui/views/layout/webapps/managing-webview)
+- Native network-image blocking API: [WebSettings.setBlockNetworkImage](https://developer.android.com/reference/android/webkit/WebSettings#setBlockNetworkImage(boolean))
 
 ## Not verified by this audit
 
