@@ -43,6 +43,7 @@ Many agents may work at once:
 3. Be careful on huge files (`MainActivity.java`) and signing/workflows — no wipe/placeholder commits.
 4. A PR/issue is real only when GitHub returns a number/URL (an unsubmitted chat form is not a PR).
 5. Overlap → merge the better fix; do not fight over credit.
+6. **Blocked → write a collaborator handoff prompt; do not stall silently.** If any problem blocks your work (tool failure, API rate limit, missing capability, flaky check), immediately post a handoff prompt as a comment on the open cross-agent handoff issue (currently #186) — or a new issue if none is open — addressed to the next collaborating agent. The prompt must state: (a) the in-progress task and why it matters; (b) the exact blocker (error text, tool, quota, missing function); (c) the SHAs, PRs, and issues involved; (d) the exact remaining steps, checks, or commands; (e) your identity block per §2. Either finish the work or hand it off in writing — never drop it quietly.
 
 ## 4. Hard product limits (short list)
 
