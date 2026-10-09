@@ -225,6 +225,7 @@ public final class MainActivity extends Activity {
     private LinearLayout taskActions;
     private LinearLayout webActions;
     private EditText browserAddressInput;
+    private String lastBrowserQuery = "";
     private Spinner browserSearchEngineSpinner;
     private LinearLayout browserScreen;
     private FrameLayout browserViewport;
@@ -1054,6 +1055,7 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
+            lastBrowserQuery = BrowserAddress.isLikelyWebAddress(value) ? "" : value.trim();
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
             navigateBrowserTo(address);
@@ -1336,9 +1338,10 @@ public final class MainActivity extends Activity {
                     ? "" : browserAddressInput.getText().toString().trim();
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
-            if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
+            String query = !lastBrowserQuery.isEmpty() ? lastBrowserQuery : value;
+            if (!query.isEmpty() && !BrowserAddress.isLikelyWebAddress(query)) {
                 try {
-                    address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
+                    address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(query));
                 } catch (IllegalArgumentException exception) {
                     if (browserAddressInput != null) browserAddressInput.setError(exception.getMessage());
                     browserStatus.setText("Nothing was opened. Check the question or provider address.");
@@ -1405,6 +1408,7 @@ public final class MainActivity extends Activity {
         }
         String input = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
         try {
+            lastBrowserQuery = BrowserAddress.isLikelyWebAddress(input) ? "" : input.trim();
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
             navigateBrowserTo(address);
@@ -1449,7 +1453,7 @@ public final class MainActivity extends Activity {
             return;
         }
         browserHomeView.setVisibility(View.GONE);
-        if (browserProviderRow != null) browserProviderRow.setVisibility(View.GONE);
+        // Keep provider shortcuts visible so the same query can be sent to another provider.
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
