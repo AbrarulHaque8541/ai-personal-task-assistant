@@ -240,6 +240,7 @@ public final class MainActivity extends Activity {
     private Button browserHistoryButton;
     private Button browserSettingsButton;
     private Button browserOverflowButton;
+    private Button browserMediaButton;
     private Button browserExpandButton;
     private Button browserReaderButton;
     private LinearLayout browserReaderActionRow;
@@ -1132,6 +1133,10 @@ public final class MainActivity extends Activity {
         browserOverflowButton = compactButton("⋮", false);
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
+        browserMediaButton = compactButton("⤓", false);
+        browserMediaButton.setEnabled(false);
+        browserMediaButton.setContentDescription("Find downloadable videos and audio on the current page");
+        browserMediaButton.setOnClickListener(view -> findMediaOnPage());
         browserExpandButton = compactButton("Expand", false);
         browserExpandButton.setVisibility(View.GONE);
         browserExpandButton.setContentDescription("Open the current web page in a full-screen reader");
@@ -1141,7 +1146,8 @@ public final class MainActivity extends Activity {
         tasksButton.setContentDescription("Return to Daymark tasks");
         tasksButton.setOnClickListener(view -> setWebMode(false));
         for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton, browserOverflowButton)) {
+                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton,
+                browserOverflowButton, browserMediaButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -1983,6 +1989,90 @@ public final class MainActivity extends Activity {
         }
     }
 
+    // UC-style media grabber: a one-shot read-only DOM probe (no JS bridge, no
+    // request interception) that lists direct video/audio sources and media
+    // links on the current page so they can be downloaded even when the site
+    // itself offers no download button. Protected streaming players (DRM or
+    // hidden stream manifests) stay out of scope by design.
+    private void findMediaOnPage() {
+        if (!browserNetworkPolicy.allowsRemoteLoads() || browserWebView == null) {
+            showToast("Open a page first, with Online enabled.");
+            return;
+        }
+        if (browserWebView.getUrl() == null || browserWebView.getUrl().isEmpty()) {
+            showToast("Open a page first.");
+            return;
+        }
+        browserStatus.setText("Searching the page for downloadable videos and audio...");
+        String mediaProbeScript = "(function(){"
+                + "var found=[];var seen={};"
+                + "function push(url,kind,label){"
+                + "if(!url)return;var probe=document.createElement('a');probe.href=url;var abs=probe.href;"
+                + "if(abs.indexOf('https://')!==0)return;if(seen[abs])return;seen[abs]=1;"
+                + "if(found.length<12)found.push([kind,abs,(label||'').substring(0,60)]);}"
+                + "var i,e,src,links;"
+                + "links=document.querySelectorAll('video');"
+                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'video',e.getAttribute('title')||'');"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'video',src[j].getAttribute('title')||'');}}"
+                + "links=document.querySelectorAll('audio');"
+                + "for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'audio',e.getAttribute('title')||'');"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio','');}}"
+                + "links=document.querySelectorAll('a[href]');"
+                + "var media=/\\.(mp4|webm|m4v|mov|mkv|mp3|m4a|aac|ogg|oga|opus|wav|flac)([?#]|$)/i;"
+                + "for(i=0;i<links.length;i++){var href=links[i].getAttribute('href');"
+                + "if(href&&href.toLowerCase().indexOf('javascript:')!==0&&media.test(href)){"
+                + "push(href,'link',links[i].textContent.trim().substring(0,60));}}"
+                + "return found;})()";
+        browserWebView.evaluateJavascript(mediaProbeScript, value -> {
+            if (!isActivityCallbackCurrent()) return;
+            if (value == null || value.equals("null") || value.equals("[]")) {
+                browserStatus.setText("No direct video or audio found. Protected streaming players are not downloadable.");
+                showToast("No downloadable media found on this page.");
+                return;
+            }
+            try {
+                org.json.JSONArray found = new org.json.JSONArray(value);
+                showBrowserMediaDialog(found);
+            } catch (Exception invalidResult) {
+                showToast("Media search failed on this page.");
+            }
+        });
+    }
+
+    private void showBrowserMediaDialog(org.json.JSONArray found) {
+        final String[] urls;
+        final String[] labels;
+        try {
+            urls = new String[found.length()];
+            labels = new String[urls.length];
+            for (int i = 0; i < urls.length; i++) {
+                org.json.JSONArray item = found.getJSONArray(i);
+                String kind = item.getString(0);
+                urls[i] = item.getString(1);
+                String label = item.length() > 2 ? item.optString(2, "") : "";
+                String name = URLUtil.guessFileName(urls[i], null, null);
+                labels[i] = ("video".equals(kind) ? "Video · " : "audio".equals(kind) ? "Audio · " : "Link · ")
+                        + (label == null || label.isEmpty() ? name : label);
+            }
+        } catch (Exception invalidMediaResult) {
+            showToast("Media search failed on this page.");
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Videos & audio on this page")
+                .setItems(labels, (dialog, which) -> {
+                    String url = urls[which];
+                    if (!BrowserAddress.isAllowedWebUrl(url)) {
+                        showToast("Download blocked: HTTPS is required.");
+                        return;
+                    }
+                    browserStatus.setText("Download started for the selected media file. Check Downloads for progress.");
+                    queueBrowserDownload(url, null, null, null);
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
     private void syncBrowserButtons() {
         if (browserBackButton == null) return;
         boolean available = browserNetworkPolicy.allowsRemoteLoads() && browserWebView != null;
@@ -2002,6 +2092,9 @@ public final class MainActivity extends Activity {
         }
         if (browserReaderButton != null) {
             browserReaderButton.setEnabled(available && hasPage);
+        }
+        if (browserMediaButton != null) {
+            browserMediaButton.setEnabled(available && hasPage);
         }
     }
 
@@ -5707,4 +5800,5 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 

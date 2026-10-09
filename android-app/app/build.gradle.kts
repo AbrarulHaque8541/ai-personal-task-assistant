@@ -24,9 +24,9 @@ android {
         minSdk = 26
         targetSdk = 35
         testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
-        // Same app as v1.0.2 — higher versionCode preserves data on update when signed with the same keystore.
-        versionCode = 4
-        versionName = "1.0.3"
+        // Same app as v1.0.3 — higher versionCode preserves data on update when signed with the same keystore.
+        versionCode = 5
+        versionName = "1.0.4"
     }
 
     signingConfigs {
