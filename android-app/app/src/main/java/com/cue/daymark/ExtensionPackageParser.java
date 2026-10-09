@@ -36,7 +36,7 @@ final class ExtensionPackageParser {
     // Supported match patterns: * or https scheme, sane wildcard-or-DNS host, required path.
     // Imported manifests fail closed on anything else instead of broadening scope (issue #194).
     private static final Pattern SUPPORTED_MATCH = Pattern.compile(
-            "^(\\*|https)://(\\*|(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*)/.+$");
+            "^(\\*|https)://(\\*|(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*)/.*$");
 
     private ExtensionPackageParser() { }
 
@@ -186,7 +186,7 @@ final class ExtensionPackageParser {
         if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Requested permissions were not granted.");
         // Content-derived SHA-256 digest: distinct manifests can no longer collide and overwrite
         // each other through the 32-bit String.hashCode id (issue #193).
-        String id = "webext." + sha256Prefix(manifest.toString());
+        String id = "webext." + sha256Hex(manifest.toString());
         return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
     }
@@ -249,7 +249,7 @@ final class ExtensionPackageParser {
     }
 
     /** 16 hex chars (64 bits) of a SHA-256 digest: stable for identical content, collision-resistant for distinct content. */
-    private static String sha256Prefix(String text) {
+    private static String sha256Hex(String text) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
@@ -298,7 +298,7 @@ final class ExtensionPackageParser {
         List<String> matches = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         List<String> grants = new ArrayList<>();
-        String id = "userscript." + sha256Prefix(raw);
+        String id = "userscript." + sha256Hex(raw);
         String body = raw.trim();
         if (header.find()) {
             String block = header.group(1);
