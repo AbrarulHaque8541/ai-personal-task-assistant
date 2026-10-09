@@ -2545,7 +2545,7 @@ public final class MainActivity extends Activity {
                 + "if(/^(script|style|noscript|nav|aside|footer|form|button|svg|iframe)$/i.test(tag)||node.getAttribute('aria-hidden')==='true')return NodeFilter.FILTER_REJECT;}"
                 + "return NodeFilter.FILTER_ACCEPT;}});"
                 + "var heading=document.querySelector('h1');"
-                + "var title=((heading&&heading.innerText)||document.title||'Reader mode').trim().slice(0,120);"
+                + "var title=((heading&&heading.innerText)||document.title||'Reader mode').slice(0,120).trim();"
                 + "var parts=[],length=0,node,visited=0,maxChars=60000,maxNodes=10000;"
                 + "while((node=walker.nextNode())&&length<maxChars&&visited<maxNodes){visited++;"
                 + "if(node.nodeType===3){var value=node.nodeValue||'';if(value.trim()){var remaining=maxChars-length;if(value.length>remaining)value=value.slice(0,remaining);if(value.trim()){parts.push(value);length+=value.length;}}}"
