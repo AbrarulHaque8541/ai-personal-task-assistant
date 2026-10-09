@@ -2,7 +2,7 @@
 
 Daymark should remain a fast, simple, privacy-first task app that works offline, while letting interested users reveal more capability through task-specific workspaces. The ordinary task flow must not require users to learn about AI, models, plugins, terminals, or Android internals. Advanced tools should be optional, visible, modular where the distribution channel permits, and bounded by user-approved scopes.
 
-**Status snapshot.** Live GitHub state checked on 2026-10-09. Main is at `b9279e26f35b72db00c124955caee8775cb0cf31` after PR #182 merged; source declares Daymark v1.0.5 / versionCode 6. Main CI run #345 passed host/source checks, protected signing validation, signed candidate APK/AAB generation, signer verification, and release artifact metadata verification. v1.0.5 remains unpublished because its exact tag has not been created. Reader Mode and image blocking are now in main; physical-device acceptance remains outstanding.
+**Status snapshot.** Live GitHub state checked on 2026-10-09. Main is at `e3033ef74e370bd5b4c06b1b20c1fcc927386fb6` after PR #184 merged; source declares Daymark v1.0.5 / versionCode 6. Main CI run #351 passed host/source checks, protected signing validation, signed candidate APK/AAB generation, signer verification, and release artifact metadata verification. v1.0.5 remains unpublished because its exact tag has not been created. Reader Mode, adjustable font size, sans/serif choice, light/sepia/dark themes, and image blocking are in main; physical-device acceptance remains outstanding.
 
 ## Current app and live repository status
 
