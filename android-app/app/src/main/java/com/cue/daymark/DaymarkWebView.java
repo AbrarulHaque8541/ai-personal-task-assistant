@@ -90,9 +90,9 @@ final class DaymarkWebView extends WebView {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
                 if ("daymark-download".equalsIgnoreCase(request.getUrl().getScheme())) {
-                    if (!request.hasGesture()) return true;
                     String mediaUrl = request.getUrl().getQueryParameter("url");
-                    if (networkPolicy.allowsRemoteLoads() && BrowserAddress.isAllowedWebUrl(mediaUrl)) {
+                    if (BrowserMediaPolicy.allowsHandoff(networkPolicy.allowsRemoteLoads(),
+                            request.hasGesture(), request.getUrl().getScheme(), mediaUrl)) {
                         listener.onMediaDownloadRequested(mediaUrl);
                     }
                     return true;
