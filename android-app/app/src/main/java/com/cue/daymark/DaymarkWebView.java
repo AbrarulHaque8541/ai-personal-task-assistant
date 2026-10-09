@@ -23,7 +23,11 @@ final class DaymarkWebView extends WebView {
         void onNavigationBlocked(String url);
         void onOfflineNavigationBlocked();
         void onHttpNavigationBlocked(String url, boolean redirect);
-        void onLoadError();
+        void onLoadError(String description);
+        void onHttpError(int statusCode);
+        void onProgressChanged(int progress);
+        void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback);
+        void onHideCustomView();
         void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength);
         void onRendererGone();
     }
@@ -64,6 +68,16 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
+                if ("daymark-media".equalsIgnoreCase(request.getUrl().getScheme())) {
+                    String source = request.getUrl().getQueryParameter("url");
+                    if (request.isForMainFrame() && request.hasGesture()
+                            && BrowserAddress.isAllowedWebUrl(source)) {
+                        listener.onDownloadRequested(source, getSettings().getUserAgentString(), null, null, -1L);
+                    } else {
+                        listener.onNavigationBlocked(url);
+                    }
+                    return true;
+                }
                 if (!networkPolicy.allowsRemoteLoads()) {
                     listener.onOfflineNavigationBlocked();
                     return true;
@@ -99,7 +113,7 @@ final class DaymarkWebView extends WebView {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.cancel();
-                listener.onLoadError();
+                listener.onLoadError("TLS certificate validation failed. The error was not bypassed.");
             }
 
             @Override
@@ -112,7 +126,16 @@ final class DaymarkWebView extends WebView {
                 if ("http".equalsIgnoreCase(request.getUrl().getScheme())) {
                     listener.onHttpNavigationBlocked(request.getUrl().toString(), request.isRedirect());
                 } else {
-                    listener.onLoadError();
+                    String description = error == null ? "Unknown network error." : String.valueOf(error.getDescription());
+                    listener.onLoadError(description);
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            android.webkit.WebResourceResponse response) {
+                if (request.isForMainFrame() && response != null && response.getStatusCode() >= 400) {
+                    listener.onHttpError(response.getStatusCode());
                 }
             }
 
@@ -124,6 +147,18 @@ final class DaymarkWebView extends WebView {
         });
 
         setWebChromeClient(new WebChromeClient() {
+            @Override public void onProgressChanged(WebView view, int progress) {
+                listener.onProgressChanged(progress);
+            }
+
+            @Override public void onShowCustomView(View view, CustomViewCallback callback) {
+                listener.onShowCustomView(view, callback);
+            }
+
+            @Override public void onHideCustomView() {
+                listener.onHideCustomView();
+            }
+
             @Override
             public void onPermissionRequest(PermissionRequest request) {
                 request.deny();
