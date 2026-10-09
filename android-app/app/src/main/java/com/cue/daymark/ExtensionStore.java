@@ -161,6 +161,12 @@ final class ExtensionStore {
                 throw new IllegalArgumentException("A different extension pack is already installed with id "
                         + ext.id + ". Uninstall it before importing a different pack.");
             }
+            if (existing != null) {
+                // Re-importing identical content must not silently re-enable a pack or clear
+                // the user's per-site pause list.
+                ext = ext.withEnabled(existing.enabled).withDisabledSites(existing.disabledSites);
+                json = ExtensionPackageParser.toDaymarkJson(ext);
+            }
         }
         writeFile(out, json);
     }
