@@ -7,6 +7,8 @@ activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_t
 for engine in ("DUCKDUCKGO", "GOOGLE", "BING", "BRAVE", "STARTPAGE", "KAGI", "YOU", "YANDEX"):
     assert engine in addr, engine
 assert "ChatGPT" in ai and "Perplexity" in ai and "Copilot" in ai and "Grok" in ai
-assert "AiSiteCatalog.entries()" in activity
+assert "for (BrowserAddress.SearchEngine engine : BrowserAddress.SearchEngine.values())" in activity
+assert "isBottomShortcutProvider(engine)" in activity and "isAiProvider(engine)" in activity
+assert "browserSearchShortcutButton(engine)" in activity and "browserLastSearchQuery" in activity
 assert "canGoBack()" in activity
-print("PASS browser catalog: expanded search engines + AI site order + back wiring present")
+print("PASS browser catalog: common web engines + AI shortcuts + current-query switching + back wiring present")
