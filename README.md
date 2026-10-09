@@ -22,7 +22,7 @@
 - Local task capture, edit, completion, deletion/undo, filters, search, priorities, due dates/times, notes, subtasks, templates, attachments, and deterministic suggestions.
 - AES-GCM encrypted app-private task/attachment storage using Android Keystore.
 - User-triggered portable encrypted `.dmbackup` export and add-only import with a separately held recovery key.
-- HTTPS-only Android System WebView, explicit user-triggered navigation, browser history, tab management, search/site shortcuts, downloads handoff, and browser data clearing.
+- HTTPS-only Android System WebView, explicit user-triggered navigation, browser history, tab management, search/site shortcuts, downloads handoff, browser data clearing, and an opt-in network-image blocking switch for data savings.
 - Compatible page-local CSS/JavaScript extension packs and userscript import; this is **not** a full Chrome/Firefox extension runtime.
 - Signed sideload update-check/download verification flow, gated by release configuration and manual user-controlled saving/opening.
 
