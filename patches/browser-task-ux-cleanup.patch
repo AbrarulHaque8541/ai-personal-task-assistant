@@ -1,0 +1,10 @@
+Apply onto MainActivity.java (from main).
+
+Changes included in agent workspace MA_ux.java:
+1. browserAddressInput: KEYCODE_ENTER also triggers navigateFromBrowserInput
+2. Task chips collapsed under "When · priority · details" (expand/collapse)
+3. Reader mode row hidden; Reader mode added to browser overflow menu (case 2)
+4. Loading status shortened to "Loading…"
+5. Overflow title More · Browser
+
+DaymarkWebView on this branch: Chrome mobile UA (fixes blank Google/WebView pages).

@@ -65,7 +65,12 @@ final class DaymarkWebView extends WebView {
         WebSettings settings = getSettings();
         settings.setBlockNetworkLoads(true);
         settings.setJavaScriptEnabled(true);
+        // Many sites (including Google) render poorly or blank with the default WebView UA.
+        settings.setUserAgentString(
+                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
+                        + "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
         settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(false);
         settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setAllowFileAccess(false);
@@ -87,6 +92,7 @@ final class DaymarkWebView extends WebView {
         setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null) return true;
                 String url = request.getUrl().toString();
                 if ("daymark-download".equalsIgnoreCase(request.getUrl().getScheme())) {
                     String mediaUrl = request.getUrl().getQueryParameter("url");
@@ -149,6 +155,12 @@ final class DaymarkWebView extends WebView {
                             error.getDescription() == null ? "" : error.getDescription().toString(),
                             request.getUrl().toString());
                 }
+            }
+
+            @Override
+            public void onFormResubmission(WebView view, android.os.Message dontResend, android.os.Message resend) {
+                // Never silently re-POST form data; avoids accidental duplicate submissions.
+                if (dontResend != null) dontResend.sendToTarget();
             }
 
             @Override
