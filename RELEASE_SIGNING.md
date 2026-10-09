@@ -25,15 +25,15 @@ If the keystore is lost or rotated without a careful migration, **all existing i
 ## Version rules (every release)
 
 1. Bump **`versionCode` by at least +1** (integer, always increasing).
-2. Bump **`versionName`** (e.g. `1.0.2` → `1.0.3`).
-3. Tag must be exactly `v` + `versionName` (e.g. tag `v1.0.3` for `versionName 1.0.3`).
+2. Bump **`versionName`** (e.g. `1.0.4` → `1.0.5`).
+3. Tag must be exactly `v` + `versionName` (e.g. tag `v1.0.5` for `versionName 1.0.5`).
 4. Publish only via `.github/workflows/android-production-release.yml` (tag push on `main`).
 5. APK asset name: `Daymark-v{versionName}.apk`.
 
-Current baseline (as of v1.0.2):
+Latest stable release documented in this repository: v1.0.2 / versionCode 3. The source before this PR was v1.0.4 / versionCode 5; this PR sets the next candidate to v1.0.5 / versionCode 6. The source version is not proof that a corresponding release asset exists.
 
-- `versionName = 1.0.2`
-- `versionCode = 3`
+- `versionName = 1.0.5` (release candidate)
+- `versionCode = 6` (release candidate)
 
 ## What caused "package conflicts" (2026-10-08)
 
