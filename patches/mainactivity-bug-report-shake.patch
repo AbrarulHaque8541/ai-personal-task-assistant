@@ -1,0 +1,33 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -22,6 +22,10 @@
+ import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
+ import android.net.Uri;
++import android.hardware.Sensor;
++import android.hardware.SensorEvent;
++import android.hardware.SensorEventListener;
++import android.hardware.SensorManager;
+ import android.os.Build;
+
+@@ near palette field
++    private SensorManager sensorManager;
++    private SensorEventListener shakeListener;
++    private long lastShakeMs;
+
+@@ after loadEncryptedTasks();
++        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+
+@@ onResume after activityResumed = true;
++        registerShakeToReport();
+
+@@ onPause start
++        unregisterShakeToReport();
+
+@@ settings POWER FEATURES before Check for updates
++        addSettingsRow(content, "Report a bug",
++                "One tap · full device report · opens GitHub Issues inside Daymark",
++                () -> openBugReportFlow("settings"));
+
+@@ add methods (registerShakeToReport, unregisterShakeToReport, openBugReportFlow)
+@@ See commit message / BugReportComposer.java for openBugReportFlow body.
