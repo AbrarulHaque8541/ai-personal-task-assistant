@@ -2431,6 +2431,7 @@ public final class MainActivity extends Activity {
             try {
                 downloadedUri = manager.getUriForDownloadedFile(id);
             } catch (RuntimeException unavailable) {
+                // A provider entry may disappear between the list query and the user's tap.
                 downloadedUri = null;
             }
             if (downloadedUri == null) {
@@ -2457,7 +2458,7 @@ public final class MainActivity extends Activity {
                     .setTitle("Retry download?")
                     .setMessage("Daymark will make a new request to this HTTPS URL. The site may require a valid current session.")
                     .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Retry", (dialog, which) -> queueBrowserDownload(url, null, null, mimeType))
+                    .setPositiveButton("Retry", (dialog, which) -> queueBrowserDownload(url, android.webkit.WebSettings.getDefaultUserAgent(this), null, mimeType))
                     .show();
             return;
         }
