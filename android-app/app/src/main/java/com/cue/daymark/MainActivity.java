@@ -178,7 +178,6 @@ public final class MainActivity extends Activity {
     private boolean webMode;
     private BrowserNetworkPolicy browserNetworkPolicy = new BrowserNetworkPolicy();
     private BrowserSettingsPolicy browserSettingsPolicy = new BrowserSettingsPolicy();
-    private boolean suppressBrowserOnlineToggleListener;
     private boolean suppressSafeBrowsingToggleListener;
     private String taskDraft = "";
     private float textScale = 1.0f;
@@ -250,7 +249,6 @@ public final class MainActivity extends Activity {
     private android.app.Dialog fullScreenWebDialog;
     private FrameLayout fullScreenWebContainer;
     private Spinner searchEngineSpinner;
-    private CheckBox browserOnlineToggle;
     private TextView browserStatus;
     private View browserProviderRow;
     private TextView browserPrivacyButton;
@@ -1453,7 +1451,6 @@ public final class MainActivity extends Activity {
             browserWebView.getSettings().setBlockNetworkLoads(false);
         } catch (SecurityException denied) {
             setBrowserOnlineEnabled(false);
-            if (browserOnlineToggle != null) browserOnlineToggle.setChecked(false);
             browserStatus.setText("Online access is unavailable. No page was opened; Daymark remains offline.");
             return;
         }
@@ -2837,28 +2834,6 @@ public final class MainActivity extends Activity {
             showBrowserOfflineStatus();
         }
         syncBrowserButtons();
-        if (browserOnlineToggle != null) {
-            browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
-                    ? "Every search or site requires a tap. Platform-managed Android System WebView Safe Browsing may make separate Google/Play Services checks."
-                    : "Browser access is unavailable. Try again after checking the connection. Safe Browsing is managed separately by Android System WebView.");
-        }
-    }
-
-    private void confirmBrowserOnlineAccess() {
-        new AlertDialog.Builder(this)
-                .setTitle("Enable online browsing?")
-                .setMessage("Online browsing sends a search query or requested URL, plus normal connection data such as your IP address and browser identification, to the selected provider/site; those services may log requests. Pages may contact their own or third-party endpoints, which may also be logged. The Online switch blocks Daymark page/resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks; its provider is not selectable in Daymark, though its protection setting is available in Browser Settings. WebView M126+ may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This is not a claim that every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text and adds no app analytics; WebView diagnostic metrics are opted out. HTTP remains blocked. Enabling Online alone makes no page request; each search or site still requires a tap. This choice is saved on this device. Turning Online off stops and closes the active page.")
-                .setNegativeButton("Stay offline", (dialog, which) -> showBrowserOfflineStatus())
-                .setPositiveButton("Enable Online", (dialog, which) -> {
-                    setBrowserOnlineEnabled(true);
-                    if (browserOnlineToggle != null) {
-                        suppressBrowserOnlineToggleListener = true;
-                        browserOnlineToggle.setChecked(true);
-                        suppressBrowserOnlineToggleListener = false;
-                    }
-                })
-                .setOnCancelListener(dialog -> showBrowserOfflineStatus())
-                .show();
     }
 
     private boolean setBrowserSafeBrowsingEnabled(boolean enabled) {
