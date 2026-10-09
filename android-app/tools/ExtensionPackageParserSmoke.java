@@ -11,6 +11,7 @@ import java.util.zip.ZipOutputStream;
  * untrusted-input path (Daymark JSON packs, userscript headers, WebExtension
  * manifests, ZIP/XPI/CRX3 archives). Runs on the host org.json stubs.
  * Regression coverage for issues #190, #192, #193, #194.
+ * Imported ids are content SHA-256 digests, never 32-bit string hashes.
  */
 public final class ExtensionPackageParserSmoke {
     private static int assertions;
