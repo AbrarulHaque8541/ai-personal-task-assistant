@@ -281,6 +281,13 @@ for expected in (
 assert "https://" + "example" not in address  # Search/address behavior is covered by executable smoke tests.
 assert "AiSiteCatalog.entries()" in activity, \
     "browser AI shortcuts must be built from the shared catalog, not duplicated inline"
+assert 'compactButton(searchEngine.label + " ▾", false)' in activity, "provider picker must stay compact beside the address field"
+assert 'new LinearLayout.LayoutParams(dp(48), dp(42))' in activity, "Go button must remain compact"
+assert '"Read full screen"' not in activity and 'browserReaderActionRow.setVisibility(View.GONE)' in activity, "reader CTA must not consume browser viewport"
+assert 'private String lastBrowserSearchQuery = "";' in activity and 'lastBrowserSearchQuery = input.trim();' in activity, "provider switching must preserve the original query"
+assert 'e.currentSrc||e.src' in activity and "e.videoWidth+'x'+e.videoHeight" in activity, "media finder must inspect current direct video source and report dimensions when available"
+assert '"Play in Daymark"' in activity and '"Download video"' in activity and 'new android.widget.VideoView(this)' in activity, "direct video results must offer native playback and a download action"
+assert 'BrowserAddress.isAllowedWebUrl(url)' in activity, "media actions must validate HTTPS URLs before playback/download"
 ai_catalog = (main / "java/com/cue/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
 assert "ChatGPT" in ai_catalog and "Claude" in ai_catalog and "Gemini" in ai_catalog and "Perplexity" in ai_catalog
 assert "https://chatgpt.com/" in ai_catalog and "https://claude.ai/" in ai_catalog
