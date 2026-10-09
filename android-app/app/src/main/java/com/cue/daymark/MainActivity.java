@@ -1540,24 +1540,24 @@ public final class MainActivity extends Activity {
             @Override public void onPageFinished(String url) {
                 if (extensionRuntime != null) extensionRuntime.onPageFinished(targetRef[0], url);
                 if (!isActivityCallbackCurrent()) return;
-                if (targetRef[0] != browserWebView) {
-                    injectVideoDownloadOverlay(targetRef[0]);
-                    return;
-                }
-                if (browserAddressInput != null) browserAddressInput.setText(url);
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
                     String current = browserPreferences.getString(BROWSER_HISTORY_KEY, "");
                     browserPreferences.edit().putString(BROWSER_HISTORY_KEY,
                             BrowserHistory.add(current, safeHistoryUrl)).apply();
                 }
+                if (targetRef[0] != browserWebView) {
+                    injectVideoDownloadOverlay(targetRef[0]);
+                    return;
+                }
+                if (browserAddressInput != null) browserAddressInput.setText(url);
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
                 injectVideoDownloadOverlay(browserWebView);
                 syncBrowserButtons();
             }
 
             @Override public void onNavigationBlocked(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
@@ -1577,7 +1577,7 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onLoadError() {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
             }
 
@@ -1613,6 +1613,12 @@ public final class MainActivity extends Activity {
 
             @Override public void onRendererGone() {
                 if (!isActivityCallbackCurrent()) return;
+                if (targetRef[0] != browserWebView) {
+                    browserTabs.remove(targetRef[0]);
+                    destroyBrowserWebView(targetRef[0], false);
+                    updateBrowserTabButton();
+                    return;
+                }
                 discardBrowserWebView(false);
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
                 if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
