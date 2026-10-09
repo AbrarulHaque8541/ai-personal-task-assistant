@@ -909,7 +909,7 @@ public final class MainActivity extends Activity {
         webActions = new LinearLayout(this);
         webActions.setOrientation(LinearLayout.VERTICAL);
         browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online browsing (off by default)");
+        browserOnlineToggle.setText("Online browsing");
         browserOnlineToggle.setMinHeight(dp(48));
         browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
         browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
