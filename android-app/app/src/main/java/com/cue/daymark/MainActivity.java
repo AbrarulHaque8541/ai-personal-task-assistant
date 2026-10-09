@@ -2024,35 +2024,105 @@ public final class MainActivity extends Activity {
     private void showBrowserMediaDialog(org.json.JSONArray found) {
         final String[] urls;
         final String[] labels;
+        final String[] kinds;
         try {
             urls = new String[found.length()];
             labels = new String[urls.length];
+            kinds = new String[urls.length];
             for (int i = 0; i < urls.length; i++) {
                 org.json.JSONArray item = found.getJSONArray(i);
-                String kind = item.getString(0);
+                kinds[i] = item.getString(0);
                 urls[i] = item.getString(1);
                 String label = item.length() > 2 ? item.optString(2, "") : "";
                 String name = URLUtil.guessFileName(urls[i], null, null);
-                labels[i] = ("video".equals(kind) ? "Video · " : "audio".equals(kind) ? "Audio · " : "Link · ")
-                        + (label == null || label.isEmpty() ? name : label);
+                String detail = label == null || label.isEmpty() ? name : label;
+                labels[i] = ("video".equals(kinds[i]) ? "Video · " : "audio".equals(kinds[i]) ? "Audio · " : "Media link · ")
+                        + detail;
             }
         } catch (Exception invalidMediaResult) {
             showToast("Media search failed on this page.");
             return;
         }
         new AlertDialog.Builder(this)
-                .setTitle("Videos & audio on this page")
+                .setTitle("Media found on this page")
                 .setItems(labels, (dialog, which) -> {
                     String url = urls[which];
                     if (!BrowserAddress.isAllowedWebUrl(url)) {
                         showToast("Download blocked: HTTPS is required.");
                         return;
                     }
-                    browserStatus.setText("Download started for the selected media file. Check Downloads for progress.");
-                    queueBrowserDownload(url, null, null, null);
+                    showBrowserMediaActions(url, kinds[which], labels[which]);
                 })
                 .setNegativeButton("Close", null)
                 .show();
+    }
+
+    private void showBrowserMediaActions(String url, String kind, String label) {
+        if (!BrowserAddress.isAllowedWebUrl(url)) {
+            showToast("Media URL is not an allowed HTTPS address.");
+            return;
+        }
+        AlertDialog.Builder actions = new AlertDialog.Builder(this)
+                .setTitle(label)
+                .setNegativeButton("Cancel", null)
+                .setNeutralButton("Download", (dialog, which) ->
+                        queueBrowserDownload(url, null, null, null));
+        if ("video".equals(kind)) {
+            actions.setPositiveButton("Play in Daymark", (dialog, which) -> showDaymarkVideoPlayer(url, label));
+        } else {
+            actions.setPositiveButton("Open media", (dialog, which) -> {
+                if (browserWebView != null && BrowserAddress.isAllowedWebUrl(url)) {
+                    browserWebView.loadUrl(url);
+                }
+            });
+        }
+        actions.show();
+    }
+
+    private void showDaymarkVideoPlayer(String url, String title) {
+        if (!BrowserAddress.isAllowedWebUrl(url)) {
+            showToast("Playback blocked: HTTPS is required.");
+            return;
+        }
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(10), dp(8), dp(10), dp(8));
+        android.widget.VideoView player = new android.widget.VideoView(this);
+        player.setBackgroundColor(android.graphics.Color.BLACK);
+        content.addView(player, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(220)));
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        Button download = compactButton("Download video", false);
+        download.setOnClickListener(view -> queueBrowserDownload(url, null, null, "video/*"));
+        actions.addView(download, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        Button close = compactButton("Close player", false);
+        actions.addView(close, chipMargin());
+        content.addView(actions, topMargin(dp(6)));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title == null || title.isEmpty() ? "Daymark video player" : title)
+                .setView(content)
+                .create();
+        close.setOnClickListener(view -> {
+            player.stopPlayback();
+            dialog.dismiss();
+        });
+        android.widget.MediaController controls = new android.widget.MediaController(this);
+        controls.setAnchorView(player);
+        player.setMediaController(controls);
+        player.setVideoURI(Uri.parse(url));
+        player.setOnPreparedListener(media -> {
+            media.setOnVideoSizeChangedListener((mp, width, height) -> {
+                controls.setAnchorView(player);
+            });
+            player.start();
+        });
+        player.setOnErrorListener((media, what, extra) -> {
+            showToast("This source cannot be played in Daymark. Try Download if it is a direct file.");
+            return true;
+        });
+        dialog.setOnDismissListener(ignored -> player.stopPlayback());
+        dialog.show();
     }
 
     private void syncBrowserButtons() {
