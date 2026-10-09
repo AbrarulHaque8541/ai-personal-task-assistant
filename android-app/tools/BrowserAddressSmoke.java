@@ -31,12 +31,23 @@ public final class BrowserAddressSmoke {
         rejects("http://example.com");
         rejects("http://example.com/after-redirect");
         rejects("file:///etc/passwd");
-        rejects("content://com.example/private");
+        rejects("content://com.example/
+private");
         rejects("intent://open");
         assert !BrowserAddress.isAllowedWebUrl("data:text/html,hello");
         assert !BrowserAddress.isAllowedWebUrl("http://example.com/");
         assert !BrowserAddress.isAllowedWebUrl("http://example.com/after-redirect");
         assert !BrowserAddress.isAllowedWebUrl("https://user:pass@example.com/");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:0");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:65536");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:99999");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:0/path");
+        assert !BrowserAddress.isAllowedWebUrl("example.com:0");
+        assert BrowserAddress.isAllowedWebUrl("https://example.com:1");
+        assert BrowserAddress.isAllowedWebUrl("https://example.com:443");
+        assert BrowserAddress.isAllowedWebUrl("https://example.com:65535");
+        assert BrowserAddress.resolveInput("example.com:8443", BrowserAddress.SearchEngine.DUCKDUCKGO)
+                .equals("https://example.com:8443");
 
         String history = BrowserHistory.add("", "https://example.com/first");
         history = BrowserHistory.add(history, "https://example.com/second?item=2");
@@ -62,7 +73,8 @@ public final class BrowserAddressSmoke {
         assert BrowserHistory.sanitizeUrl("https://example.com:0/path") == null;
 
         String searchUrl = BrowserAddress.resolveInput("secret search phrase", BrowserAddress.SearchEngine.DUCKDUCKGO);
-        String searchHistory = BrowserHistory.add("", searchUrl);
+        String 
+searchHistory = BrowserHistory.add("", searchUrl);
         assertStored(searchHistory, "https://duckduckgo.com");
         assert BrowserHistory.decode(searchHistory).size() == 1;
         assert BrowserHistory.decode(searchHistory).get(0).equals("https://duckduckgo.com");
@@ -90,7 +102,8 @@ public final class BrowserAddressSmoke {
         String activeAddress = "https://example.com/oauth/secret-authorization-code?code=active-code#active-fragment";
         assert BrowserAddress.isAllowedWebUrl(activeAddress);
         assert BrowserAddress.resolveInput(activeAddress, BrowserAddress.SearchEngine.DUCKDUCKGO).equals(activeAddress)
-                : "Web address resolution must preserve the current route, query, and fragment";
+ 
+               : "Web address resolution must preserve the current route, query, and fragment";
         String activePageHistory = BrowserHistory.add("", activeAddress);
         assertStored(activePageHistory, "https://example.com");
         assert activeAddress.contains("/oauth/secret-authorization-code?code=active-code#active-fragment")
@@ -121,7 +134,8 @@ public final class BrowserAddressSmoke {
     private static void rejects(String value) {
         boolean rejected = false;
         try {
-            BrowserAddress.resolveInput(value, BrowserAddress.SearchEngine.DUCKDUCKGO);
+            BrowserAddress.resolveInput(value, BrowserA
+ddress.SearchEngine.DUCKDUCKGO);
         } catch (IllegalArgumentException expected) {
             rejected = true;
         }
