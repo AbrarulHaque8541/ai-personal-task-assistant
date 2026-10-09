@@ -186,7 +186,7 @@ final class ExtensionPackageParser {
         if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Requested permissions were not granted.");
         // Content-derived SHA-256 digest: distinct manifests can no longer collide and overwrite
         // each other through the 32-bit String.hashCode id (issue #193).
-        String id = "webext." + sha256Hex(manifest.toString());
+        String id = "webext." + sha256Hex(manifest.toString() + "\nCSS:\n" + css + "\nJS:\n" + js);
         return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
     }
@@ -248,7 +248,7 @@ final class ExtensionPackageParser {
         }
     }
 
-    /** 16 hex chars (64 bits) of a SHA-256 digest: stable for identical content, collision-resistant for distinct content. */
+    /** Full 64-hex-character (256-bit) SHA-256 digest, stable for identical input content. */
     private static String sha256Hex(String text) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
