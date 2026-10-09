@@ -2,7 +2,7 @@
 
 ## Scope and honesty
 
-This audit began against main `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. PR #181 is now merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`; main CI run #331 passed host/source checks, signed candidate build, and signer verification. PR #182 is the current Reader Mode follow-up. This is a source/repository/official-documentation review plus automated CI evidence; it is **not** a claim of exhaustive testing on a physical phone.
+This audit began against main `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. PR #181 is now merged at `1357e9481c31949fc3463ebd2a6989e36051a3cf`; main CI run #331 passed host/source checks, signed candidate build, and signer verification. PR #182 has since merged at `b9279e26f35b72db00c124955caee8775cb0cf31`; main CI run #345 passed signed candidate APK/AAB generation and release metadata verification. This is a source/repository/official-documentation review plus automated CI evidence; it is **not** a claim of exhaustive testing on a physical phone.
 
 ## Verified baseline
 
@@ -33,7 +33,7 @@ This audit began against main `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. PR #18
 - Mozilla's current Firefox for Android feature list advertises Reader Mode, supported extensions, and enhanced tracking protection ([Firefox on Google Play](https://play.google.com/store/apps/details?id=org.mozilla.firefox), [Firefox menu features](https://support.mozilla.org/en-US/kb/explore-firefox-android-menu)). Brave documents engine-integrated Shields for ad/tracker/fingerprinting protection ([Brave Shields](https://brave.com/shields/)).
 - Daymark embeds Android System WebView rather than owning a Chromium/Gecko browser engine. Reproducing Firefox's extension system or Brave's network-level filtering is not a safe small patch; the app's current extension runtime is intentionally page-local and cannot intercept every network request.
 - PR #181 implements the practical native feature available in WebView: opt-in network-image blocking via `WebSettings.setBlockNetworkImage`. It can reduce image traffic but is not an ad blocker, tracker blocker, or guarantee that every image is removed without reloading.
-- PR #182 adds a true local text-only view: user-triggered bounded DOM tree walking from article/main/body, skipping obvious navigation/form/script elements, a 60,000-character bound, native selectable text, and explicit Copy. The extracted content is never rendered as HTML and the original page DOM is not modified. The full-screen live-page view is a separate action. Article heuristics can still be poor on dynamic/non-article pages; real-device accessibility, large-text, memory, and extraction-quality tests remain required.
+- PR #182 added a true local text-only view: user-triggered bounded DOM tree walking from article/main/body, skipping obvious navigation/form/script elements, a 60,000-character bound, native selectable text, and explicit Copy. It remains heuristic and needs physical-device accessibility/performance QA. The extracted content is never rendered as HTML and the original page DOM is not modified. The full-screen live-page view is a separate action. Article heuristics can still be poor on dynamic/non-article pages; real-device accessibility, large-text, memory, and extraction-quality tests remain required.
 
 ### P1 — Browser security and capability honesty
 
