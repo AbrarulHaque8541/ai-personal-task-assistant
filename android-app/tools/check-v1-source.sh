@@ -178,7 +178,7 @@ overlay = re.search(r"private void injectVideoDownloadOverlay\(DaymarkWebView ta
 assert overlay and "window.__daymarkVideoDownloadInstalled" in overlay.group(1) and "button.textContent='Download'" in overlay.group(1), "video overlay must be idempotent and visibly user-triggered"
 assert overlay and "target.evaluateJavascript(script, null)" in overlay.group(1) and "addEventListener('click'" in overlay.group(1), "video overlay must use a user click and avoid native JS bridges"
 assert "DRM/manifest/blob extraction" in activity, "video overlay limitations must be explicit in source"
-assert "browserReaderActionRow.setVisibility(View.GONE);" in activity, "reader action must not take space below the page"
+assert "browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE);" in activity, "Reader Mode should appear only when a page is loaded"
 assert "browserTabs = new ArrayList<>()" in activity and "showBrowserTabsDialog()" in activity, "browser must expose a tab switcher"
 assert "createBrowserTab()" in activity and "switchBrowserTab(browserTabs.get(index))" in activity, "browser must create and switch tabs"
 assert 'compactButton("+", false)' in activity and "requestNewBrowserTab()" in activity, "toolbar New Tab action must preserve other open tabs"
