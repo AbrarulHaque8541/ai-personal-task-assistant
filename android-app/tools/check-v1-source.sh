@@ -339,7 +339,11 @@ assert "postActivityCallback(() -> {" in load_callback and "postActivityCallback
 assert attachment_callback.count("postActivityCallback(() -> {") == 2
 assert "postActivityCallback(() -> {" in remove_callback
 browser_listener = activity.split("new DaymarkWebView.Listener()", 1)[1].split("browserWebView.setBackgroundColor", 1)[0]
-assert browser_listener.count("if (!isActivityCallbackCurrent()) return;") == 6
+assert browser_listener.count("browserWebView != tabRef[0]") >= 6, "callbacks from background tabs must not overwrite the active tab UI"
+assert "browserTabs.add(browserWebView)" in activity and "private void switchBrowserTab(int index)" in activity
+assert "private void startNewBrowserTab()" in activity and "private void closeCurrentBrowserTab()" in activity
+assert "browserTabs.size() >= 8" in activity, "open tabs must have a bounded memory footprint"
+assert "tab.setVisibility(View.GONE)" in activity and "browserWebView.setVisibility(View.VISIBLE)" in activity, "tab switching must preserve inactive WebView navigation state"
 cleanup_callback = activity.split("private void reconcileAndReleasePortableImportSelection", 1)[1].split(
     "private void releasePersistablePortableReadGrant", 1
 )[0]
