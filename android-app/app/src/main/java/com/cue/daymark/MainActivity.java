@@ -2180,18 +2180,18 @@ public final class MainActivity extends Activity {
                 + "if(window.__daymarkMediaOverlayInstalled)return;window.__daymarkMediaOverlayInstalled=true;"
                 + "function safe(u,t){try{var x=new URL(u,location.href);var p=x.pathname.toLowerCase();"
                 + "if(x.protocol!=='https:'||p.endsWith('.m3u8')||p.endsWith('.mpd'))return '';"
-                + "if(!/.(mp4|webm|m4v|mov|mkv)$/i.test(p)&&t!=='video/mp4'&&t!=='video/webm')return '';return x.href;}catch(e){return '';}}"
-                + "function choices(v){var r=[],seen={};function add(u,l,t){u=safe(u,t);if(!u||seen[u])return;seen[u]=1;r.push({url:u,label:l||u.split('/').pop()||'Video source'});}"
+                + "if(!/.(mp4|webm|m4v|mov|mkv|mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i.test(p)&&['video/mp4','video/webm','video/ogg','audio/mpeg','audio/mp4','audio/aac','audio/ogg','audio/wav','audio/webm'].indexOf(t)<0)return '';return x.href;}catch(e){return '';}}"
+                + "function choices(v){var r=[],seen={};function add(u,l,t){u=safe(u,t);if(!u||seen[u])return;seen[u]=1;r.push({url:u,label:l||u.split('/').pop()||'Video source',type:t||''});}"
                 + "var ss=v.querySelectorAll('source');for(var i=0;i<ss.length;i++){add(ss[i].src,ss[i].getAttribute('label')||ss[i].getAttribute('data-quality')||ss[i].getAttribute('title')||('Video source '+(i+1)),ss[i].type||'');}"
                 + "add(v.currentSrc||v.src,'Current video',v.getAttribute('type')||'');return r.slice(0,12);}"
-                + "function route(u){return 'daymark-media://download?url='+encodeURIComponent(u);}"
+                + "function route(u,t){return 'daymark-media://download?url='+encodeURIComponent(u)+'&type='+encodeURIComponent(t||'');}"
                 + "function bind(v){if(!v||v.dataset.daymarkMediaDownloadBound)return;v.dataset.daymarkMediaDownloadBound='1';var p=v.parentElement;if(!p)return;if(getComputedStyle(p).position==='static')p.style.position='relative';"
                 + "var b=document.createElement('a');b.textContent='↓ Download';b.setAttribute('role','button');"
                 + "b.style.cssText='position:absolute;right:8px;top:8px;z-index:2147483647;display:none;padding:7px 10px;border-radius:18px;background:#113f2b;color:#fff;font:600 12px sans-serif;text-decoration:none;box-shadow:0 2px 8px #0008;';p.appendChild(b);"
                 + "function show(){b.style.display='block';}v.addEventListener('play',show);v.addEventListener('playing',show);if(!v.paused)show();"
-                + "b.addEventListener('click',function(e){var cs=choices(v);if(!cs.length){e.preventDefault();b.textContent='Direct download unavailable';return;}if(cs.length===1){b.href=route(cs[0].url);return;}e.preventDefault();e.stopPropagation();"
+                + "b.addEventListener('click',function(e){var cs=choices(v);if(!cs.length){e.preventDefault();b.textContent='Direct download unavailable';return;}if(cs.length===1){b.href=route(cs[0].url,cs[0].type);return;}e.preventDefault();e.stopPropagation();"
                 + "var old=p.querySelector('[data-daymark-quality-menu]');if(old)old.remove();var m=document.createElement('div');m.setAttribute('data-daymark-quality-menu','1');m.style.cssText='position:absolute;right:8px;top:42px;z-index:2147483647;background:#fff;color:#15251b;padding:6px;border-radius:10px;box-shadow:0 2px 12px #0008;font:12px sans-serif;max-width:85%;';"
-                + "cs.forEach(function(c){var x=document.createElement('a');x.href=route(c.url);x.textContent=c.label;x.style.cssText='display:block;color:#15251b;padding:8px;text-decoration:none;';m.appendChild(x);});p.appendChild(m);});}"
+                + "cs.forEach(function(c){var x=document.createElement('a');x.href=route(c.url,c.type);x.textContent=c.label;x.style.cssText='display:block;color:#15251b;padding:8px;text-decoration:none;';m.appendChild(x);});p.appendChild(m);});}"
                 + "function scan(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++)bind(vs[i]);}"
                 + "scan();new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true});document.addEventListener('play',function(e){if(e.target&&e.target.tagName==='VIDEO')bind(e.target);},true);"
                 + "}catch(e){}})();";
@@ -2213,19 +2213,19 @@ public final class MainActivity extends Activity {
         browserStatus.setText("Searching the page for downloadable videos and audio...");
         String mediaProbeScript = "(function(){"
                 + "var found=[];var seen={};"
-                + "function push(url,kind,label,quality){if(!url)return;var abs;try{abs=new URL(url,location.href).href;}catch(x){return;}"
+                + "function push(url,kind,label,quality,type){if(!url)return;var abs;try{abs=new URL(url,location.href).href;}catch(x){return;}"
                 + "var p='';try{p=new URL(abs).pathname.toLowerCase();}catch(x){return;}"
-                + "if(abs.indexOf('https://')!==0||p.endsWith('.m3u8')||p.endsWith('.mpd')||p.startsWith('blob:')||p.startsWith('data:'))return;"
-                + "if(seen[abs])return;seen[abs]=1;if(found.length<20)found.push([kind,abs,(label||'').substring(0,60),(quality||'').substring(0,32)]);}"
+                + "if(abs.indexOf('https://')!==0||p.endsWith('.m3u8')||p.endsWith('.mpd')||p.endsWith('.ism')||p.endsWith('.ismc')||p.endsWith('.m4s')||p.endsWith('.ts')||p.startsWith('blob:')||p.startsWith('data:'))return;"
+                + "if(seen[abs])return;seen[abs]=1;if(found.length<20)found.push([kind,abs,(label||'').substring(0,60),(quality||'').substring(0,32),(type||'').substring(0,48)]);}"
                 + "var i,e,src,links;links=document.querySelectorAll('video');"
                 + "for(i=0;i<links.length;i++){e=links[i];var q=e.videoWidth&&e.videoHeight?(e.videoWidth+'x'+e.videoHeight):'';"
-                + "push(e.currentSrc||e.src,'video',e.getAttribute('title')||'',q);src=e.querySelectorAll('source');"
-                + "for(var j=0;j<src.length;j++){push(src[j].src,'video',src[j].getAttribute('label')||src[j].getAttribute('title')||'',src[j].getAttribute('data-quality')||q);}}"
-                + "links=document.querySelectorAll('audio');for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'audio',e.getAttribute('title')||'','');"
-                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio',src[j].getAttribute('label')||'','');}}"
+                + "push(e.currentSrc||e.src,'video',e.getAttribute('title')||'',q,e.getAttribute('type')||'');src=e.querySelectorAll('source');"
+                + "for(var j=0;j<src.length;j++){push(src[j].src,'video',src[j].getAttribute('label')||src[j].getAttribute('title')||'',src[j].getAttribute('data-quality')||q,src[j].type||'');}}"
+                + "links=document.querySelectorAll('audio');for(i=0;i<links.length;i++){e=links[i];push(e.currentSrc||e.src,'audio',e.getAttribute('title')||'','',e.getAttribute('type')||'');"
+                + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){push(src[j].src,'audio',src[j].getAttribute('label')||'','',src[j].type||'');}}"
                 + "links=document.querySelectorAll('a[href]');var media=/\\.(mp4|webm|m4v|mov|mkv|mp3|m4a|aac|ogg|oga|opus|wav|flac)([?#]|$)/i;"
                 + "for(i=0;i<links.length;i++){var href=links[i].getAttribute('href');if(href&&href.toLowerCase().indexOf('javascript:')!==0&&media.test(href)){"
-                + "push(href,'link',links[i].textContent.trim().substring(0,60),'');}}return found;})()";
+                + "push(href,'link',links[i].textContent.trim().substring(0,60),'','');}}return found;})()";
         browserWebView.evaluateJavascript(mediaProbeScript, value -> {
             if (!isActivityCallbackCurrent()) return;
             if (value == null || value.equals("null") || value.equals("[]")) {
@@ -2245,15 +2245,18 @@ public final class MainActivity extends Activity {
     private void showBrowserMediaDialog(org.json.JSONArray found) {
         final String[] urls;
         final String[] labels;
+        final String[] mimeTypes;
         try {
             urls = new String[found.length()];
             labels = new String[urls.length];
+            mimeTypes = new String[urls.length];
             for (int i = 0; i < urls.length; i++) {
                 org.json.JSONArray item = found.getJSONArray(i);
                 String kind = item.getString(0);
                 urls[i] = item.getString(1);
                 String label = item.length() > 2 ? item.optString(2, "") : "";
                 String quality = item.length() > 3 ? item.optString(3, "") : "";
+                mimeTypes[i] = item.length() > 4 ? item.optString(4, "") : "";
                 String name = URLUtil.guessFileName(urls[i], null, null);
                 String description = label == null || label.isEmpty() ? name : label;
                 if (quality != null && !quality.isEmpty()) description += " · " + quality;
@@ -2268,12 +2271,12 @@ public final class MainActivity extends Activity {
                 .setTitle("Videos & audio on this page")
                 .setItems(labels, (dialog, which) -> {
                     String url = urls[which];
-                    if (!BrowserAddress.isAllowedWebUrl(url)) {
-                        showToast("Download blocked: HTTPS is required.");
+                    if (!BrowserMediaUrlPolicy.isAllowedDirectMediaUrl(url, mimeTypes[which])) {
+                        showToast("This looks like a protected or segmented stream, not a direct downloadable media file.");
                         return;
                     }
-                    browserStatus.setText("Download started for the selected media file. Check Downloads for progress.");
-                    queueBrowserDownload(url, null, null, null);
+                    browserStatus.setText("Download started for the selected direct media file. Check Downloads for progress.");
+                    queueBrowserDownload(url, null, null, mimeTypes[which]);
                 })
                 .setNegativeButton("Close", null)
                 .show();
