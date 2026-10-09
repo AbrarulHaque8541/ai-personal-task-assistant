@@ -26,6 +26,7 @@ public final class ExtensionPackageParserSmoke {
         archiveImportSkipsTraversalEntriesAndUnsupportedFiles();
         archiveWithoutManifestIsRejected();
         archiveFileCountIsCapped();
+        archiveDecompressedBytesAreCappedForIgnoredEntries();
         crx3HeaderIsStrippedBeforeUnzip();
         oversizedArchivesAreRejected();
         System.out.println("PASS extension package parser smoke tests: " + assertions + " assertions");
@@ -187,6 +188,46 @@ public final class ExtensionPackageParserSmoke {
         } catch (IllegalArgumentException expected) {
             check(expected.getMessage().contains("too many files"),
                     "the file-count cap rejection explains the reason");
+        }
+    }
+
+    private static void archiveDecompressedBytesAreCappedForIgnoredEntries() throws Exception {
+        String manifest = "{\"name\":\"Large ignored\",\"content_scripts\":[{\"matches\":[\"https://example.com/*\"],\"js\":[\"script.js\"]}]}";
+        ByteArrayOutputStream singleBytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(singleBytes)) {
+            putEntry(zip, "manifest.json", manifest);
+            putEntry(zip, "script.js", "run();");
+            putEntry(zip, "notes.bin", repeated('x', 2 * 1024 * 1024 + 1));
+        }
+        expectArchiveRejected(singleBytes.toByteArray(), "2 MB", "oversized ignored entry is rejected");
+
+        ByteArrayOutputStream aggregateBytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(aggregateBytes)) {
+            putEntry(zip, "manifest.json", manifest);
+            putEntry(zip, "script.js", "run();");
+            putEntry(zip, "one.bin", repeated('a', 1_800_000));
+            putEntry(zip, "two.bin", repeated('b', 1_800_000));
+            putEntry(zip, "three.bin", repeated('c', 1_800_000));
+        }
+        expectArchiveRejected(aggregateBytes.toByteArray(), "5 MB", "aggregate ignored-entry expansion is rejected");
+        check(aggregateBytes.size() < 100_000, "decompression-bomb fixtures stay tiny when compressed");
+    }
+
+    private static String repeated(char value, int length) {
+        char[] chars = new char[length];
+        Arrays.fill(chars, value);
+        return new String(chars);
+    }
+
+    private static void expectArchiveRejected(byte[] archive, String reason, String message) throws Exception {
+        assertions++;
+        try {
+            ExtensionPackageParser.parseWebExtensionArchive(archive);
+            throw new AssertionError(message + ": expected rejection");
+        } catch (IllegalArgumentException expected) {
+            if (!expected.getMessage().contains(reason)) {
+                throw new AssertionError(message + ": wrong rejection: " + expected.getMessage(), expected);
+            }
         }
     }
 
