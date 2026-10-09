@@ -1443,7 +1443,8 @@ public final class MainActivity extends Activity {
             return;
         }
         if (!ensureBrowserWebView()) {
-            showBrowserOfflineStatus();
+            if (!browserNetworkPolicy.allowsRemoteLoads()) showBrowserOfflineStatus();
+            else if (browserStatus != null) browserStatus.setText("Close an existing tab before opening another.");
             return;
         }
         try {
@@ -1466,6 +1467,10 @@ public final class MainActivity extends Activity {
     private boolean ensureBrowserWebView() {
         if (!browserNetworkPolicy.allowsRemoteLoads()) return false;
         if (browserWebView != null) return true;
+        if (browserTabs.size() >= 8) {
+            showToast("You have 8 open tabs. Close a tab before opening another.");
+            return false;
+        }
         final DaymarkWebView[] tabRef = new DaymarkWebView[1];
         tabRef[0] = new DaymarkWebView(this, browserNetworkPolicy,
                 browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
@@ -2283,18 +2288,28 @@ public final class MainActivity extends Activity {
     private void discardBrowserWebView() {
         if (fullScreenWebDialog != null) {
             fullScreenWebDialog.setOnDismissListener(null);
-            if (fullScreenWebDialog.isShowing()) {
-                fullScreenWebDialog.dismiss();
-            }
+            if (fullScreenWebDialog.isShowing()) fullScreenWebDialog.dismiss();
             fullScreenWebDialog = null;
         }
-        discardBrowserWebView(true);
+        for (DaymarkWebView tab : new java.util.ArrayList<>(browserTabs)) {
+            try {
+                tab.getSettings().setBlockNetworkLoads(true);
+                tab.stopLoading();
+            } catch (RuntimeException ignored) { }
+            if (tab.getParent() instanceof ViewGroup) ((ViewGroup) tab.getParent()).removeView(tab);
+            tab.destroy();
+        }
+        browserTabs.clear();
+        browserWebView = null;
+        updateBrowserTabsButton();
+        syncBrowserButtons();
     }
 
     private void discardBrowserWebView(boolean stopLoading) {
         DaymarkWebView current = browserWebView;
         browserWebView = null;
         if (current != null) {
+            browserTabs.remove(current);
             try {
                 current.getSettings().setBlockNetworkLoads(true);
             } catch (RuntimeException ignored) {
@@ -2306,6 +2321,7 @@ public final class MainActivity extends Activity {
             }
             current.destroy();
         }
+        updateBrowserTabsButton();
         syncBrowserButtons();
     }
 
