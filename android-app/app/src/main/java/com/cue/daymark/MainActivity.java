@@ -97,6 +97,7 @@ public final class MainActivity extends Activity {
     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
     private static final String STATE_WEB_MODE = WebModeState.KEY;
+    private static final String STATE_TASK_DRAFT = "state_task_draft";
     private static final String PREFERENCES = "daymark.preferences.v1";
     private static final String THEME_KEY = "theme_mode";
     private static final int THEME_SYSTEM = 0;
@@ -274,6 +275,10 @@ public final class MainActivity extends Activity {
         portableBackupManager = new PortableBackupManager(getApplicationContext());
         if (savedInstanceState != null) {
             pendingAttachmentTaskId = savedInstanceState.getString(STATE_PENDING_ATTACHMENT_TASK);
+            String savedDraft = savedInstanceState.getString(STATE_TASK_DRAFT);
+            if (savedDraft != null) {
+                taskDraft = savedDraft;
+            }
             String savedPortableUri = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_URI);
             String savedPortableToken = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_TOKEN);
             if (savedPortableUri != null || savedPortableToken != null) {
@@ -428,6 +433,12 @@ public final class MainActivity extends Activity {
             outState.putString(STATE_PENDING_ATTACHMENT_TASK, pendingAttachmentTaskId);
         }
         outState.putBoolean(STATE_WEB_MODE, webMode);
+        if (!webMode && quickCaptureInput != null && quickCaptureInput.getText() != null) {
+            taskDraft = quickCaptureInput.getText().toString();
+        }
+        if (taskDraft != null && !taskDraft.isEmpty()) {
+            outState.putString(STATE_TASK_DRAFT, taskDraft);
+        }
         PortableImportGrantRecovery.Selection pendingSelection = pendingPortableImportSelection();
         if (pendingSelection != null) {
             try {
@@ -844,6 +855,10 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setTextColor(palette.text);
         quickCaptureInput.setHintTextColor(palette.muted);
         quickCaptureInput.setBackground(shape(palette.background, 10, palette.line));
+        quickCaptureInput.setText(webMode ? "" : taskDraft);
+        if (!webMode && taskDraft != null && !taskDraft.isEmpty()) {
+            quickCaptureInput.setSelection(Math.min(taskDraft.length(), 2048));
+        }
         card.addView(quickCaptureInput, bottomMargin(dp(7)));
 
         LinearLayout smartChips = new LinearLayout(this);
