@@ -31,8 +31,7 @@ public final class BrowserAddressSmoke {
         rejects("http://example.com");
         rejects("http://example.com/after-redirect");
         rejects("file:///etc/passwd");
-        rejects("content://com.example/
-private");
+        rejects("content://com.example/private");
         rejects("intent://open");
         assert !BrowserAddress.isAllowedWebUrl("data:text/html,hello");
         assert !BrowserAddress.isAllowedWebUrl("http://example.com/");
@@ -73,8 +72,7 @@ private");
         assert BrowserHistory.sanitizeUrl("https://example.com:0/path") == null;
 
         String searchUrl = BrowserAddress.resolveInput("secret search phrase", BrowserAddress.SearchEngine.DUCKDUCKGO);
-        String 
-searchHistory = BrowserHistory.add("", searchUrl);
+        String searchHistory = BrowserHistory.add("", searchUrl);
         assertStored(searchHistory, "https://duckduckgo.com");
         assert BrowserHistory.decode(searchHistory).size() == 1;
         assert BrowserHistory.decode(searchHistory).get(0).equals("https://duckduckgo.com");
@@ -102,8 +100,7 @@ searchHistory = BrowserHistory.add("", searchUrl);
         String activeAddress = "https://example.com/oauth/secret-authorization-code?code=active-code#active-fragment";
         assert BrowserAddress.isAllowedWebUrl(activeAddress);
         assert BrowserAddress.resolveInput(activeAddress, BrowserAddress.SearchEngine.DUCKDUCKGO).equals(activeAddress)
- 
-               : "Web address resolution must preserve the current route, query, and fragment";
+                : "Web address resolution must preserve the current route, query, and fragment";
         String activePageHistory = BrowserHistory.add("", activeAddress);
         assertStored(activePageHistory, "https://example.com");
         assert activeAddress.contains("/oauth/secret-authorization-code?code=active-code#active-fragment")
@@ -134,8 +131,7 @@ searchHistory = BrowserHistory.add("", searchUrl);
     private static void rejects(String value) {
         boolean rejected = false;
         try {
-            BrowserAddress.resolveInput(value, BrowserA
-ddress.SearchEngine.DUCKDUCKGO);
+            BrowserAddress.resolveInput(value, BrowserAddress.SearchEngine.DUCKDUCKGO);
         } catch (IllegalArgumentException expected) {
             rejected = true;
         }
