@@ -1381,19 +1381,42 @@ public final class MainActivity extends Activity {
     private View buildBrowserHomeView() {
         LinearLayout home = new LinearLayout(this);
         home.setOrientation(LinearLayout.VERTICAL);
-        home.setGravity(Gravity.CENTER_VERTICAL);
-        home.setPadding(dp(22), dp(20), dp(22), dp(20));
-        TextView title = text("A browser, when you choose", 22, palette.text, Typeface.BOLD);
-        home.addView(title, bottomMargin(dp(9)));
-        TextView copy = text(
-                "Browser access starts Offline. Turn Online on, choose a search engine, enter a search or HTTPS address, then tap Go or a site shortcut for each request. Your query or URL and normal connection details go to that destination; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is platform-managed and may contact Google/Play Services for version/device-dependent hash or update checks; its provider is not selectable in Daymark. Daymark sends no task text or app analytics. HTTP is blocked; any per-site exception requires a separate explicit request. AI shortcuts are ordinary websites, not connected model APIs. No website opens automatically.",
-                14, palette.muted, Typeface.NORMAL);
-        copy.setLineSpacing(dp(3), 1f);
-        home.addView(copy, bottomMargin(dp(12)));
-        TextView local = text("Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted. Use Site history to clear it and Daymark's cookies/cache/storage.",
-                12, palette.muted, Typeface.NORMAL);
-        local.setLineSpacing(dp(2), 1f);
-        home.addView(local);
+        home.setGravity(Gravity.CENTER);
+        home.setPadding(dp(24), dp(20), dp(24), dp(20));
+
+        TextView title = text("Daymark", 28, palette.text, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        home.addView(title, bottomMargin(dp(4)));
+
+        TextView tagline = text("Your browser, your way", 14, palette.muted, Typeface.NORMAL);
+        tagline.setGravity(Gravity.CENTER);
+        home.addView(tagline, bottomMargin(dp(22)));
+
+        TextView hint = text("Search the web or ask an AI", 17, palette.text, Typeface.BOLD);
+        hint.setGravity(Gravity.CENTER);
+        home.addView(hint, bottomMargin(dp(7)));
+
+        TextView detail = text(
+                "Type a question in the address bar above, then tap a provider to search in one step. Or choose a provider first.",
+                13, palette.muted, Typeface.NORMAL);
+        detail.setGravity(Gravity.CENTER);
+        detail.setLineSpacing(dp(3), 1f);
+        home.addView(detail, bottomMargin(dp(18)));
+
+        Button chooseProvider = compactButton("Choose search provider", true);
+        chooseProvider.setOnClickListener(view -> showSearchProviderPicker());
+        LinearLayout.LayoutParams chooseParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(42));
+        chooseParams.gravity = Gravity.CENTER_HORIZONTAL;
+        home.addView(chooseProvider, chooseParams);
+
+        TextView privacyHint = text("Offline until you enable Online. Privacy details are above.", 11,
+                palette.muted, Typeface.NORMAL);
+        privacyHint.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams privacyParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        privacyParams.topMargin = dp(16);
+        home.addView(privacyHint, privacyParams);
         return home;
     }
 
