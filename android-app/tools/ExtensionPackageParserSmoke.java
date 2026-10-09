@@ -219,7 +219,7 @@ public final class ExtensionPackageParserSmoke {
         
         // Identical manifest metadata can point to different code. Those imports must not
         // collide merely because the manifest JSON is identical.
-        String codeManifest = "{\\"name\\":\\"Same manifest\\",\\"content_scripts\\":[{\\"matches\\":[\\"https://example.com/*\\"],\\"js\\":[\\"script.js\\"]}]}";
+        String codeManifest = "{\"name\":\"Same manifest\",\"content_scripts\":[{\"matches\":[\"https://example.com/*\"],\"js\":[\"script.js\"]}]}";
         BrowserExtension codeA = ExtensionPackageParser.parseWebExtensionArchive(
                 zipArchive(codeManifest, false, "runA();"));
         BrowserExtension codeB = ExtensionPackageParser.parseWebExtensionArchive(
