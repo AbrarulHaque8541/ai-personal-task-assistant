@@ -40,7 +40,7 @@ Daymark is a personal, local-first Android task assistant with an embedded HTTPS
 - Keep Android backup disabled unless the owner approves a fully reviewed data/key migration design.
 - Do not add hidden analytics, telemetry, ad SDKs, remote task sync, background polling, or silent cloud fallback.
 - Imported page scripts are untrusted code. Explain matching sites, permissions/unsupported APIs, possible access to logged-in page content, and network side effects; require explicit trust confirmation before persistence/enabling.
-- Keep untrusted WebView content away from native bridges and app-private files. Never expose a broad `addJavascriptInterface` to arbitrary web pages.
+- Keep untrusted WebView content away from native bridges and app-private files. Never expose a broad `addJavascriptInterface` to arbitrary web pages. Reader Mode must remain user-triggered, extract bounded text only, render with native TextView (never page HTML), avoid additional network calls, and leave the original page DOM untouched.
 - Keep HTTP/cleartext blocked, validate URL schemes, and retain Android WebView Safe Browsing unless the user deliberately changes it after a warning.
 - Any optional download must be user-initiated, show source/size/storage impact, support cancellation, verify bytes/hash, and be removable with caches. No silent/background model, locale, plugin, or update download.
 - Never recommend uninstalling a production install without warning about local-data loss and first considering a valid portable backup.
@@ -58,7 +58,7 @@ Daymark is a personal, local-first Android task assistant with an embedded HTTPS
 
 - Prioritize the phone-sized experience: clear hierarchy, compact but readable controls, touch targets around 48dp, good keyboard/inset handling, visible empty/loading/error/success states, and no horizontal overflow.
 - Prefer custom grouped settings pages/cards over a long legacy list of unrelated AlertDialog items. Use restrained, short transitions; respect Android's system animation scale and avoid looping/auto-playing motion.
-- Keep nested/internal pages (browser settings, extension manager/details, backup/restore, task editor, update flow) visually consistent with the main app.
+- Keep nested/internal pages (browser settings, extension manager/details, Reader Mode extraction/copy and long-page text scaling, backup/restore, task editor, update flow) visually consistent with the main app.
 - Every action needs an accessible label and a real effect. Test text scaling, contrast, keyboard focus, TalkBack, Back navigation, and reduced-motion behavior where possible.
 - Do not add decorative animation that delays an action, hides status, or increases work on low-end devices. Performance and stability beat visual effects.
 
