@@ -216,6 +216,19 @@ public final class ExtensionPackageParserSmoke {
         check(firstId.equals(ExtensionPackageParser.parseWebExtensionManifest(manifest).id),
                 "re-importing the same manifest keeps a stable id");
         check(firstId.matches("webext\\.[0-9a-f]{64}"), "manifest ids are SHA-256 digests");
+        
+        // Identical manifest metadata can point to different code. Those imports must not
+        // collide merely because the manifest JSON is identical.
+        String codeManifest = "{\\"name\\":\\"Same manifest\\",\\"content_scripts\\":[{\\"matches\\":[\\"https://example.com/*\\"],\\"js\\":[\\"script.js\\"]}]}";
+        BrowserExtension codeA = ExtensionPackageParser.parseWebExtensionArchive(
+                zipArchive(codeManifest, false, "runA();"));
+        BrowserExtension codeB = ExtensionPackageParser.parseWebExtensionArchive(
+                zipArchive(codeManifest, false, "runB();"));
+        check(!codeA.id.equals(codeB.id),
+                "different effective JS content under the same manifest gets a different id");
+        check(codeA.id.equals(ExtensionPackageParser.parseWebExtensionArchive(
+                        zipArchive(codeManifest, false, "runA();")).id),
+                "same manifest and code retain a stable imported id");
     }
 
     private static void documentStartImportsNormalizeToHonestTiming() throws Exception {
@@ -379,10 +392,15 @@ public final class ExtensionPackageParserSmoke {
     }
 
     private static byte[] zipArchive(String manifestJson, boolean includeTraversalEntry) throws Exception {
+        return zipArchive(manifestJson, includeTraversalEntry, "console.log('packaged');");
+    }
+
+    private static byte[] zipArchive(String manifestJson, boolean includeTraversalEntry,
+                                     String scriptContent) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             if (manifestJson != null) putEntry(zip, "manifest.json", manifestJson);
-            putEntry(zip, "script.js", "console.log('packaged');");
+            putEntry(zip, "script.js", scriptContent);
             putEntry(zip, "style.css", ".ad{display:none}");
             putEntry(zip, "notes.txt", "not imported");
             if (includeTraversalEntry) putEntry(zip, "../evil.js", "alert('traversal');");
