@@ -2454,12 +2454,12 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(12), dp(8), dp(12), dp(8));
         header.setBackgroundColor(palette.surface);
 
-        TextView headerTitle = text("Web result — Full screen", 16, palette.text, Typeface.BOLD);
+        TextView headerTitle = text("Full-screen page", 16, palette.text, Typeface.BOLD);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         header.addView(headerTitle, titleParams);
 
         Button closeButton = compactButton("Close", true);
-        closeButton.setContentDescription("Close full-screen reader and return to standard browser view");
+        closeButton.setContentDescription("Close full-screen page and return to standard browser view");
         closeButton.setOnClickListener(v -> closeFullScreenWebReader());
         header.addView(closeButton);
 
