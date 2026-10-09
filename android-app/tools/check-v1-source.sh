@@ -153,12 +153,12 @@ assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
-assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "missing/corrupt online preference must default Offline"
-assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY," in activity, "browser Online preference must be read locally"
-assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
-assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
-assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
-assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
+assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "browser network policy must have an explicit default"
+assert "DEFAULT_ONLINE_ENABLED = true" in (main / "java/com/cue/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8"), "fresh installs must browse normally"
+assert "browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();" in activity, "legacy offline preference must not leave users stuck without a visible control"
+assert "browserOnlineToggle = new CheckBox(this)" not in activity, "the confusing Online/Offline checkbox must not be rendered"
+assert "Online browsing (off by default)" not in activity, "browser UI must not advertise the removed toggle"
+assert "Browsing starts ready for explicit searches and sites" in activity and "tap Go or a provider shortcut" in activity, "network requests must still require a visible user action"
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
 assert "may log it" in activity and "may contact and be logged by third-party endpoints" in activity, "provider and page endpoint logging must not be ruled out"
 assert "Google/Play Services" in activity and "The Safe Browsing provider itself is not selectable in Daymark" in activity, "Safe Browsing provider and platform traffic must be disclosed separately from its local on/off setting"
@@ -166,9 +166,7 @@ assert "URL-hash-based checks" in activity and "WebView M126+ may send a partial
 assert "This does not mean every full URL is sent" in activity and "This is not a claim that every full URL is sent" in activity
 assert "Daymark sends no task text and adds no app analytics" in activity
 assert "WebView diagnostic metrics are opted out" in activity
-assert "The Online switch blocks Daymark page/resource loads only" in activity
-assert "does not control Android System WebView Safe Browsing" in activity
-assert "no search/site request was sent" in activity, "Offline status must not overpromise absence of platform Safe Browsing traffic"
+assert "browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());" in activity
 assert "browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());" in activity
 assert "BrowserSettingsPolicy.DEFAULT_SAFE_BROWSING_ENABLED" in activity and "getBoolean(SAFE_BROWSING_ENABLED_KEY," in activity
 assert "putBoolean(SAFE_BROWSING_ENABLED_KEY, enabled)" in activity, "Safe Browsing choice must be saved locally"
@@ -421,7 +419,7 @@ print("PASS encrypted task-store policy: writer and reader share invalid/duplica
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
 print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
-print("PASS browser policy: Offline by default with persisted opt-in, Daymark page/resource loads blocked while Offline, and a separate tap required for each request")
+print("PASS browser policy: normal browsing default, no visible Online/Offline toggle, explicit tap-to-navigate, HTTPS-only, and platform Safe Browsing disclosure")
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
