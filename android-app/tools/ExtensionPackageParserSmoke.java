@@ -53,7 +53,8 @@ public final class ExtensionPackageParserSmoke {
         check(original.js.equals(parsed.js), "js survives a JSON round trip");
         check("document_end".equals(parsed.runAt), "unsupported document_start is normalized to effective document_end");
         check(parsed.warnings.contains("document_start timing is unsupported"), "normalizing document_start includes a clear warning");
-        check(original.warnings.equals(parsed.warnings), "warnings survive a JSON round trip");
+        check(parsed.warnings.contains("warn text") && parsed.warnings.contains("document_start timing is unsupported"),
+                "existing warnings survive while unsupported timing is disclosed");
         check(parsed.disabledSites.contains("example.com"), "disabled sites survive a JSON round trip");
     }
 
