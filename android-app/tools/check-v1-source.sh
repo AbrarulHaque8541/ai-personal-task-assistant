@@ -156,7 +156,7 @@ assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePrefere
 assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "browser must use the online-by-default policy"
 assert "browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();" in activity, "v1.0.4 offline opt-in must be migrated so existing installs are not stuck offline"
 assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
-assert "Online browsing (off by default)" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
+assert "Online browsing" in activity and "browserOnlineToggle.setOnCheckedChangeListener" in activity
 assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
 assert "Online browsing is enabled by default" in activity and "each search or site still requires a separate tap" in activity
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
