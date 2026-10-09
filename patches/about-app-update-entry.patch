@@ -1,0 +1,14 @@
+Apply to android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+
+Summary of changes:
+1. More → ABOUT section:
+   - About this app (version, package, privacy, release links)
+   - Check for updates (existing GitHub Releases checker)
+2. Remove duplicate Check for updates under POWER FEATURES
+3. Update available dialog:
+   - Shows direct APK URL
+   - Download and verify (existing secure path)
+   - Open APK link (in-app WebView or system browser)
+4. Methods: showAboutApp(), openUpdateApkLink()
+
+Existing updater (GitHubReleaseClient + Download and verify) remains the preferred install path.
