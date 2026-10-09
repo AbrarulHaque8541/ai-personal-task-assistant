@@ -371,7 +371,8 @@ assert "postActivityCallback(() -> {" in load_callback and "postActivityCallback
 assert attachment_callback.count("postActivityCallback(() -> {") == 2
 assert "postActivityCallback(() -> {" in remove_callback
 browser_listener = activity.split("new DaymarkWebView.Listener()", 1)[1].split("browserWebView.setBackgroundColor", 1)[0]
-assert browser_listener.count("if (!isActivityCallbackCurrent()) return;") == 6
+assert (browser_listener.count("if (!isActivityCallbackCurrent()) return;")
+        + browser_listener.count("if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;")) == 6
 cleanup_callback = activity.split("private void reconcileAndReleasePortableImportSelection", 1)[1].split(
     "private void releasePersistablePortableReadGrant", 1
 )[0]
