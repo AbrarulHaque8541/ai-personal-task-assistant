@@ -89,7 +89,6 @@ import com.cue.daymark.updater.UpdaterRecoveryStore;
 
 // Browser workspace + task workspace share one Activity but never share visible controls.
 public final class MainActivity extends Activity {
-    private static final int MAX_BROWSER_TABS = 6;
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_EXPORT_EXTENSION = 7813;
@@ -1675,8 +1674,8 @@ public final class MainActivity extends Activity {
 
     private void createBrowserTab() {
         if (!webMode || !browserNetworkPolicy.allowsRemoteLoads()) return;
-        if (browserTabs.size() >= MAX_BROWSER_TABS) {
-            showToast("You can keep up to " + MAX_BROWSER_TABS + " tabs open. Close a tab first.");
+        if (!BrowserTabPolicy.canCreate(browserTabs.size())) {
+            showToast("You can keep up to " + BrowserTabPolicy.MAX_TABS + " tabs open. Close a tab first.");
             return;
         }
         if (browserWebView != null) browserWebView.setVisibility(View.GONE);
@@ -1735,8 +1734,8 @@ public final class MainActivity extends Activity {
             if (browserAddressInput != null) browserAddressInput.setText("");
             if (browserStatus != null) browserStatus.setText("No tabs open. Create a new tab to browse.");
         } else {
-            int nextIndex = Math.min(Math.max(oldIndex - 1, 0), browserTabs.size() - 1);
-            switchBrowserTab(browserTabs.get(nextIndex));
+            int nextIndex = BrowserTabPolicy.indexAfterClose(oldIndex, browserTabs.size());
+            if (nextIndex >= 0) switchBrowserTab(browserTabs.get(nextIndex));
         }
         updateBrowserTabButton();
         syncBrowserButtons();
