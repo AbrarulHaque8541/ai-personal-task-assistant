@@ -2994,7 +2994,7 @@ public final class MainActivity extends Activity {
                     dialog.dismiss();
                     new AlertDialog.Builder(this)
                             .setTitle("Clear site history and data?")
-                            .setMessage("Site history stores only validated HTTPS origins: no paths, queries, fragments, URL credentials, or page titles. Older entries are reduced to origins on launch. Selecting a saved site opens that origin, not the last route. Clearing removes Daymark's site history, every open WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
+                            .setMessage("Site history stores only validated HTTPS origins: no paths, queries, fragments, URL credentials, or page titles. Older entries are reduced to origins on launch. Selecting a saved site opens that origin, not the last route. Clearing removes Daymark's site history, every open WebView's back/forward list, resource cache, and SSL exception preferences, plus cookies and Web SQL/HTML5 Web Storage for all websites used in Daymark (not just the current site). This action also closes all open Daymark browser tabs and returns to browser home. It may sign you out of any site opened in Daymark. It only dismisses an open WebView form-autocomplete popup; saved Android Autofill or password-manager data is not cleared. Cookie removal finishes asynchronously. This does not clear other apps' browser data or erase requests/data retained by websites or search providers.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear site data", (confirm, selected) -> clearBrowserData())
                             .show();
@@ -3009,33 +3009,72 @@ public final class MainActivity extends Activity {
         }
         boolean tabDataCleared = true;
         for (DaymarkWebView tab : openTabs) {
-            try {
-                tab.clearHistory();
-                tab.clearCache(true);
-                tab.clearFormData();
-                tab.clearSslPreferences();
-            } catch (RuntimeException clearFailed) {
-                tabDataCleared = false;
-            }
+            if (!clearBrowserTabData(tab)) tabDataCleared = false;
         }
         browserPreferences.edit().putString(BROWSER_HISTORY_KEY, BrowserHistory.clear()).apply();
-        WebStorage.getInstance().deleteAllData();
-        CookieManager cookies = CookieManager.getInstance();
+
+        boolean siteStorageCleared = true;
+        try {
+            WebStorage.getInstance().deleteAllData();
+        } catch (RuntimeException storageClearFailed) {
+            siteStorageCleared = false;
+        }
+
         showBrowserHome();
         browserStatus.setText("Clearing Daymark site history and local site data...");
         final boolean allTabDataCleared = tabDataCleared;
-        cookies.removeAllCookies(removed -> {
-            cookies.flush();
-            if (isActivityCallbackCurrent()) {
-                if (allTabDataCleared) {
-                    browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
-                    showToast("Local site history and site data cleared.");
-                } else {
-                    browserStatus.setText("Cookies, storage, and saved site history were cleared, but one or more open tabs could not clear their local navigation data. Close and reopen those tabs.");
-                    showToast("Some open-tab data could not be cleared. Close and reopen affected tabs.");
+        final boolean allSiteStorageCleared = siteStorageCleared;
+        try {
+            CookieManager cookies = CookieManager.getInstance();
+            cookies.removeAllCookies(removed -> {
+                boolean cookiesFlushed = true;
+                try {
+                    cookies.flush();
+                } catch (RuntimeException flushFailed) {
+                    cookiesFlushed = false;
                 }
+                if (isActivityCallbackCurrent()) {
+                    if (allTabDataCleared && allSiteStorageCleared && cookiesFlushed) {
+                        browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
+                        showToast("Local site history and site data cleared.");
+                    } else {
+                        browserStatus.setText("Site-data cleanup was partial. One or more tab-local or shared stores could not be cleared; close/reopen affected tabs and retry.");
+                        showToast("Site-data cleanup was partial. Some local data may remain.");
+                    }
+                }
+            });
+        } catch (RuntimeException cookieClearFailed) {
+            if (isActivityCallbackCurrent()) {
+                browserStatus.setText("Site-data cleanup was partial. Cookie clearing could not be completed; some local data may remain.");
+                showToast("Cookie clearing failed. Some local data may remain.");
             }
-        });
+        }
+    }
+
+    /** Attempt each independent WebView cleanup even if another cleanup operation throws. */
+    private boolean clearBrowserTabData(DaymarkWebView tab) {
+        boolean cleared = true;
+        try {
+            tab.clearHistory();
+        } catch (RuntimeException clearFailed) {
+            cleared = false;
+        }
+        try {
+            tab.clearCache(true);
+        } catch (RuntimeException clearFailed) {
+            cleared = false;
+        }
+        try {
+            tab.clearFormData();
+        } catch (RuntimeException clearFailed) {
+            cleared = false;
+        }
+        try {
+            tab.clearSslPreferences();
+        } catch (RuntimeException clearFailed) {
+            cleared = false;
+        }
+        return cleared;
     }
 
     private void addSuggestionCard(LinearLayout content) {
@@ -3618,7 +3657,7 @@ public final class MainActivity extends Activity {
                     settingsDialog.dismiss();
                     new AlertDialog.Builder(this)
                             .setTitle("Clear site data?")
-                            .setMessage("This clears Daymark's HTTPS site history, WebView cache, cookies, storage, form data, and current page history. It can sign you out of websites opened in Daymark. Android Autofill and password-manager data are not changed.")
+                            .setMessage("This clears Daymark's HTTPS site history, WebView cache, cookies, storage, form data, and current page history. This action also closes all open Daymark browser tabs and returns to browser home. It can sign you out of websites opened in Daymark. Android Autofill and password-manager data are not changed.")
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Clear", (d, w) -> clearBrowserData())
                             .show();
