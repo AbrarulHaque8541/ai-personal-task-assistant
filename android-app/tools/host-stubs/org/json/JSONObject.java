@@ -86,4 +86,8 @@ public class JSONObject {
         // Indentation is not observable in host tests; a single-line document is produced.
         return JsonWriter.write(values);
     }
+
+    Map<String, Object> backing() {
+        return values;
+    }
 }

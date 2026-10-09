@@ -18,6 +18,14 @@ final class JsonWriter {
             sb.append("null");
             return;
         }
+        if (value instanceof JSONObject) {
+            writeValue(sb, ((JSONObject) value).backing());
+            return;
+        }
+        if (value instanceof JSONArray) {
+            writeValue(sb, ((JSONArray) value).backing());
+            return;
+        }
         if (value instanceof String) {
             writeString(sb, (String) value);
             return;

@@ -50,4 +50,8 @@ public class JSONArray {
     public String toString() {
         return JsonWriter.write(values);
     }
+
+    List<Object> backing() {
+        return values;
+    }
 }
