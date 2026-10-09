@@ -960,7 +960,7 @@ public final class MainActivity extends Activity {
         webGoButton.setOnClickListener(view -> navigateFromInput());
         providerRow.addView(webGoButton, new LinearLayout.LayoutParams(dp(76), dp(48)));
         webActions.addView(providerRow);
-        TextView requestNote = text("Online browsing is enabled by default. Online requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination; pages may contact third parties. The Online switch controls Daymark page/resource loads only. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
+        TextView requestNote = text("Browsing is available by default. Requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination; pages may contact third parties. Daymark does not prefetch pages; navigation starts only after a user tap. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
                 11, palette.muted, Typeface.NORMAL);
         webActions.addView(requestNote, topMargin(dp(3)));
         card.addView(webActions);
@@ -2701,7 +2701,7 @@ public final class MainActivity extends Activity {
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
         quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
         quickCaptureInput.setContentDescription(webMode
-                ? "Search the web or enter an HTTPS web address. Browser network access is Online browsing is enabled by default; this is sent only when Online is enabled and you tap Go."
+                ? "Search the web or enter an HTTPS web address. Navigation starts only after you tap Go or a provider/site shortcut."
                 : "What do you want to get done? Type a task");
         quickCaptureInput.setImeOptions(webMode ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
         taskModeButton.setTextColor(webMode ? palette.muted : palette.accent);
