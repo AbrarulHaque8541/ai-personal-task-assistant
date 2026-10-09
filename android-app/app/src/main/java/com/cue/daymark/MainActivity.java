@@ -382,7 +382,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        if (browserWebView != null) {
+        if (browserWebView != null || !browserTabs.isEmpty()) {
             discardBrowserWebView();
             if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
             if (browserStatus != null) {
