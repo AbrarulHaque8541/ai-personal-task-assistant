@@ -29,6 +29,11 @@ for marker in (
     "NodeFilter.FILTER_REJECT", 
     "node.getAttribute('aria-hidden')==='true'", 
     ".slice(0,60000)",
+    "maxChars=60000,maxNodes=10000",
+    "visited<maxNodes",
+    "value=value.slice(0,remaining)",
+    "length++;",
+
     "sourceUrl.equals(source.getUrl())",
     "showReaderModeDialog(title, body)",
 ):
