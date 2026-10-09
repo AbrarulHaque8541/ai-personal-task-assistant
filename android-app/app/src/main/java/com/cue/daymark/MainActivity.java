@@ -1199,10 +1199,10 @@ public final class MainActivity extends Activity {
             }
             String value = browserAddressInput == null || browserAddressInput.getText() == null
                     ? "" : browserAddressInput.getText().toString().trim();
+            selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
             if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
                 try {
-                    selectSearchEngine(entry.searchEngine);
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
                 } catch (IllegalArgumentException exception) {
                     if (browserAddressInput != null) browserAddressInput.setError(exception.getMessage());
