@@ -1175,6 +1175,9 @@ public final class MainActivity extends Activity {
         for (BrowserAddress.SearchEngine engine : BrowserAddress.SearchEngine.values()) {
             if (isBottomShortcutProvider(engine)) sites.addView(browserSearchShortcutButton(engine));
         }
+        for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
+            sites.addView(browserSiteButton(entry));
+        }
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
         // The provider shortcuts are placed after the weighted WebView below so they
@@ -1343,7 +1346,6 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isBottomShortcutProvider(BrowserAddress.SearchEngine engine) {
-        if (isAiProvider(engine)) return true;
         switch (engine) {
             case GOOGLE: case YANDEX: case BING: case DUCKDUCKGO:
             case BRAVE: case STARTPAGE: case YAHOO:
