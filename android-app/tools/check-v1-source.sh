@@ -257,7 +257,9 @@ assert online_setting and "browserNetworkPolicy.setOnlineEnabled(enabled)" in on
 assert online_setting and "showBrowserHome()" in online_setting.group(1)
 assert online_setting and "loadUrl(" not in online_setting.group(1) and "loadBrowserAddress(" not in online_setting.group(1), "enabling Online must not itself load a page"
 discard = re.search(r"private void discardBrowserWebView\(boolean stopLoading\)\s*\{(.*?)\n    \}", activity, re.S)
-assert discard and "setBlockNetworkLoads(true)" in discard.group(1) and "stopLoading()" in discard.group(1), "offline/background teardown must block and stop the page"
+destroy_webview = re.search(r"private void destroyBrowserWebView\(DaymarkWebView current, boolean stopLoading\)\s*\{(.*?)\n    \}", activity, re.S)
+assert discard and "destroyBrowserWebView(current, stopLoading)" in discard.group(1), "tab teardown must route through the common WebView destroy path"
+assert destroy_webview and "setBlockNetworkLoads(true)" in destroy_webview.group(1) and "stopLoading()" in destroy_webview.group(1), "offline/background teardown must block and stop each closed page"
 on_pause = re.search(r"protected void onPause\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert on_pause and "discardBrowserWebView()" in on_pause.group(1), "backgrounding must close the page"
 ensure_webview = re.search(r"private boolean ensureBrowserWebView\(\)\s*\{(.*?)\n    \}", activity, re.S)
