@@ -912,25 +912,14 @@ public final class MainActivity extends Activity {
 
         webActions = new LinearLayout(this);
         webActions.setOrientation(LinearLayout.VERTICAL);
-        browserOnlineToggle = new CheckBox(this);
-        browserOnlineToggle.setText("Online browsing (off by default)");
-        browserOnlineToggle.setMinHeight(dp(48));
-        browserOnlineToggle.setChecked(browserNetworkPolicy.isOnlineEnabled());
-        browserOnlineToggle.setContentDescription(browserNetworkPolicy.isOnlineEnabled()
-                ? "Online browsing is enabled. Every search or site still requires a tap. Switch off to block Daymark page and resource loads; Android System WebView Safe Browsing may make separate Google/Play Services checks."
-                : "Online browsing is off by default. Turn it on after reviewing the disclosure to allow Daymark page and resource loads, then tap Go or a site to send a request. The switch does not control platform-managed Android System WebView Safe Browsing, which may make Google/Play Services URL-hash or update checks.");
-        browserOnlineToggle.setOnCheckedChangeListener((button, checked) -> {
-            if (suppressBrowserOnlineToggleListener) return;
-            if (!checked) {
-                setBrowserOnlineEnabled(false);
-                return;
-            }
-            suppressBrowserOnlineToggleListener = true;
-            button.setChecked(false);
-            suppressBrowserOnlineToggleListener = false;
-            confirmBrowserOnlineAccess();
-        });
-        webActions.addView(browserOnlineToggle, bottomMargin(dp(2)));
+        browserOnlineToggle = null;
+        TextView connectionHint = text(
+                "Internet access is requested when you search or open a site.",
+                12, palette.muted, Typeface.NORMAL);
+        connectionHint.setPadding(dp(2), dp(5), dp(2), dp(5));
+        connectionHint.setContentDescription(
+                "Daymark asks before the first online page request. No website opens until you submit a search or tap a site.");
+        webActions.addView(connectionHint, bottomMargin(dp(2)));
         LinearLayout providerRow = new LinearLayout(this);
         providerRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView providerLabel = text("Search with", 12, palette.muted, Typeface.BOLD);
