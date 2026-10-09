@@ -1341,7 +1341,8 @@ public final class MainActivity extends Activity {
                     ? "" : browserAddressInput.getText().toString().trim();
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
-            String query = !lastBrowserQuery.isEmpty() ? lastBrowserQuery : value;
+            String query = !value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)
+                    ? value : lastBrowserQuery;
             if (!query.isEmpty() && !BrowserAddress.isLikelyWebAddress(query)) {
                 try {
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(query));
