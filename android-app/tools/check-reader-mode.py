@@ -30,6 +30,7 @@ for marker in (
     "node.getAttribute('aria-hidden')==='true'", 
     ".slice(0,60000)",
     "maxChars=60000,maxNodes=10000",
+    "slice(0,120).trim()",
     "visited<maxNodes",
     "value=value.slice(0,remaining)",
     "length++;",
