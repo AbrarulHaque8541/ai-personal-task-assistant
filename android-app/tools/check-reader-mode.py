@@ -25,7 +25,9 @@ for marker in (
     "browserWebView.getProgress() < 100",
     "source.evaluateJavascript(script",
     "document.querySelector('article')",
-    "clone.querySelectorAll('script,style,noscript,nav,aside,footer,form,button,svg,iframe')",
+    "document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT", 
+    "NodeFilter.FILTER_REJECT", 
+    "node.getAttribute('aria-hidden')==='true'", 
     ".slice(0,60000)",
     "sourceUrl.equals(source.getUrl())",
     "showReaderModeDialog(title, body)",
@@ -42,4 +44,5 @@ for marker in (
     assert marker in dialog, f"Reader Mode must render/copy plain extracted text: {marker}"
 assert "loadUrl(" not in dialog and "loadDataWithBaseURL(" not in dialog, \
     "Reader Mode must not render extracted content as HTML or trigger another page load"
+assert "cloneNode(true)" not in reader, "Reader Mode should not clone the full page DOM and increase memory pressure"
 print("PASS: Reader Mode is user-triggered, HTTPS-only, bounded, local text-only, and separate from full-screen view")
