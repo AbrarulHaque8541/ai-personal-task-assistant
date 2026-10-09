@@ -1,4 +1,4 @@
-package com.cue.daymark;
+successfully downloaded text file (SHA: 1c4c4063440f951fc8b292bacb23e022dcc4dfc9)package com.cue.daymark;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -130,7 +130,7 @@ public final class ExtensionPackageParserSmoke {
                 "manifest document_start normalizes to the effective document_end timing");
         check(ext.warnings.contains("document_start run timing is not supported"),
                 "manifest imports disclose the timing limitation");
-        check(ext.id.matches("webext\\.[0-9a-f]{16}"),
+        check(ext.id.matches("webext\\.[0-9a-f]{64}"),
                 "manifest ids are SHA-256 digests, not 32-bit string hashes");
         check(ext.warnings.contains("Background/service worker was not imported"),
                 "background workers are refused with a warning");
