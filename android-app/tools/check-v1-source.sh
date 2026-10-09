@@ -157,9 +157,10 @@ assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
-assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "missing/corrupt online preference must default Offline"
-assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY," in activity, "browser Online preference must be read locally"
-assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in activity, "explicit Online choice must persist both states"
+assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "browser network default must be explicit"
+assert "browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();" in activity, "legacy Offline preference must migrate to enabled"
+assert "browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();" in activity, "runtime failure must not persist a hidden Offline state"
+assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" not in activity, "the removed Offline control must not persist a hidden disabled state"
 assert "browserOnlineToggle = null;" in activity and "Internet access is requested when you search or open a site." in activity, "browser UI must not expose an Online/Offline toggle"
 assert "new CheckBox(this)" not in activity[activity.index("private View buildBrowserAddressBar()"):activity.index("private void navigateFromBrowserInput()")], "address bar must not create an Online/Offline checkbox"
 assert "confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress))" in activity, "first navigation should continue after explicit network consent"
@@ -192,13 +193,13 @@ for expected in ("tab count must be bounded", "closing the last tab should leave
 assert '"daymark-download".equalsIgnoreCase(request.getUrl().getScheme())' in webview, "custom media handoff must be intercepted before normal web navigation"
 assert "onShowCustomView(View view, CustomViewCallback callback)" in webview and "onHideCustomView()" in webview, "WebView must support HTML5 full-screen video"
 assert "onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback)" in activity and "FLAG_FULLSCREEN" in activity, "host Activity must display full-screen media and restore the system UI"
-assert "Offline by default" in activity and "each search or site still requires a separate tap" in activity
+assert "Browsing starts ready for explicit searches and sites" in activity and "tap Go or a provider shortcut" in activity
 assert "selected destination receives your query or URL and normal connection data" in activity, "provider/site egress must remain explicit"
 assert "may log it" in activity and "may contact and be logged by third-party endpoints" in activity, "provider and page endpoint logging must not be ruled out"
 assert "Google/Play Services" in activity and "The Safe Browsing provider itself is not selectable in Daymark" in activity, "Safe Browsing provider and platform traffic must be disclosed separately from its local on/off setting"
-assert "URL-hash-based checks" in activity and "WebView M126+ may send a partial URL hash through a proxy" in activity
-assert "This does not mean every full URL is sent" in activity and "This is not a claim that every full URL is sent" in activity
-assert "Daymark sends no task text and adds no app analytics" in activity
+assert "URL-hash-based checks" in activity and "WebView M126 and later may send a partial URL hash through a proxy" in activity
+assert "This does not mean every full URL is sent" in activity
+assert "Daymark sends no task text" in activity and "adds no app analytics" in activity
 assert "WebView diagnostic metrics are opted out" in activity
 assert "The Online switch blocks Daymark page/resource loads only" in activity
 assert "does not control Android System WebView Safe Browsing" in activity
@@ -464,7 +465,7 @@ print("PASS encrypted task-store policy: writer and reader share invalid/duplica
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
 print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
-print("PASS browser policy: Offline by default with persisted opt-in, Daymark page/resource loads blocked while Offline, and a separate tap required for each request")
+print("PASS browser policy: normal browsing by default, legacy Offline state migrated, HTTPS navigation still requires a separate user tap")
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")
