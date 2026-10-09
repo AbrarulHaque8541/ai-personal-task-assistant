@@ -89,6 +89,7 @@ import com.cue.daymark.updater.UpdaterRecoveryStore;
 
 // Browser workspace + task workspace share one Activity but never share visible controls.
 public final class MainActivity extends Activity {
+    private static final int MAX_BROWSER_TABS = 6;
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_EXPORT_EXTENSION = 7813;
@@ -1675,6 +1676,10 @@ public final class MainActivity extends Activity {
 
     private void createBrowserTab() {
         if (!webMode || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        if (browserTabs.size() >= MAX_BROWSER_TABS) {
+            showToast("You can keep up to " + MAX_BROWSER_TABS + " tabs open. Close a tab first.");
+            return;
+        }
         if (browserWebView != null) browserWebView.setVisibility(View.GONE);
         browserWebView = null;
         if (!ensureBrowserWebView()) {
@@ -1703,7 +1708,7 @@ public final class MainActivity extends Activity {
             openTab.setVisibility(openTab == tab && hasPage ? View.VISIBLE : View.GONE);
         }
         if (browserHomeView != null) browserHomeView.setVisibility(hasPage ? View.GONE : View.VISIBLE);
-        if (browserProviderRow != null) browserProviderRow.setVisibility(hasPage ? View.GONE : View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(hasPage ? View.GONE : View.VISIBLE);
         if (browserAddressInput != null) browserAddressInput.setText(hasPage ? tab.getUrl() : "");
         if (browserStatus != null) browserStatus.setText(hasPage
