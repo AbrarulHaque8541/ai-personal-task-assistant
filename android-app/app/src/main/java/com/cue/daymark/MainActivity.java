@@ -2036,6 +2036,10 @@ public final class MainActivity extends Activity {
     }
 
     private void queueBrowserDownload(String url, String userAgent, String contentDisposition, String mimeType) {
+        if (!browserNetworkPolicy.allowsRemoteLoads()) {
+            showToast("Download blocked because browser network access is unavailable.");
+            return;
+        }
         if (!BrowserAddress.isAllowedWebUrl(url)) {
             showToast("Download blocked: HTTPS is required.");
             return;
@@ -2104,7 +2108,7 @@ public final class MainActivity extends Activity {
 
     private void findMediaOnPage() {
         if (!browserNetworkPolicy.allowsRemoteLoads() || browserWebView == null) {
-            showToast("Open a page first, with Online enabled.");
+            showToast("Open a page first.");
             return;
         }
         if (browserWebView.getUrl() == null || browserWebView.getUrl().isEmpty()) {
