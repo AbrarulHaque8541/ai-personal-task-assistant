@@ -152,7 +152,7 @@ public final class ExtensionPackageParserSmoke {
                 "extensions with an empty content_scripts list are rejected");
     }
 
-    private static void webExtensionMatchScopesFailClosed() {
+    private static void webExtensionMatchScopesFailClosed() throws Exception {
         expectWebExtensionRejected("{\"name\":\"No matches\",\"content_scripts\":[{\"js\":[\"a.js\"]}]}",
                 "content scripts without a matches array fail closed");
         expectWebExtensionRejected("{\"name\":\"Empty matches\",\"content_scripts\":[{\"matches\":[],\"js\":[\"a.js\"]}]}",
