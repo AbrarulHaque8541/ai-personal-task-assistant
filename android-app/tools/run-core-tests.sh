@@ -7,6 +7,9 @@ python3 "$ROOT/tools/check-backup-rules.py"
 python3 "$ROOT/tools/check-task-template-source.py" "$ROOT"
 javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/host-stubs/android/content/Context.java" \
+  "$ROOT/tools/host-stubs/org/json/JSONObject.java" \
+  "$ROOT/tools/host-stubs/org/json/JSONArray.java" \
+  "$ROOT/tools/host-stubs/org/json/JsonWriter.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/ActivityCallbackGate.java" \
@@ -24,6 +27,8 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserSettingsPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserViewportPolicy.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/ExtensionPackageParser.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/CosmeticFilterToCss.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterCore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterRecoveryStore.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/PendingSaveTransaction.java" \
@@ -40,7 +45,9 @@ javac --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/BrowserAddressSmoke.java" \
   "$ROOT/tools/BrowserNetworkPolicySmoke.java" \
   "$ROOT/tools/BrowserSettingsPolicySmoke.java" \
-  "$ROOT/tools/BrowserViewportPolicySmoke.java"
+  "$ROOT/tools/BrowserViewportPolicySmoke.java" \
+  "$ROOT/tools/ExtensionPackageParserSmoke.java" \
+  "$ROOT/tools/CosmeticFilterToCssSmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskSnapshotCodecSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserExtensionSmoke
@@ -51,3 +58,5 @@ java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserAddressSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserNetworkPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSettingsPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserViewportPolicySmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.ExtensionPackageParserSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.CosmeticFilterToCssSmoke
