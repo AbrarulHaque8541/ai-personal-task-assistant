@@ -13,6 +13,7 @@ sh ./tools/run-updater-picker-routing-tests.sh
 sh ./tools/run-diagnostics-tests.sh
 sh ./tools/run-web-mode-tests.sh
 sh ./tools/run-text-scale-tests.sh
+sh ./tools/run-check-guard-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-browser-catalog.py "$ROOT"
 python3 ./tools/check-extension-trust-confirmation.py "$ROOT"

@@ -40,8 +40,8 @@ if "STATE_WEB_MODE" in ACTIVITY:
           "the mode must be restored before buildInterface() so the UI reflects it")
     check(save_at > 0, "the save site must exist")
 else:
-    print("PENDING web mode state: apply "
-          "tools/patches/web-mode-state-restore-mainactivity.patch to persist "
-          "webMode across recreation")
+    raise AssertionError(
+        "web-mode-state: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
 print(f"PASS web mode state source checks: {checks} assertions")

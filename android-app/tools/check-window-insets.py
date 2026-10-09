@@ -41,7 +41,8 @@ if "WindowInsets.Type.ime()" in ACTIVITY:
     check("WindowInsetsPolicy.CONSUME_IME_INSETS" in ACTIVITY,
           "the Activity must gate IME consumption on the policy")
 else:
-    print("PENDING window insets: apply tools/patches/ime-keyboard-insets-mainactivity.patch "
-          "to wire the IME inset into MainActivity")
+    raise AssertionError(
+        "window-insets: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
 print(f"PASS window insets source checks: {checks} assertions")

@@ -41,8 +41,8 @@ if "StartupDiagnostics.record(" in ACTIVITY:
     check(not empty_sites,
           f"no empty catch block may remain in MainActivity: {empty_sites}")
 else:
-    print("PENDING silent-catch observability: apply "
-          "tools/patches/silent-catch-observability-mainactivity.patch to wire "
-          "StartupDiagnostics into MainActivity")
+    raise AssertionError(
+        "silent-catch: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
 print(f"PASS silent-catch source checks: {checks} assertions")

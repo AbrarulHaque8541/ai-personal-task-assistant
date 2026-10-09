@@ -35,8 +35,8 @@ if "TextScalePolicy.combined(" in ACTIVITY:
     check("getResources().getConfiguration().fontScale" in ACTIVITY,
           "the device font scale must be read from the configuration")
 else:
-    print("PENDING system font scale: apply "
-          "tools/patches/system-font-scale-mainactivity.patch to fold the device "
-          "font scale into the app text scale")
+    raise AssertionError(
+        "text-scale: required MainActivity wiring is missing; "
+        "this check now fails instead of reporting PENDING (issue #196)")
 
 print(f"PASS text scale source checks: {checks} assertions")
