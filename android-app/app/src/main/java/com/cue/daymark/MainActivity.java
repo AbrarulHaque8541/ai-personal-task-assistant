@@ -1550,6 +1550,86 @@ public final class MainActivity extends Activity {
         return true;
     }
 
+    private void updateBrowserTabsButton() {
+        if (browserTabsButton == null) return;
+        browserTabsButton.setText("Tabs " + browserTabs.size());
+        browserTabsButton.setContentDescription(browserTabs.size() + " open browser tabs. Tap to switch tabs, close the current tab, or create a new tab.");
+    }
+
+    private void showBrowserTabsDialog() {
+        updateBrowserTabsButton();
+        String[] entries = new String[browserTabs.size()];
+        for (int i = 0; i < browserTabs.size(); i++) {
+            DaymarkWebView tab = browserTabs.get(i);
+            String title = tab.getTitle();
+            if (title == null || title.trim().isEmpty()) title = tab.getUrl();
+            if (title == null || title.trim().isEmpty()) title = "New page";
+            entries[i] = (tab == browserWebView ? "✓ " : "") + title;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("Browser tabs (" + browserTabs.size() + ")")
+                .setItems(entries, (dialog, which) -> switchBrowserTab(which))
+                .setNeutralButton("New tab", (dialog, which) -> startNewBrowserTab())
+                .setPositiveButton("Done", null);
+        if (browserWebView != null) {
+            builder.setNegativeButton("Close current", (dialog, which) -> closeCurrentBrowserTab());
+        }
+        builder.show();
+    }
+
+    private void startNewBrowserTab() {
+        if (browserWebView != null) browserWebView.setVisibility(View.GONE);
+        browserWebView = null;
+        if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+        if (browserAddressInput != null) browserAddressInput.setText("");
+        if (browserStatus != null) browserStatus.setText("New tab. Enter a search or HTTPS address.");
+        updateBrowserTabsButton();
+        syncBrowserButtons();
+    }
+
+    private void switchBrowserTab(int index) {
+        if (index < 0 || index >= browserTabs.size()) return;
+        for (DaymarkWebView tab : browserTabs) tab.setVisibility(View.GONE);
+        browserWebView = browserTabs.get(index);
+        browserWebView.setVisibility(View.VISIBLE);
+        if (browserHomeView != null) browserHomeView.setVisibility(View.GONE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
+        if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
+        if (browserAddressInput != null) {
+            String url = browserWebView.getUrl();
+            browserAddressInput.setText(url == null ? "" : url);
+        }
+        if (browserStatus != null) {
+            String title = browserWebView.getTitle();
+            browserStatus.setText(title == null || title.trim().isEmpty() ? "Tab restored." : title);
+        }
+        updateBrowserTabsButton();
+        syncBrowserButtons();
+    }
+
+    private void closeCurrentBrowserTab() {
+        DaymarkWebView current = browserWebView;
+        if (current == null) return;
+        browserTabs.remove(current);
+        browserWebView = null;
+        try {
+            current.getSettings().setBlockNetworkLoads(true);
+            current.stopLoading();
+        } catch (RuntimeException ignored) {
+            // A crashed renderer is already detached from remote loading.
+        }
+        if (current.getParent() instanceof ViewGroup) ((ViewGroup) current.getParent()).removeView(current);
+        current.destroy();
+        if (browserTabs.isEmpty()) {
+            showBrowserHome();
+            return;
+        }
+        switchBrowserTab(browserTabs.size() - 1);
+        updateBrowserTabsButton();
+    }
+
     private void showBrowserOverflowMenu(View anchor) {
         final String[] actions = {
                 "Reload / Stop", "Find in page", "Share page", "Copy page URL",
