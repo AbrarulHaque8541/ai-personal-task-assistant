@@ -1482,6 +1482,7 @@ public final class MainActivity extends Activity {
                             BrowserHistory.add(current, safeHistoryUrl)).apply();
                 }
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
+                injectVideoDownloadOverlay(browserWebView);
                 syncBrowserButtons();
             }
 
@@ -1968,6 +1969,43 @@ public final class MainActivity extends Activity {
     // links on the current page so they can be downloaded even when the site
     // itself offers no download button. Protected streaming players (DRM or
     // hidden stream manifests) stay out of scope by design.
+    /**
+     * Best-effort in-player download affordance for direct HTTPS HTML5 media.
+     * It creates only a user-clicked page button and a normal HTTPS anchor; there is
+     * no JavaScript-to-native bridge and no DRM/manifest/blob extraction.
+     */
+    private void injectVideoDownloadOverlay(DaymarkWebView target) {
+        if (target == null || !browserNetworkPolicy.allowsRemoteLoads()) return;
+        String script = "(function(){"
+                + "if(window.__daymarkVideoDownloadInstalled)return;window.__daymarkVideoDownloadInstalled=true;"
+                + "var button=null,active=null,raf=0;"
+                + "function direct(v){var u='';try{u=v.currentSrc||v.src||'';}catch(e){}"
+                + "return /^https:\\/\\//i.test(u)?u:'';}"
+                + "function ensure(){if(button)return;button=document.createElement('button');"
+                + "button.type='button';button.textContent='Download';button.setAttribute('aria-label','Download this video');"
+                + "button.style.cssText='position:fixed;z-index:2147483647;display:none;border:0;border-radius:18px;padding:9px 13px;background:#171717;color:#fff;font:600 13px sans-serif;box-shadow:0 2px 10px #0008;';"
+                + "button.addEventListener('click',function(ev){ev.preventDefault();ev.stopPropagation();"
+                + "var url=active&&direct(active);if(!url)return;var a=document.createElement('a');a.href=url;"
+                + "a.download=(url.split('/').pop().split(/[?#]/)[0]||'video');a.rel='noopener';"
+                + "document.body.appendChild(a);a.click();a.remove();});document.documentElement.appendChild(button);}"
+                + "function place(){raf=0;if(!button||!active||!document.documentElement.contains(active)||!direct(active)){if(button)button.style.display='none';return;}"
+                + "var r=active.getBoundingClientRect();if(r.width<100||r.height<70||r.bottom<0||r.top>innerHeight){button.style.display='none';return;}"
+                + "button.style.display='block';button.style.left=Math.max(6,Math.min(innerWidth-100,r.right-90))+'px';"
+                + "button.style.top=Math.max(6,Math.min(innerHeight-48,r.bottom-48))+'px';}"
+                + "function schedule(){if(!raf)raf=requestAnimationFrame(place);}"
+                + "function bind(v){if(v.__daymarkDownloadBound)return;v.__daymarkDownloadBound=true;"
+                + "['play','pause','timeupdate','loadedmetadata','emptied'].forEach(function(n){v.addEventListener(n,function(){if(!active||!active.paused)active=v;schedule();},{passive:true});});"
+                + "v.addEventListener('click',function(){active=v;schedule();},{passive:true});}"
+                + "function scan(){var vs=document.querySelectorAll('video');for(var i=0;i<vs.length;i++){bind(vs[i]);}"
+                + "if(!active||!document.documentElement.contains(active)){for(var j=0;j<vs.length;j++){if(!vs[j].paused&&direct(vs[j])){active=vs[j];break;}}}"
+                + "schedule();}"
+                + "ensure();scan();window.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);"
+                + "document.addEventListener('play',function(e){if(e.target&&e.target.tagName==='VIDEO'){active=e.target;scan();} },true);"
+                + "try{new MutationObserver(scan).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
+                + "})();";
+        target.evaluateJavascript(script, null);
+    }
+
     private void findMediaOnPage() {
         if (!browserNetworkPolicy.allowsRemoteLoads() || browserWebView == null) {
             showToast("Open a page first, with Online enabled.");
