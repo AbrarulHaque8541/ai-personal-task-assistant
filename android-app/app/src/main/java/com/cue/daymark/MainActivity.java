@@ -1687,6 +1687,7 @@ public final class MainActivity extends Activity {
         }
         if (browserWebView != null) browserWebView.setVisibility(View.GONE);
         browserWebView = null;
+        browserLastSearchQuery = "";
         if (!ensureBrowserWebView()) {
             showBrowserOfflineStatus();
             return;
