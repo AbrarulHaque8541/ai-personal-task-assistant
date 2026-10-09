@@ -6,22 +6,17 @@ public final class BrowserNetworkPolicySmoke {
 
     public static void main(String[] args) {
         BrowserNetworkPolicy policy = new BrowserNetworkPolicy();
-        assert !policy.isOnlineEnabled() : "new installs must start offline";
-        assert !policy.allowsRemoteLoads() : "offline mode must not permit remote loads";
-        assert policy.shouldBlockWebViewLoads() : "offline mode must block WebView network loads";
-
+        assert policy.isOnlineEnabled() : "fresh install should permit ordinary browsing";
+        assert policy.allowsRemoteLoads() : "new installs must not stay stuck offline";
+        assert !policy.shouldBlockWebViewLoads() : "default browsing must not block WebView loads";
+        policy.setOnlineEnabled(false);
+        assert !policy.isOnlineEnabled() : "policy can still fail closed";
+        assert !policy.allowsRemoteLoads() : "blocked mode must deny remote loads";
+        assert policy.shouldBlockWebViewLoads() : "blocked mode must stop WebView resources";
         policy.setOnlineEnabled(true);
-        assert policy.isOnlineEnabled() : "explicit online choice should enable browsing";
-        assert policy.allowsRemoteLoads() : "online mode should permit user-initiated loads";
-        assert !policy.shouldBlockWebViewLoads() : "online mode should unblock WebView loads";
-
         BrowserNetworkPolicy restored = new BrowserNetworkPolicy(policy.isOnlineEnabled());
-        assert restored.isOnlineEnabled() : "the saved user choice should be restorable";
-        restored.setOnlineEnabled(false);
-        assert !restored.isOnlineEnabled() : "the user can switch online browsing off";
-        assert !restored.allowsRemoteLoads() : "turning offline blocks future remote loads";
-        assert restored.shouldBlockWebViewLoads() : "turning offline blocks WebView resources";
-
-        System.out.println("PASS browser network policy: offline default, explicit online, saved-choice restore, and Daymark page/resource-load blocking");
+        assert restored.allowsRemoteLoads() : "normal browsing state is restorable";
+        assert !restored.shouldBlockWebViewLoads() : "restored normal browsing must not remain blocked";
+        System.out.println("PASS browser network policy: normal browsing default and fail-closed blocked state");
     }
 }

@@ -114,6 +114,7 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_HISTORY_KEY = "history_urls";
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
+    private static final String BROWSER_NETWORK_DISCLOSURE_ACCEPTED_KEY = "network_disclosure_accepted";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
 
     private final List<Task> tasks = new ArrayList<>();
@@ -241,6 +242,7 @@ public final class MainActivity extends Activity {
     private Button browserSettingsButton;
     private Button browserOverflowButton;
     private Button browserMediaButton;
+    private String lastBrowserSearchQuery = "";
     private Button browserExpandButton;
     private Button browserReaderButton;
     private LinearLayout browserReaderActionRow;
@@ -304,7 +306,9 @@ public final class MainActivity extends Activity {
         browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
         searchEngine = BrowserAddress.SearchEngine.fromName(
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
-        browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
+        browserNetworkPolicy = new BrowserNetworkPolicy(true);
+        // Page traffic still starts only after a user taps Go, a provider, or a history entry.
+        browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
         browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
         sanitizeStoredBrowserHistory();
         buildInterface();
@@ -929,7 +933,7 @@ public final class MainActivity extends Activity {
             suppressBrowserOnlineToggleListener = false;
             confirmBrowserOnlineAccess();
         });
-        webActions.addView(browserOnlineToggle, bottomMargin(dp(2)));
+        browserOnlineToggle.setVisibility(View.GONE);
         LinearLayout providerRow = new LinearLayout(this);
         providerRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView providerLabel = text("Search with", 12, palette.muted, Typeface.BOLD);
@@ -1062,6 +1066,7 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
+            if (!BrowserAddress.isLikelyWebAddress(value)) lastBrowserSearchQuery = value.trim();
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
             navigateBrowserTo(address);
@@ -1157,12 +1162,11 @@ public final class MainActivity extends Activity {
         // Curated AI web providers from the shared catalog. These are normal HTTPS
         // shortcuts, not API integrations; the catalog keeps every label/URL pair in
         // one place so the row and the catalog cannot drift apart.
-        for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
-            sites.addView(browserSiteButton(entry));
+        for (BrowserAddress.SearchEngine engine : BrowserAddress.SearchEngine.values()) {
+            sites.addView(browserProviderButton(engine));
         }
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
-        panel.addView(browserProviderRow, bottomMargin(dp(3)));
 
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
@@ -1187,6 +1191,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         panel.addView(browserViewport, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        panel.addView(browserProviderRow, bottomMargin(dp(2)));
         return panel;
     }
 
@@ -1325,6 +1330,41 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private Button browserProviderButton(BrowserAddress.SearchEngine engine) {
+        Button button = compactButton(engine.label, false);
+        button.setMinHeight(dp(32));
+        button.setMinimumHeight(dp(32));
+        button.setTextSize(10 * textScale);
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setBackground(shape(engine == searchEngine ? palette.accentSoft : palette.surfaceAlt, 16, palette.surfaceAlt));
+        button.setContentDescription("Search this query with " + engine.label);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
+        params.setMargins(0, 0, dp(5), 0);
+        button.setLayoutParams(params);
+        button.setOnClickListener(view -> {
+            if (!webMode) return;
+            String typed = browserAddressInput == null || browserAddressInput.getText() == null
+                    ? "" : browserAddressInput.getText().toString().trim();
+            String currentUrl = browserWebView == null ? "" : browserWebView.getUrl();
+            String query = (!lastBrowserSearchQuery.isEmpty() && !typed.isEmpty() && typed.equals(currentUrl))
+                    ? lastBrowserSearchQuery : typed;
+            selectSearchEngine(engine);
+            if (query.isEmpty() || BrowserAddress.isLikelyWebAddress(query)) {
+                browserStatus.setText("Provider changed to " + engine.label + ". Enter a search and tap Go to submit it.");
+                return;
+            }
+            lastBrowserSearchQuery = query;
+            try {
+                String target = BrowserAddress.requireAllowedWebUrl(engine.searchUrl(query));
+                browserAddressInput.setText(query);
+                navigateBrowserTo(target);
+            } catch (IllegalArgumentException invalidQuery) {
+                browserStatus.setText("Nothing was opened. Check the search query.");
+            }
+        });
+        return button;
+    }
+
     private Button browserSiteButton(AiSiteCatalog.Entry entry) {
         Button button = compactButton(entry.label, false);
         button.setMinHeight(dp(34));
@@ -1344,6 +1384,7 @@ public final class MainActivity extends Activity {
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
             if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
+                lastBrowserSearchQuery = value;
                 try {
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
                 } catch (IllegalArgumentException exception) {
@@ -1394,7 +1435,7 @@ public final class MainActivity extends Activity {
         chooseParams.gravity = Gravity.CENTER_HORIZONTAL;
         home.addView(chooseProvider, chooseParams);
 
-        TextView privacyHint = text("Offline until you enable Online. Privacy details are above.", 11,
+        TextView privacyHint = text("Your query goes to the provider you choose. A one-time notice appears before the first connection.", 11,
                 palette.muted, Typeface.NORMAL);
         privacyHint.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams privacyParams = new LinearLayout.LayoutParams(
@@ -1412,6 +1453,7 @@ public final class MainActivity extends Activity {
         }
         String input = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
         try {
+            if (!BrowserAddress.isLikelyWebAddress(input)) lastBrowserSearchQuery = input.trim();
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
             navigateBrowserTo(address);
@@ -1432,6 +1474,21 @@ public final class MainActivity extends Activity {
             safeAddress = BrowserAddress.requireAllowedWebUrl(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
+            return;
+        }
+        if (!browserPreferences.getBoolean(BROWSER_NETWORK_DISCLOSURE_ACCEPTED_KEY, false)) {
+            final String pendingAddress = safeAddress;
+            new AlertDialog.Builder(this)
+                    .setTitle("Before you browse")
+                    .setMessage("The selected search provider or website receives the query or URL and ordinary connection data such as your IP address and browser identification, and may log it. Pages may contact additional endpoints. Android System WebView Safe Browsing is separate and may contact Google/Play Services depending on the device and WebView version. Daymark blocks insecure HTTP and does not send task text. Continue only if you agree to connect.")
+                    .setNegativeButton("Cancel", (dialog, which) -> {
+                        if (browserStatus != null) browserStatus.setText("No page was requested.");
+                    })
+                    .setPositiveButton("Continue", (dialog, which) -> {
+                        browserPreferences.edit().putBoolean(BROWSER_NETWORK_DISCLOSURE_ACCEPTED_KEY, true).apply();
+                        loadBrowserAddress(pendingAddress);
+                    })
+                    .show();
             return;
         }
         loadBrowserAddress(safeAddress);
@@ -1456,7 +1513,7 @@ public final class MainActivity extends Activity {
             return;
         }
         browserHomeView.setVisibility(View.GONE);
-        if (browserProviderRow != null) browserProviderRow.setVisibility(View.GONE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
