@@ -1,4 +1,4 @@
-successfully downloaded text file (SHA: 1c4c4063440f951fc8b292bacb23e022dcc4dfc9)package com.cue.daymark;
+package com.cue.daymark;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
