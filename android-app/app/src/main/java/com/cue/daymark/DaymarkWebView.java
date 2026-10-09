@@ -26,7 +26,7 @@ final class DaymarkWebView extends WebView {
         void onNavigationBlocked(String url);
         void onOfflineNavigationBlocked();
         void onHttpNavigationBlocked(String url, boolean redirect);
-        void onLoadError();
+        void onLoadError(int errorCode, String description, String failingUrl);
         void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength);
         void onMediaDownloadRequested(String url);
         void onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback);
@@ -49,7 +49,6 @@ final class DaymarkWebView extends WebView {
         listener.onHideFullscreen();
         if (callback != null) callback.onCustomViewHidden();
     }
-
 
     private View fullscreenView;
     private WebChromeClient.CustomViewCallback fullscreenCallback;
@@ -133,7 +132,7 @@ final class DaymarkWebView extends WebView {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.cancel();
-                listener.onLoadError();
+                listener.onLoadError(-1, "certificate error: " + error.getPrimaryError(), error.getUrl());
             }
 
             @Override
@@ -146,7 +145,9 @@ final class DaymarkWebView extends WebView {
                 if ("http".equalsIgnoreCase(request.getUrl().getScheme())) {
                     listener.onHttpNavigationBlocked(request.getUrl().toString(), request.isRedirect());
                 } else {
-                    listener.onLoadError();
+                    listener.onLoadError(error.getErrorCode(),
+                            error.getDescription() == null ? "" : error.getDescription().toString(),
+                            request.getUrl().toString());
                 }
             }
 
