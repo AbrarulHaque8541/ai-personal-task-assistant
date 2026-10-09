@@ -70,9 +70,10 @@ final class DaymarkWebView extends WebView {
                 String url = request.getUrl().toString();
                 if ("daymark-media".equalsIgnoreCase(request.getUrl().getScheme())) {
                     String source = request.getUrl().getQueryParameter("url");
+                    String mediaType = request.getUrl().getQueryParameter("type");
                     if (request.isForMainFrame() && request.hasGesture()
-                            && BrowserAddress.isAllowedWebUrl(source)) {
-                        listener.onDownloadRequested(source, getSettings().getUserAgentString(), null, null, -1L);
+                            && BrowserMediaUrlPolicy.isAllowedDirectMediaUrl(source, mediaType)) {
+                        listener.onDownloadRequested(source, getSettings().getUserAgentString(), null, mediaType, -1L);
                     } else {
                         listener.onNavigationBlocked(url);
                     }
