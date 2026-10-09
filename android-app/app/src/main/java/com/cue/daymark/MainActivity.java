@@ -1153,8 +1153,7 @@ public final class MainActivity extends Activity {
         browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
         browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
         browserPrivacyButton.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
-        browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText
-                + "\\n\\nThe selected provider may log queries. Daymark does not send task text or run searches in the background."));
+        browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
