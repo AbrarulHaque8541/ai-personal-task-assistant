@@ -58,12 +58,13 @@ final class ExtensionPackageParser {
         }
         List<String> matches = readStringList(o.optJSONArray("matches"), 32);
         List<String> excludes = readStringList(o.optJSONArray("excludes"), 32);
+        validateScopePatterns(matches, "Daymark extension matches", true);
+        validateScopePatterns(excludes, "Daymark extension excludes", false);
         List<String> disabledSites = new ArrayList<>();
         for (String site : readStringList(o.optJSONArray("disabledSites"), 64)) {
             String host = BrowserExtension.normalizeSiteHost(site);
             if (host != null && !disabledSites.contains(host)) disabledSites.add(host);
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
         String css = o.optString("css", "");
         String js = o.optString("js", "");
         if (css.length() + js.length() > MAX_PACK_CHARS) {
@@ -99,16 +100,19 @@ final class ExtensionPackageParser {
         Map<String, String> files = new HashMap<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
-            int fileCount = 0;
+            int entryCount = 0;
             long totalDecompressed = 0;
             int totalText = 0;
             while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) continue;
-                if (++fileCount > 128) throw new IllegalArgumentException("Extension archive contains too many files.");
-                String path = entry.getName().replace('\\', '/');
+                if (++entryCount > 128) {
+                    throw new IllegalArgumentException("Extension archive contains too many files or directory entries.");
+                }
+                String originalPath = entry.getName();
+                String path = originalPath == null ? "" : originalPath.replace('\\', '/');
                 // Path and type checks decide storage only. Every entry is still drained within
                 // the decompressed budget, so ignored files cannot bypass resource limits (issue #190).
-                boolean store = !path.startsWith("/") && !path.contains("../") && path.indexOf('\\') < 0
+                boolean store = !entry.isDirectory() && originalPath != null
+                        && !path.startsWith("/") && !path.contains("../") && path.indexOf('\\') < 0
                         && (path.equals("manifest.json") || path.endsWith(".js") || path.endsWith(".css"));
                 long entryDecompressed = 0;
                 ByteArrayOutputStream out = store ? new ByteArrayOutputStream() : null;
@@ -187,6 +191,19 @@ final class ExtensionPackageParser {
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
     }
 
+    /** Validate explicit scopes and never replace an absent scope with an all-sites wildcard. */
+    private static void validateScopePatterns(List<String> patterns, String field, boolean required) {
+        if (patterns == null || patterns.isEmpty()) {
+            if (required) throw new IllegalArgumentException(field + " requires at least one supported match scope.");
+            return;
+        }
+        for (String pattern : patterns) {
+            if (!isSupportedMatchPattern(pattern)) {
+                throw new IllegalArgumentException(field + " contains an unsupported match scope: " + pattern);
+            }
+        }
+    }
+
     /** Fail closed on empty or unsupported match patterns instead of silently broadening scope (issue #194). */
     private static List<String> readValidatedPatterns(JSONArray values, String field) {
         List<String> out = new ArrayList<>();
@@ -207,7 +224,12 @@ final class ExtensionPackageParser {
         if (value == null) return false;
         String pattern = value.trim();
         if (pattern.equals("<all_urls>")) return true;
-        return SUPPORTED_MATCH.matcher(pattern).matches();
+        Matcher matcher = SUPPORTED_MATCH.matcher(pattern);
+        if (!matcher.matches()) return false;
+        int pathStart = pattern.indexOf('/', pattern.indexOf("://") + 3);
+        if (pathStart < 0) return false;
+        String path = pattern.substring(pathStart);
+        return path.indexOf('*') < 0 || (path.endsWith("*") && path.lastIndexOf('*') == path.length() - 1);
     }
 
     private static void appendFiles(StringBuilder output, JSONArray values, Map<String, String> files,
@@ -231,8 +253,8 @@ final class ExtensionPackageParser {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(16);
-            for (int i = 0; i < 8; i++) {
+            StringBuilder hex = new StringBuilder(64);
+            for (int i = 0; i < hash.length; i++) {
                 hex.append(String.format(Locale.ROOT, "%02x", hash[i] & 0xff));
             }
             return hex.toString();
@@ -307,7 +329,8 @@ final class ExtensionPackageParser {
                 }
             }
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
+        validateScopePatterns(matches, "Userscript matches", true);
+        validateScopePatterns(excludes, "Userscript excludes", false);
 
         StringBuilder warnings = new StringBuilder();
         boolean unsafeGrant = false;
