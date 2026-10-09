@@ -22,6 +22,8 @@ public final class ExtensionPackageParserSmoke {
         userscriptHeaderParsesAndGrantPolicyIsWarned();
         userscriptWithoutMatchIsRejected();
         webExtensionManifestTranslatesContentScriptsOnly();
+        extensionIdsResistJavaHashCollisions();
+        importedDocumentStartTimingIsReportedHonestly();
         webExtensionManifestWithoutContentScriptsIsRejected();
         archiveImportSkipsTraversalEntriesAndUnsupportedFiles();
         archiveWithoutManifestIsRejected();
@@ -50,8 +52,10 @@ public final class ExtensionPackageParserSmoke {
         check(parsed.excludes.contains("https://example.com/private"), "exclude rules survive a JSON round trip");
         check(original.css.equals(parsed.css), "css survives a JSON round trip");
         check(original.js.equals(parsed.js), "js survives a JSON round trip");
-        check("document_start".equals(parsed.runAt), "runAt survives a JSON round trip");
-        check(original.warnings.equals(parsed.warnings), "warnings survive a JSON round trip");
+        check("document_end".equals(parsed.runAt), "unsupported document_start is normalized to effective document_end");
+        check(parsed.warnings.contains("document_start timing is unsupported"), "normalizing document_start includes a clear warning");
+        check(parsed.warnings.contains("warn text") && parsed.warnings.contains("document_start timing is unsupported"),
+                "existing warnings survive while unsupported timing is disclosed");
         check(parsed.disabledSites.contains("example.com"), "disabled sites survive a JSON round trip");
     }
 
@@ -89,7 +93,8 @@ public final class ExtensionPackageParserSmoke {
         check("A demo".equals(ext.description), "userscript @description is imported");
         check(ext.matches.contains("https://example.com/*"), "userscript @match is imported");
         check(ext.excludes.contains("https://example.com/private*"), "userscript @exclude is imported");
-        check("document_start".equals(ext.runAt), "userscript @run-at document-start is imported");
+        check("document_end".equals(ext.runAt), "userscript timing reflects effective after-load injection");
+        check(ext.warnings.contains("document_start timing is unsupported"), "userscript document-start limitation is disclosed");
         check("console.log('body');".equals(ext.js), "userscript body excludes the header block");
         check(ext.warnings.contains("@require/@resource not fetched"), "remote @require is refused with a warning");
         check(!ext.warnings.contains("unsupported @grant"), "GM_addStyle is allowed without an unsupported-grant warning");
@@ -119,7 +124,8 @@ public final class ExtensionPackageParserSmoke {
         check("Cosmetic only".equals(ext.name), "manifest name is imported");
         check("1.2".equals(ext.version), "manifest version is imported");
         check(ext.matches.contains("https://example.com/*"), "content script match rules are imported");
-        check("document_start".equals(ext.runAt), "content script run_at document_start is imported");
+        check("document_end".equals(ext.runAt), "content script timing reflects the effective after-load behavior");
+        check(ext.warnings.contains("document_start timing is unsupported"), "document_start mismatch is disclosed in import warnings");
         check(ext.id.startsWith("webext."), "manifest imports get a webext id prefix");
         check(ext.warnings.contains("Background/service worker was not imported"),
                 "background workers are refused with a warning");
@@ -133,6 +139,26 @@ public final class ExtensionPackageParserSmoke {
                 "manifest-only imports warn about missing JS files too");
         check(ext.css.isEmpty() && ext.js.isEmpty(),
                 "manifest-only imports never invent page code");
+    }
+
+    private static void extensionIdsResistJavaHashCollisions() throws Exception {
+        String first = "{\"name\":\"Aa\",\"content_scripts\":[{\"matches\":[\"https://example.com/*\"],\"js\":[\"script.js\"]}]}";
+        String second = "{\"name\":\"BB\",\"content_scripts\":[{\"matches\":[\"https://example.com/*\"],\"js\":[\"script.js\"]}]}";
+        check(first.hashCode() == second.hashCode(), "collision fixtures share a Java String hash");
+        BrowserExtension a = ExtensionPackageParser.parseWebExtensionManifest(first);
+        BrowserExtension b = ExtensionPackageParser.parseWebExtensionManifest(second);
+        check(!a.id.equals(b.id), "distinct colliding manifests receive distinct cryptographic IDs");
+        check(a.id.equals(ExtensionPackageParser.parseWebExtensionManifest(first).id),
+                "the same manifest receives a stable ID");
+    }
+
+    private static void importedDocumentStartTimingIsReportedHonestly() throws Exception {
+        String script = "// ==UserScript==\\n// @name Timing\\n// @match https://example.com/*\\n"
+                + "// @run-at document-start\\n// ==/UserScript==\\nrun();";
+        BrowserExtension ext = ExtensionPackageParser.parseUserScript(script);
+        check("document_end".equals(ext.runAt), "document-start userscripts use the effective timing");
+        check(ext.warnings.contains("document_start timing is unsupported"),
+                "document-start userscripts receive a timing warning");
     }
 
     private static void webExtensionManifestWithoutContentScriptsIsRejected() {
