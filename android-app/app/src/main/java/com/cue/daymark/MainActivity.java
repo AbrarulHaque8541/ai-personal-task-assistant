@@ -2179,7 +2179,7 @@ public final class MainActivity extends Activity {
 
         TextView status = new TextView(this);
         status.setTextColor(Color.GRAY);
-        status.setTextSize(12);
+        status.setTextSize(12 * textScale);
         status.setText("Type to search this page.");
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
