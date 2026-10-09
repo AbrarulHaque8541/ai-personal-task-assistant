@@ -184,6 +184,7 @@ public final class MainActivity extends Activity {
     private float textScale = 1.0f;
     private SharedPreferences browserPreferences;
     private BrowserAddress.SearchEngine searchEngine = BrowserAddress.SearchEngine.DUCKDUCKGO;
+    private String lastBrowserSearchQuery = "";
     private ExtensionRuntime extensionRuntime;
     private String activeFilter = TaskLogic.FILTER_ALL;
     private String searchQuery = "";
@@ -1071,6 +1072,7 @@ public final class MainActivity extends Activity {
         if (browserAddressInput == null) return;
         String value = browserAddressInput.getText() == null ? "" : browserAddressInput.getText().toString();
         if (value.trim().isEmpty()) return;
+        if (!BrowserAddress.isLikelyWebAddress(value)) lastBrowserSearchQuery = value.trim();
         if (!browserNetworkPolicy.allowsRemoteLoads()) {
             showBrowserOfflineStatus();
             return;
@@ -1343,8 +1345,14 @@ public final class MainActivity extends Activity {
                 showBrowserOfflineStatus();
                 return;
             }
-            String value = browserAddressInput == null || browserAddressInput.getText() == null
+            String typedValue = browserAddressInput == null || browserAddressInput.getText() == null
                     ? "" : browserAddressInput.getText().toString().trim();
+            String value = BrowserAddress.isLikelyWebAddress(typedValue)
+                    ? lastBrowserSearchQuery : typedValue;
+            if (value == null) value = "";
+            if (!value.trim().isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
+                lastBrowserSearchQuery = value.trim();
+            }
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
             if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
@@ -1415,6 +1423,7 @@ public final class MainActivity extends Activity {
             return;
         }
         String input = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
+        if (!BrowserAddress.isLikelyWebAddress(input)) lastBrowserSearchQuery = input.trim();
         try {
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
