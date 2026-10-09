@@ -1363,10 +1363,13 @@ public final class MainActivity extends Activity {
         button.setContentDescription("Search the current query with " + engine.label);
         button.setOnClickListener(view -> {
             if (!webMode) return;
-            String query = browserLastSearchQuery == null ? "" : browserLastSearchQuery.trim();
-            if (query.isEmpty() && browserAddressInput != null && browserAddressInput.getText() != null) {
+            String query = "";
+            if (browserAddressInput != null && browserAddressInput.getText() != null) {
                 String entered = browserAddressInput.getText().toString().trim();
                 if (!entered.isEmpty() && !BrowserAddress.isLikelyWebAddress(entered)) query = entered;
+            }
+            if (query.isEmpty()) {
+                query = browserLastSearchQuery == null ? "" : browserLastSearchQuery.trim();
             }
             selectSearchEngine(engine);
             if (query.isEmpty()) {
