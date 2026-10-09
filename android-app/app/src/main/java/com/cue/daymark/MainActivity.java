@@ -960,7 +960,7 @@ public final class MainActivity extends Activity {
         webGoButton.setOnClickListener(view -> navigateFromInput());
         providerRow.addView(webGoButton, new LinearLayout.LayoutParams(dp(76), dp(48)));
         webActions.addView(providerRow);
-        TextView requestNote = text("Offline by default. Online requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination; pages may contact third parties. The Online switch controls Daymark page/resource loads only. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
+        TextView requestNote = text("Online browsing is enabled by default. Online requests send the query or URL and normal connection data (such as IP address and browser identification) to the chosen destination; pages may contact third parties. The Online switch controls Daymark page/resource loads only. Android System WebView Safe Browsing is a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash checks, depending on WebView/device settings. Daymark sends no task text or app telemetry; WebView diagnostic metrics are opted out. HTTP is blocked.",
                 11, palette.muted, Typeface.NORMAL);
         webActions.addView(requestNote, topMargin(dp(3)));
         card.addView(webActions);
@@ -1155,12 +1155,12 @@ public final class MainActivity extends Activity {
         panel.addView(toolbarScroll, bottomMargin(dp(2)));
 
         String disclosureText =
-                "Offline by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
+                "Online browsing is enabled by default. Enable Online only after its disclosure and confirmation; each search or site still needs a tap. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
         browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
         browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
         browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
         browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
-        browserPrivacyButton.setContentDescription("Browser privacy: Offline by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
+        browserPrivacyButton.setContentDescription("Browser privacy: Online browsing is enabled by default. Enabling Online requires reviewing a confirmation first, and each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. The Online switch blocks Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
 
@@ -2701,7 +2701,7 @@ public final class MainActivity extends Activity {
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
         quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
         quickCaptureInput.setContentDescription(webMode
-                ? "Search the web or enter an HTTPS web address. Browser network access is Offline by default; this is sent only when Online is enabled and you tap Go."
+                ? "Search the web or enter an HTTPS web address. Browser network access is Online browsing is enabled by default; this is sent only when Online is enabled and you tap Go."
                 : "What do you want to get done? Type a task");
         quickCaptureInput.setImeOptions(webMode ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
         taskModeButton.setTextColor(webMode ? palette.muted : palette.accent);
@@ -2714,7 +2714,7 @@ public final class MainActivity extends Activity {
                 ? "Switch to Task mode. Your web search is not added to your tasks."
                 : "Task mode selected. Typing creates a task only after Add task.");
         webModeButton.setContentDescription(webMode
-                ? "Web mode selected. Browser starts Offline; requests require Online enabled and a separate Go or site tap."
+                ? "Web mode selected. Browser requests require a separate Go or site tap."
                 : "Switch to Web mode. The current task draft stays in Daymark and is not sent to a site.");
         if (undoBar != null) {
             if (webMode) undoBar.setVisibility(View.GONE);
