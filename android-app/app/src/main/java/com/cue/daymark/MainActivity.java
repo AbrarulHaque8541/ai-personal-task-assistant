@@ -1166,11 +1166,10 @@ public final class MainActivity extends Activity {
         sitesScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout sites = new LinearLayout(this);
         sites.setOrientation(LinearLayout.HORIZONTAL);
-        // Curated AI web providers from the shared catalog. These are normal HTTPS
-        // shortcuts, not API integrations; the catalog keeps every label/URL pair in
-        // one place so the row and the catalog cannot drift apart.
-        for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
-            sites.addView(browserSiteButton(entry));
+        // Compact cross-provider strip: common web search engines first, followed by
+        // the AI sites. These are HTTPS website shortcuts, not native/API integrations.
+        for (BrowserAddress.SearchEngine engine : BrowserAddress.SearchEngine.values()) {
+            if (isBottomShortcutProvider(engine)) sites.addView(browserSearchShortcutButton(engine));
         }
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
@@ -1337,6 +1336,58 @@ public final class MainActivity extends Activity {
             empty.setPadding(dp(12), dp(14), dp(12), dp(14));
             host.addView(empty);
         }
+    }
+
+    private boolean isBottomShortcutProvider(BrowserAddress.SearchEngine engine) {
+        if (isAiProvider(engine)) return true;
+        switch (engine) {
+            case GOOGLE: case YANDEX: case BING: case DUCKDUCKGO:
+            case BRAVE: case STARTPAGE: case YAHOO:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private Button browserSearchShortcutButton(BrowserAddress.SearchEngine engine) {
+        Button button = compactButton(engine.label, false);
+        button.setMinHeight(dp(34));
+        button.setMinimumHeight(dp(34));
+        button.setTextSize(11 * textScale);
+        button.setPadding(dp(9), 0, dp(9), 0);
+        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
+        button.setContentDescription("Search the current query with " + engine.label);
+        button.setOnClickListener(view -> {
+            if (!webMode) return;
+            String query = browserLastSearchQuery == null ? "" : browserLastSearchQuery.trim();
+            if (query.isEmpty() && browserAddressInput != null && browserAddressInput.getText() != null) {
+                String entered = browserAddressInput.getText().toString().trim();
+                if (!entered.isEmpty() && !BrowserAddress.isLikelyWebAddress(entered)) query = entered;
+            }
+            selectSearchEngine(engine);
+            if (query.isEmpty()) {
+                if (browserAddressInput != null) {
+                    browserAddressInput.requestFocus();
+                    showToast("Enter a search first, then choose " + engine.label + ".");
+                }
+                return;
+            }
+            browserLastSearchQuery = query;
+            String address;
+            try {
+                address = BrowserAddress.requireAllowedWebUrl(engine.searchUrl(query));
+            } catch (IllegalArgumentException invalidQuery) {
+                showToast("This query could not be sent to " + engine.label + ".");
+                return;
+            }
+            if (browserAddressInput != null) browserAddressInput.setText(query);
+            navigateBrowserTo(address);
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
+        params.setMargins(0, 0, dp(5), 0);
+        button.setLayoutParams(params);
+        return button;
     }
 
     private Button browserSiteButton(AiSiteCatalog.Entry entry) {
