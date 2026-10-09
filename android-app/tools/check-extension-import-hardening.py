@@ -60,7 +60,8 @@ assert "document_start run timing is not supported" in parser, \
 
 for marker in (
     "webExtensionMatchScopesFailClosed",
-    "importedIdsAreStableAndCollisionResistant",\n    "different effective JS content under the same manifest gets a different id",
+    "importedIdsAreStableAndCollisionResistant",
+    "different effective JS content under the same manifest gets a different id",
     "documentStartImportsNormalizeToHonestTiming",
     "archiveDecompressedBudgetBoundsIgnoredEntries",
     "the timing disclosure is idempotent and never duplicated",
