@@ -1528,17 +1528,22 @@ public final class MainActivity extends Activity {
     private boolean ensureBrowserWebView() {
         if (!browserNetworkPolicy.allowsRemoteLoads()) return false;
         if (browserWebView != null) return true;
+        final DaymarkWebView[] targetRef = new DaymarkWebView[1];
         browserWebView = new DaymarkWebView(this, browserNetworkPolicy,
                 browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
             @Override public void onPageStarted(String url) {
-                if (!isActivityCallbackCurrent()) return;
+                if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 syncBrowserButtons();
             }
 
             @Override public void onPageFinished(String url) {
-                if (extensionRuntime != null) extensionRuntime.onPageFinished(browserWebView, url);
+                if (extensionRuntime != null) extensionRuntime.onPageFinished(targetRef[0], url);
                 if (!isActivityCallbackCurrent()) return;
+                if (targetRef[0] != browserWebView) {
+                    injectVideoDownloadOverlay(targetRef[0]);
+                    return;
+                }
                 if (browserAddressInput != null) browserAddressInput.setText(url);
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
@@ -1615,6 +1620,7 @@ public final class MainActivity extends Activity {
                 browserStatus.setText("The page stopped unexpectedly. Return to browser home and try again.");
             }
         });
+        targetRef[0] = browserWebView;
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
@@ -2324,6 +2330,7 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
         browserLastSearchQuery = "";
+        if (browserAddressInput != null) browserAddressInput.setText("");
         if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
         if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
         syncBrowserButtons();
