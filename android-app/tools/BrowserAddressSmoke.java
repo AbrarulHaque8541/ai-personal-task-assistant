@@ -37,6 +37,16 @@ public final class BrowserAddressSmoke {
         assert !BrowserAddress.isAllowedWebUrl("http://example.com/");
         assert !BrowserAddress.isAllowedWebUrl("http://example.com/after-redirect");
         assert !BrowserAddress.isAllowedWebUrl("https://user:pass@example.com/");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:0");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:65536");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:99999");
+        assert !BrowserAddress.isAllowedWebUrl("https://example.com:0/path");
+        assert !BrowserAddress.isAllowedWebUrl("example.com:0");
+        assert BrowserAddress.isAllowedWebUrl("https://example.com:1");
+        assert BrowserAddress.isAllowedWebUrl("https://example.com:443");
+        assert BrowserAddress.isAllowedWebUrl("https://example.com:65535");
+        assert BrowserAddress.resolveInput("example.com:8443", BrowserAddress.SearchEngine.DUCKDUCKGO)
+                .equals("https://example.com:8443");
 
         String history = BrowserHistory.add("", "https://example.com/first");
         history = BrowserHistory.add(history, "https://example.com/second?item=2");

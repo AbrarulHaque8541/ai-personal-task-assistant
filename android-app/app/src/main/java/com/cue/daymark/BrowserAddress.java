@@ -113,6 +113,10 @@ final class BrowserAddress {
             if (uri.getHost() == null || uri.getHost().trim().isEmpty() || uri.getRawUserInfo() != null) {
                 throw new IllegalArgumentException("Enter a valid web address without embedded credentials.");
             }
+            int port = uri.getPort();
+            if (port == 0 || port > 65535) {
+                throw new IllegalArgumentException("Enter a valid HTTPS port between 1 and 65535.");
+            }
             return uri.normalize().toASCIIString();
         } catch (IllegalArgumentException exception) {
             throw exception;
