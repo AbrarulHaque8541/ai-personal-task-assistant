@@ -378,6 +378,7 @@ public final class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (fullScreenVideoView != null) { hideFullScreenVideo(true); return; }
         if (fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) {
             closeFullScreenWebReader();
             return;
@@ -1525,7 +1526,7 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
-        browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
+        browserStatus.setText("Loading page… 0%. Its provider and page resources may receive requests.");
         browserWebView.loadUrl(address);
         syncBrowserButtons();
     }
@@ -1588,9 +1589,30 @@ public final class MainActivity extends Activity {
                     showToast("Insecure HTTP navigation blocked. Use HTTPS instead.");
                 });
             }
-            @Override public void onLoadError() {
+            @Override public void onLoadError(String description) {
                 if (!isActiveTab()) return;
-                browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
+                String reason = description == null || description.trim().isEmpty() ? "Unknown network error." : description.trim();
+                if (reason.length() > 120) reason = reason.substring(0, 120);
+                browserStatus.setText("Page failed to load: " + reason + " · Tap Reload to retry.");
+                syncBrowserButtons();
+            }
+            @Override public void onHttpError(int statusCode) {
+                if (!isActiveTab()) return;
+                browserStatus.setText("The website returned HTTP " + statusCode + ". It may be unavailable or restrict this request. Tap Reload to retry.");
+            }
+            @Override public void onProgressChanged(int progress) {
+                if (!isActiveTab()) return;
+                if (progress < 100) browserStatus.setText("Loading page… " + progress + "%");
+                else if (browserWebView.getUrl() != null) browserStatus.setText("Page ready. If blank, tap Reload or try another provider.");
+                syncBrowserButtons();
+            }
+            @Override public void onShowCustomView(View view, android.webkit.WebChromeClient.CustomViewCallback callback) {
+                if (!isActiveTab()) { if (callback != null) callback.onCustomViewHidden(); return; }
+                showFullScreenVideo(view, callback);
+            }
+            @Override public void onHideCustomView() {
+                if (!isActiveTab()) return;
+                if (fullScreenVideoView != null) hideFullScreenVideo(false);
             }
             @Override public void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 if (!isActiveTab()) return;
@@ -2339,6 +2361,42 @@ public final class MainActivity extends Activity {
         if (window != null) {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         }
+    }
+
+    private void showFullScreenVideo(View view, android.webkit.WebChromeClient.CustomViewCallback callback) {
+        if (view == null || callback == null) return;
+        if (fullScreenVideoView != null) { callback.onCustomViewHidden(); return; }
+        fullScreenVideoView = view;
+        fullScreenVideoCallback = callback;
+        Window window = getWindow();
+        View decor = window.getDecorView();
+        savedWindowFlags = window.getAttributes().flags;
+        savedSystemUiVisibility = decor.getSystemUiVisibility();
+        hasSavedVideoUiState = true;
+        view.setBackgroundColor(Color.BLACK);
+        ((ViewGroup) decor).addView(view, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        decor.setSystemUiVisibility(savedSystemUiVisibility | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+    }
+
+    private void hideFullScreenVideo(boolean notifyPage) {
+        View view = fullScreenVideoView;
+        android.webkit.WebChromeClient.CustomViewCallback callback = fullScreenVideoCallback;
+        fullScreenVideoView = null;
+        fullScreenVideoCallback = null;
+        if (view != null && view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        if (hasSavedVideoUiState) {
+            Window window = getWindow();
+            window.setFlags(savedWindowFlags, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            window.getDecorView().setSystemUiVisibility(savedSystemUiVisibility);
+            hasSavedVideoUiState = false;
+        }
+        if (notifyPage && callback != null) callback.onCustomViewHidden();
     }
 
     private void closeFullScreenWebReader() {
