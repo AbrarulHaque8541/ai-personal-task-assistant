@@ -32,8 +32,6 @@ If the keystore is lost or rotated without a careful migration, **all existing i
 
 Published releases and their APK and AAB assets are listed on the repository's Releases page; this document does not freeze a version-to-release-status mapping. The current source's `versionName`/`versionCode` live in `android-app/app/build.gradle.kts`, and a version counts as published only when its exact `v<versionName>` tag's production workflow completes successfully. Main CI validates the protected signing secrets, generates signed candidate APK/AAB artifacts, and confirms signer continuity; it does not publish a release or prove physical-device behavior. Always verify the exact tag's production workflow and attached artifacts before distribution.
 
-- `versionName = 1.0.5` (release candidate)
-- `versionCode = 6` (release candidate)
 
 ## What caused "package conflicts" (2026-10-08)
 
