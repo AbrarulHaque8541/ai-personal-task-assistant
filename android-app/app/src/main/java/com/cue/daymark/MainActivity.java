@@ -1539,7 +1539,6 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onPageFinished(String url) {
-                if (extensionRuntime != null) extensionRuntime.onPageFinished(targetRef[0], url);
                 if (!isActivityCallbackCurrent()) return;
                 String safeHistoryUrl = BrowserHistory.sanitizeUrl(url);
                 if (browserNetworkPolicy.allowsRemoteLoads() && safeHistoryUrl != null) {
@@ -2157,7 +2156,13 @@ public final class MainActivity extends Activity {
             request.setTitle(filename);
             request.setDescription("Daymark browser download");
             if (mimeType != null && !mimeType.isEmpty()) request.setMimeType(mimeType);
-            if (userAgent != null && !userAgent.isEmpty()) request.addRequestHeader("User-Agent", userAgent);
+            String effectiveUserAgent = userAgent;
+            if ((effectiveUserAgent == null || effectiveUserAgent.isEmpty()) && browserWebView != null) {
+                effectiveUserAgent = browserWebView.getSettings().getUserAgentString();
+            }
+            if (effectiveUserAgent != null && !effectiveUserAgent.isEmpty()) {
+                request.addRequestHeader("User-Agent", effectiveUserAgent);
+            }
             String cookies = CookieManager.getInstance().getCookie(url);
             if (cookies != null && !cookies.isEmpty()) request.addRequestHeader("Cookie", cookies);
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
