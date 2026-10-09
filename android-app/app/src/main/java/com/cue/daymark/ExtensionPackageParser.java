@@ -18,6 +18,8 @@ import java.util.regex.Pattern;
 /** Parses Daymark JSON packs and a minimal userscript header subset (@grant none only). */
 final class ExtensionPackageParser {
     private static final int MAX_PACK_CHARS = 200_000;
+    private static final int MAX_ARCHIVE_ENTRY_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_ARCHIVE_DECOMPRESSED_BYTES = 5 * 1024 * 1024;
     private static final Pattern USERSCRIPT_HEADER = Pattern.compile(
             "(?s)==UserScript==\\s*(.*?)==/UserScript==");
     // Keys may contain hyphens (@run-at); w alone never matched them, so
@@ -80,23 +82,42 @@ final class ExtensionPackageParser {
         Map<String, String> files = new HashMap<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
-            int fileCount = 0;
+            int entryCount = 0;
+            int totalDecompressed = 0;
             int totalText = 0;
             while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) continue;
-                if (++fileCount > 128) throw new IllegalArgumentException("Extension archive contains too many files.");
-                String path = entry.getName().replace('\\', '/');
-                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\') >= 0) continue;
-                if (!path.equals("manifest.json") && !path.endsWith(".js") && !path.endsWith(".css")) continue;
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                if (++entryCount > 128) {
+                    throw new IllegalArgumentException("Extension archive contains too many entries.");
+                }
+                String originalPath = entry.getName();
+                String path = originalPath == null ? "" : originalPath.replace('\\\\', '/');
+                boolean safePath = !entry.isDirectory() && !path.startsWith("/")
+                        && !path.contains("../") && originalPath != null && originalPath.indexOf('\\\\') < 0;
+                boolean importText = safePath && (path.equals("manifest.json")
+                        || path.endsWith(".js") || path.endsWith(".css"));
+                ByteArrayOutputStream out = importText ? new ByteArrayOutputStream() : null;
                 byte[] buffer = new byte[8192];
                 int read;
+                int entryDecompressed = 0;
                 while ((read = zip.read(buffer)) != -1) {
-                    totalText += read;
-                    if (totalText > MAX_PACK_CHARS) throw new IllegalArgumentException("Extension code is too large (max 200 KB text).");
-                    out.write(buffer, 0, read);
+                    entryDecompressed += read;
+                    totalDecompressed += read;
+                    if (entryDecompressed > MAX_ARCHIVE_ENTRY_BYTES) {
+                        throw new IllegalArgumentException("Extension archive entry exceeds the 2 MB decompressed limit.");
+                    }
+                    if (totalDecompressed > MAX_ARCHIVE_DECOMPRESSED_BYTES) {
+                        throw new IllegalArgumentException("Extension archive exceeds the 5 MB total decompressed limit.");
+                    }
+                    if (importText) {
+                        totalText += read;
+                        if (totalText > MAX_PACK_CHARS) {
+                            throw new IllegalArgumentException("Extension code is too large (max 200 KB text).");
+                        }
+                        out.write(buffer, 0, read);
+                    }
                 }
-                files.put(path, out.toString("UTF-8"));
+                if (importText) files.put(path, out.toString("UTF-8"));
+                zip.closeEntry();
             }
         }
         String manifest = files.get("manifest.json");
