@@ -70,7 +70,9 @@ import java.io.OutputStream;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.text.NumberFormat;
 import java.util.UUID;
@@ -232,6 +234,7 @@ public final class MainActivity extends Activity {
     private View browserHomeView;
     private DaymarkWebView browserWebView;
     private final List<DaymarkWebView> browserTabs = new ArrayList<>();
+    private final Map<DaymarkWebView, String> browserTabQueries = new HashMap<>();
     private Button browserTabButton;
     private View browserFullscreenView;
     private WebChromeClient.CustomViewCallback browserFullscreenCallback;
@@ -1073,6 +1076,7 @@ public final class MainActivity extends Activity {
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
             browserLastSearchQuery = BrowserAddress.isLikelyWebAddress(value) ? "" : value.trim();
+            if (browserWebView != null) browserTabQueries.put(browserWebView, browserLastSearchQuery);
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             browserAddressInput.setError(exception.getMessage());
@@ -1475,6 +1479,7 @@ public final class MainActivity extends Activity {
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
             browserLastSearchQuery = BrowserAddress.isLikelyWebAddress(input) ? "" : input.trim();
+            if (browserWebView != null) browserTabQueries.put(browserWebView, browserLastSearchQuery);
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
@@ -1614,6 +1619,7 @@ public final class MainActivity extends Activity {
                 if (!isActivityCallbackCurrent()) return;
                 if (targetRef[0] != browserWebView) {
                     browserTabs.remove(targetRef[0]);
+                    browserTabQueries.remove(targetRef[0]);
                     destroyBrowserWebView(targetRef[0], false);
                     updateBrowserTabButton();
                     return;
@@ -1631,6 +1637,7 @@ public final class MainActivity extends Activity {
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         browserTabs.add(browserWebView);
+        browserTabQueries.put(browserWebView, browserLastSearchQuery);
         updateBrowserTabButton();
         return true;
     }
@@ -1701,6 +1708,7 @@ public final class MainActivity extends Activity {
             else exitBrowserFullscreen();
         }
         browserWebView = tab;
+        browserLastSearchQuery = browserTabQueries.getOrDefault(tab, "");
         boolean hasPage = tab.getUrl() != null && !tab.getUrl().isEmpty();
         for (DaymarkWebView openTab : browserTabs) {
             openTab.setVisibility(openTab == tab && hasPage ? View.VISIBLE : View.GONE);
@@ -1724,6 +1732,7 @@ public final class MainActivity extends Activity {
         DaymarkWebView closing = browserWebView;
         int oldIndex = browserTabs.indexOf(closing);
         browserTabs.remove(closing);
+        browserTabQueries.remove(closing);
         browserWebView = null;
         if (browserFullscreenView != null) exitBrowserFullscreen();
         destroyBrowserWebView(closing, true);
@@ -2433,6 +2442,7 @@ public final class MainActivity extends Activity {
         if (browserFullscreenView != null) exitBrowserFullscreen();
         List<DaymarkWebView> openTabs = new ArrayList<>(browserTabs);
         browserTabs.clear();
+        browserTabQueries.clear();
         browserWebView = null;
         for (DaymarkWebView tab : openTabs) destroyBrowserWebView(tab, true);
         updateBrowserTabButton();
