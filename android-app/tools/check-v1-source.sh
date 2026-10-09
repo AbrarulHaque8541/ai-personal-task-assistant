@@ -353,7 +353,8 @@ assert "HTTP redirect/downgrade was blocked" in activity and "No insecure page w
 
 text_size_calls = re.findall(r"\.setTextSize\(([^)]*)\)", activity)
 assert text_size_calls, "expected scalable text controls"
-assert all("textScale" in call for call in text_size_calls), "every app text-size call must apply the user's text-size setting"
+assert all("textScale" in call or "readerFontSize" in call for call in text_size_calls), "every app text-size call must apply the user's text-size setting or the bounded Reader Mode control"
+assert "16f * textScale" in activity and "readerFontSize[0] = Math.max(14f, readerFontSize[0] - 2f)" in activity and "readerFontSize[0] = Math.min(28f, readerFontSize[0] + 2f)" in activity, "Reader Mode text size must inherit app scale and stay within explicit bounds"
 assert "textSizeMode == 0 ? 0.9f : textSizeMode == 2 ? 1.25f : 1.0f" in activity, "compact/standard/extra-large text choices changed"
 for label in ("Search tasks by title", "Clear task search", "Choose low, medium, or high priority", "Edit task:", "Delete task:", "Mark \u201c"):
     assert label in activity, f"missing screen-reader label source: {label}"
