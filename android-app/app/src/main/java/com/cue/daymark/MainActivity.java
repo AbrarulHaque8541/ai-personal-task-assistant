@@ -2312,7 +2312,9 @@ public final class MainActivity extends Activity {
             try {
                 tab.getSettings().setBlockNetworkLoads(true);
                 tab.stopLoading();
-            } catch (RuntimeException ignored) { }
+            } catch (RuntimeException teardownFailure) {
+                // A crashed WebView may reject teardown calls; remove and destroy it regardless.
+            }
             if (tab.getParent() instanceof ViewGroup) ((ViewGroup) tab.getParent()).removeView(tab);
             tab.destroy();
         }
