@@ -35,6 +35,7 @@ final class DaymarkWebView extends WebView {
     }
 
     private final ExtensionRuntime extensionRuntime;
+    private final Listener listener;
 
     boolean isShowingCustomView() {
         return fullscreenView != null;
@@ -45,17 +46,8 @@ final class DaymarkWebView extends WebView {
         WebChromeClient.CustomViewCallback callback = fullscreenCallback;
         fullscreenView = null;
         fullscreenCallback = null;
-        listenerHideFullscreen();
+        listener.onHideFullscreen();
         if (callback != null) callback.onCustomViewHidden();
-    }
-
-    private void listenerHideFullscreen() {
-        // Keep fullscreen cleanup routed through the same host callback as WebView's
-        // onHideCustomView(), including the Android Back path.
-        if (getWebChromeClient() != null) {
-            // onHideCustomView will be called by WebView after the callback on supported
-            // System WebView builds; the host callback is invoked directly for deterministic cleanup.
-        }
     }
 
 
@@ -65,6 +57,7 @@ final class DaymarkWebView extends WebView {
     DaymarkWebView(Activity activity, BrowserNetworkPolicy networkPolicy,
                    boolean safeBrowsingEnabled, Listener listener) {
         super(activity);
+        this.listener = listener;
         this.extensionRuntime = ExtensionRuntime.create(activity);
         setFocusable(true);
         setFocusableInTouchMode(true);
