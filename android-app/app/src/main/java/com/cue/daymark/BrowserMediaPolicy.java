@@ -5,10 +5,11 @@ final class BrowserMediaPolicy {
     private BrowserMediaPolicy() { }
 
     static boolean allowsHandoff(boolean onlineEnabled, boolean userGesture,
-                                 String scheme, String mediaUrl) {
+                                 String scheme, String host, String mediaUrl) {
         return onlineEnabled
                 && userGesture
                 && "daymark-download".equalsIgnoreCase(scheme)
+                && "media".equalsIgnoreCase(host)
                 && BrowserAddress.isAllowedWebUrl(mediaUrl);
     }
 }
