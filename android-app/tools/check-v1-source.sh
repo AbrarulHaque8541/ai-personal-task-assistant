@@ -15,6 +15,7 @@ sh ./tools/run-web-mode-tests.sh
 sh ./tools/run-text-scale-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-browser-catalog.py "$ROOT"
+python3 ./tools/check-extension-trust-confirmation.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 bash ./tools/check-release-identity.sh
 python3 ./tools/check-merged-manifests.py "$ROOT"
