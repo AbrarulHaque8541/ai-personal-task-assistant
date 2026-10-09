@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.HashMap;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.Locale;
@@ -18,12 +20,23 @@ import java.util.regex.Pattern;
 /** Parses Daymark JSON packs and a minimal userscript header subset (@grant none only). */
 final class ExtensionPackageParser {
     private static final int MAX_PACK_CHARS = 200_000;
+    /** Total decompressed budget across every archive entry, including skipped file types (issue #190). */
+    private static final long MAX_ARCHIVE_DECOMPRESSED_BYTES = 4L * 1024 * 1024;
+    /** Decompressed budget for a single archive entry, including skipped file types (issue #190). */
+    private static final long MAX_ENTRY_DECOMPRESSED_BYTES = 2L * 1024 * 1024;
+    /** Effective-timing disclosure appended whenever an import requests document_start (issue #192). */
+    private static final String TIMING_NOTE =
+            "document_start run timing is not supported: Daymark injects after the page has loaded (document_end, best effort)";
     private static final Pattern USERSCRIPT_HEADER = Pattern.compile(
             "(?s)==UserScript==\\s*(.*?)==/UserScript==");
     // Keys may contain hyphens (@run-at); w alone never matched them, so
     // @run-at directives were silently ignored before this character class.
     private static final Pattern META = Pattern.compile(
             "@([\\w-]+)\\s+(.+)");
+    // Supported match patterns: * or https scheme, sane wildcard-or-DNS host, required path.
+    // Imported manifests fail closed on anything else instead of broadening scope (issue #194).
+    private static final Pattern SUPPORTED_MATCH = Pattern.compile(
+            "^(\\*|https)://(\\*|(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*)/.+$");
 
     private ExtensionPackageParser() { }
 
@@ -56,10 +69,16 @@ final class ExtensionPackageParser {
         if (css.length() + js.length() > MAX_PACK_CHARS) {
             throw new IllegalArgumentException("Extension script/css too large.");
         }
+        String warnings = o.optString("warnings", "");
+        // Storage round trips re-parse this path, so the disclosure must stay idempotent.
+        if (o.optString("runAt", "document_end").toLowerCase(Locale.ROOT).contains("start")
+                && !warnings.contains("document_start run timing is not supported")) {
+            warnings = warnings.isEmpty() ? TIMING_NOTE : warnings + " " + TIMING_NOTE;
+        }
         return new BrowserExtension(
                 id, name, o.optString("version", "1.0.0"), o.optString("description", ""),
                 o.optBoolean("enabled", true), builtIn, matches, excludes, css, js,
-                o.optString("runAt", "document_end"), o.optString("warnings", ""), disabledSites);
+                "document_end", warnings, disabledSites);
     }
 
     /**
@@ -81,22 +100,40 @@ final class ExtensionPackageParser {
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
             int fileCount = 0;
+            long totalDecompressed = 0;
             int totalText = 0;
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory()) continue;
                 if (++fileCount > 128) throw new IllegalArgumentException("Extension archive contains too many files.");
                 String path = entry.getName().replace('\\', '/');
-                if (path.startsWith("/") || path.contains("../") || path.indexOf('\\') >= 0) continue;
-                if (!path.equals("manifest.json") && !path.endsWith(".js") && !path.endsWith(".css")) continue;
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                // Path and type checks decide storage only. Every entry is still drained within
+                // the decompressed budget, so ignored files cannot bypass resource limits (issue #190).
+                boolean store = !path.startsWith("/") && !path.contains("../") && path.indexOf('\\') < 0
+                        && (path.equals("manifest.json") || path.endsWith(".js") || path.endsWith(".css"));
+                long entryDecompressed = 0;
+                ByteArrayOutputStream out = store ? new ByteArrayOutputStream() : null;
                 byte[] buffer = new byte[8192];
                 int read;
                 while ((read = zip.read(buffer)) != -1) {
-                    totalText += read;
-                    if (totalText > MAX_PACK_CHARS) throw new IllegalArgumentException("Extension code is too large (max 200 KB text).");
-                    out.write(buffer, 0, read);
+                    entryDecompressed += read;
+                    totalDecompressed += read;
+                    if (entryDecompressed > MAX_ENTRY_DECOMPRESSED_BYTES) {
+                        throw new IllegalArgumentException("Extension archive entry '" + path
+                                + "' expands beyond the 2 MB decompressed entry limit.");
+                    }
+                    if (totalDecompressed > MAX_ARCHIVE_DECOMPRESSED_BYTES) {
+                        throw new IllegalArgumentException(
+                                "Extension archive expands beyond the 4 MB total decompressed limit.");
+                    }
+                    if (store) {
+                        totalText += read;
+                        if (totalText > MAX_PACK_CHARS) {
+                            throw new IllegalArgumentException("Extension code is too large (max 200 KB text).");
+                        }
+                        out.write(buffer, 0, read);
+                    }
                 }
-                files.put(path, out.toString("UTF-8"));
+                if (store) files.put(path, out.toString("UTF-8"));
             }
         }
         String manifest = files.get("manifest.json");
@@ -116,34 +153,61 @@ final class ExtensionPackageParser {
         List<String> excludes = new ArrayList<>();
         StringBuilder css = new StringBuilder();
         StringBuilder js = new StringBuilder();
+        // Daymark injects only after page finish, so the effective timing is always document_end.
         String runAt = "document_end";
+        boolean requestedStartTiming = false;
         StringBuilder warnings = new StringBuilder("Imported in Daymark compatibility mode; only page-local content scripts are supported.");
         for (int i = 0; i < scripts.length() && i < 32; i++) {
             JSONObject item = scripts.optJSONObject(i);
             if (item == null) continue;
-            appendPatterns(matches, item.optJSONArray("matches"));
-            appendPatterns(excludes, item.optJSONArray("exclude_matches"));
+            List<String> entryMatches = readValidatedPatterns(item.optJSONArray("matches"), "matches");
+            List<String> entryExcludes = readValidatedPatterns(item.optJSONArray("exclude_matches"), "exclude_matches");
+            if (entryMatches.isEmpty()) throw new IllegalArgumentException(
+                    "Content script declares no valid match rules; Daymark fails closed instead of"
+                            + " running imported code on all sites.");
+            for (String pattern : entryMatches) {
+                if (matches.size() < 32 && !matches.contains(pattern)) matches.add(pattern);
+            }
+            for (String pattern : entryExcludes) {
+                if (excludes.size() < 32 && !excludes.contains(pattern)) excludes.add(pattern);
+            }
             String itemRunAt = item.optString("run_at", "document_idle").toLowerCase(Locale.ROOT);
-            if (itemRunAt.contains("start")) runAt = "document_start";
-            else if ("document_end".equals(itemRunAt)) runAt = "document_end";
+            if (itemRunAt.contains("start")) requestedStartTiming = true;
             appendFiles(css, item.optJSONArray("css"), files, "CSS", warnings);
             appendFiles(js, item.optJSONArray("js"), files, "JS", warnings);
         }
-        if (matches.isEmpty()) matches.add("*://*/*");
+        if (requestedStartTiming) warnings.append(' ').append(TIMING_NOTE).append('.');
         if (manifest.has("background")) warnings.append(" Background/service worker was not imported.");
         if (manifest.has("action") || manifest.has("browser_action") || manifest.has("page_action")) warnings.append(" Toolbar actions/popups were not imported.");
         if (manifest.has("permissions") || manifest.has("host_permissions")) warnings.append(" Requested permissions were not granted.");
-        String id = "webext." + Integer.toHexString(manifest.toString().hashCode());
+        // Content-derived SHA-256 digest: distinct manifests can no longer collide and overwrite
+        // each other through the 32-bit String.hashCode id (issue #193).
+        String id = "webext." + sha256Prefix(manifest.toString());
         return new BrowserExtension(id, name, version, manifest.optString("description", ""), true, false,
                 matches, excludes, css.toString(), js.toString(), runAt, warnings.toString());
     }
 
-    private static void appendPatterns(List<String> target, JSONArray values) {
-        if (values == null) return;
-        for (int i = 0; i < values.length() && target.size() < 32; i++) {
+    /** Fail closed on empty or unsupported match patterns instead of silently broadening scope (issue #194). */
+    private static List<String> readValidatedPatterns(JSONArray values, String field) {
+        List<String> out = new ArrayList<>();
+        if (values == null) return out;
+        for (int i = 0; i < values.length() && out.size() < 32; i++) {
             String value = values.optString(i, "").trim();
-            if (!value.isEmpty()) target.add(value);
+            if (value.isEmpty()) throw new IllegalArgumentException(
+                    "Content script " + field + " contains an empty pattern; invalid match scope fails closed.");
+            if (!isSupportedMatchPattern(value)) throw new IllegalArgumentException(
+                    "Unsupported match pattern '" + value + "' in " + field
+                            + "; Daymark supports HTTPS-only patterns with a declared path.");
+            if (!out.contains(value)) out.add(value);
         }
+        return out;
+    }
+
+    static boolean isSupportedMatchPattern(String value) {
+        if (value == null) return false;
+        String pattern = value.trim();
+        if (pattern.equals("<all_urls>")) return true;
+        return SUPPORTED_MATCH.matcher(pattern).matches();
     }
 
     private static void appendFiles(StringBuilder output, JSONArray values, Map<String, String> files,
@@ -159,6 +223,21 @@ final class ExtensionPackageParser {
             }
             if (output.length() + code.length() > MAX_PACK_CHARS) throw new IllegalArgumentException("Imported extension code is too large.");
             output.append("\n/* ").append(path.replace("*/", "* /")).append(" */\n").append(code).append('\n');
+        }
+    }
+
+    /** 16 hex chars (64 bits) of a SHA-256 digest: stable for identical content, collision-resistant for distinct content. */
+    private static String sha256Prefix(String text) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) {
+                hex.append(String.format(Locale.ROOT, "%02x", hash[i] & 0xff));
+            }
+            return hex.toString();
+        } catch (Exception unavailable) {
+            throw new IllegalStateException("SHA-256 is unavailable on this runtime", unavailable);
         }
     }
 
@@ -191,11 +270,13 @@ final class ExtensionPackageParser {
         String name = "Imported script";
         String version = "1.0.0";
         String description = "Imported userscript";
+        // Daymark injects only after page finish, so the effective timing is always document_end.
         String runAt = "document_end";
+        boolean requestedStartTiming = false;
         List<String> matches = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
         List<String> grants = new ArrayList<>();
-        String id = "userscript." + Integer.toHexString(raw.hashCode());
+        String id = "userscript." + sha256Prefix(raw);
         String body = raw.trim();
         if (header.find()) {
             String block = header.group(1);
@@ -217,8 +298,7 @@ final class ExtensionPackageParser {
                         break;
                     case "run-at":
                     case "runat":
-                        if (value.contains("start")) runAt = "document_start";
-                        else runAt = "document_end";
+                        if (value.contains("start")) requestedStartTiming = true;
                         break;
                     case "grant":
                         grants.add(value);
@@ -245,6 +325,10 @@ final class ExtensionPackageParser {
         if (raw.contains("@require") || raw.contains("@resource")) {
             if (warnings.length() > 0) warnings.append(';');
             warnings.append("@require/@resource not fetched (offline packs only)");
+        }
+        if (requestedStartTiming) {
+            if (warnings.length() > 0) warnings.append(';');
+            warnings.append(TIMING_NOTE);
         }
 
         return new BrowserExtension(id, name, version, description, true, false,

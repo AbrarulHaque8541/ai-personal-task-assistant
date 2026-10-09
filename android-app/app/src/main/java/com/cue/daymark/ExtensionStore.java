@@ -146,7 +146,32 @@ final class ExtensionStore {
         }
         String json = ExtensionPackageParser.toDaymarkJson(ext);
         File out = new File(userDir, sanitizeFileName(ext.id) + ".daymark-ext.json");
+        if (out.exists()) {
+            // Import ids are content-derived, but the install path still fails closed when a
+            // different pack already lives at the same filename (issue #193).
+            BrowserExtension existing = null;
+            try {
+                existing = ExtensionPackageParser.parseDaymarkJson(readFile(out), false);
+            } catch (Exception unreadable) {
+                // A corrupt stored pack is replaced by the fresh confirmed import.
+            }
+            if (existing != null && !isSamePack(existing, ext)) {
+                throw new IllegalArgumentException("A different extension pack is already installed with id "
+                        + ext.id + ". Uninstall it before importing a different pack.");
+            }
+        }
         writeFile(out, json);
+    }
+
+    /** Content comparison used by the install conflict guard; storage-derived metadata is ignored. */
+    private static boolean isSamePack(BrowserExtension a, BrowserExtension b) {
+        return a.id.equals(b.id)
+                && a.name.equals(b.name)
+                && a.version.equals(b.version)
+                && a.matches.equals(b.matches)
+                && a.excludes.equals(b.excludes)
+                && a.css.equals(b.css)
+                && a.js.equals(b.js);
     }
 
     void setUserPackEnabled(String id, boolean enabled) {
