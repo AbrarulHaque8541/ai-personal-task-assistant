@@ -3107,11 +3107,14 @@ public final class MainActivity extends Activity {
             try {
                 tab.getSettings().setBlockNetworkImage(enabled);
             } catch (RuntimeException applyFailed) {
+                boolean rollbackComplete = true;
                 for (DaymarkWebView rollback : browserTabs) {
                     try { rollback.getSettings().setBlockNetworkImage(previous); }
-                    catch (RuntimeException ignored) { /* A destroyed WebView cannot be repaired here. */ }
+                    catch (RuntimeException rollbackFailed) { rollbackComplete = false; }
                 }
-                showToast("Image setting could not be applied. The previous preference remains active.");
+                showToast(rollbackComplete
+                        ? "Image setting could not be applied. The previous preference remains active."
+                        : "Image setting failed and a tab could not be restored. Close and reopen that tab.");
                 return false;
             }
         }
