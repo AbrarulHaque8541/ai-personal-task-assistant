@@ -65,6 +65,7 @@ Record each as PASS / FAIL / NOT TESTED with device model, Android API, build va
 - [#192](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/192) — disclose/resolve the mismatch between imported extension `runAt` and page-finished injection.
 - [#193](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/193) — collision-safe WebExtension IDs and pack replacement semantics.
 - [#194](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/194) — reject malformed WebExtension match scopes instead of broadening them to all HTTPS sites.
+- [#196](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/196) — make source guards fail CI when critical MainActivity wiring is missing, rather than printing a non-failing PENDING status.
 
 ## Related issues and proposals
 
