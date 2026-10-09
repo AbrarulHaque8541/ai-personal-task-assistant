@@ -252,6 +252,7 @@ public final class MainActivity extends Activity {
     private View browserProviderRow;
     private TextView browserPrivacyButton;
     private Button browserProviderPickerButton;
+    private String browserLastSearchQuery = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1071,6 +1072,7 @@ public final class MainActivity extends Activity {
         try {
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
+            browserLastSearchQuery = BrowserAddress.isLikelyWebAddress(value) ? "" : value.trim();
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             browserAddressInput.setError(exception.getMessage());
@@ -1169,8 +1171,8 @@ public final class MainActivity extends Activity {
         }
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
-        panel.addView(browserProviderRow, bottomMargin(dp(3)));
-
+        // The provider shortcuts are placed after the weighted WebView below so they
+        // remain a compact bottom strip while browsing.
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         panel.addView(browserStatus, bottomMargin(dp(4)));
@@ -1195,6 +1197,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         panel.addView(browserViewport, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        panel.addView(browserProviderRow, bottomMargin(dp(3)));
         return panel;
     }
 
@@ -1343,12 +1346,11 @@ public final class MainActivity extends Activity {
         button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
-            if (!browserNetworkPolicy.allowsRemoteLoads()) {
-                showBrowserOfflineStatus();
-                return;
+            String value = browserLastSearchQuery == null ? "" : browserLastSearchQuery.trim();
+            if (value.isEmpty() && browserAddressInput != null && browserAddressInput.getText() != null) {
+                String addressText = browserAddressInput.getText().toString().trim();
+                if (!BrowserAddress.isLikelyWebAddress(addressText)) value = addressText;
             }
-            String value = browserAddressInput == null || browserAddressInput.getText() == null
-                    ? "" : browserAddressInput.getText().toString().trim();
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
             if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
@@ -1418,6 +1420,7 @@ public final class MainActivity extends Activity {
         try {
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
+            browserLastSearchQuery = BrowserAddress.isLikelyWebAddress(input) ? "" : input.trim();
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
@@ -1460,7 +1463,7 @@ public final class MainActivity extends Activity {
             return;
         }
         browserHomeView.setVisibility(View.GONE);
-        if (browserProviderRow != null) browserProviderRow.setVisibility(View.GONE);
+        if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
@@ -2088,6 +2091,7 @@ public final class MainActivity extends Activity {
         if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+        browserLastSearchQuery = "";
         if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
         if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
         syncBrowserButtons();
