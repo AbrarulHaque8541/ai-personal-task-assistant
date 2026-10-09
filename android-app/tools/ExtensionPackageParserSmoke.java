@@ -226,7 +226,7 @@ public final class ExtensionPackageParserSmoke {
                 "webext imports disclose the timing limitation");
 
         BrowserExtension userscript = ExtensionPackageParser.parseUserScript(
-                "// ==UserScript==\n// @name Early\n// @run-at document-start\n// ==/UserScript==\nbody();");
+                "// ==UserScript==\n// @name Early\n// @match https://example.com/*\n// @run-at document-start\n// ==/UserScript==\nbody();");
         check("document_end".equals(userscript.runAt),
                 "userscript document_start normalizes to the effective timing");
         check(userscript.warnings.contains("document_start run timing is not supported"),
