@@ -7,6 +7,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -146,6 +148,10 @@ final class ExtensionStore {
         }
         String json = ExtensionPackageParser.toDaymarkJson(ext);
         File out = new File(userDir, sanitizeFileName(ext.id) + ".daymark-ext.json");
+        if (out.exists()) {
+            throw new IllegalArgumentException(
+                    "An extension with this ID is already installed. Uninstall it before importing a replacement.");
+        }
         writeFile(out, json);
     }
 
@@ -221,14 +227,18 @@ final class ExtensionStore {
 
     private static void writeFile(File file, String content) throws Exception {
         File tmp = new File(file.getAbsolutePath() + ".tmp");
-        try (FileOutputStream out = new FileOutputStream(tmp)) {
-            out.write(content.getBytes(StandardCharsets.UTF_8));
-            out.getFD().sync();
-        }
-        if (!tmp.renameTo(file)) {
-            //noinspection ResultOfMethodCallIgnored
-            file.delete();
-            if (!tmp.renameTo(file)) throw new Exception("Could not save extension pack.");
+        try {
+            try (FileOutputStream out = new FileOutputStream(tmp)) {
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.getFD().sync();
+            }
+            // Same-directory replacement: if the move fails, keep the previous file intact.
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            if (tmp.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+            }
         }
     }
 }
