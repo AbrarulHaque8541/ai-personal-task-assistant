@@ -3220,7 +3220,7 @@ public final class MainActivity extends Activity {
         browserPreferences.edit().putBoolean(BROWSER_BLOCK_IMAGES_KEY, enabled).apply();
         showToast(enabled
                 ? "Network images blocked. Reload the current page to apply it to images already loaded."
-                : "Network images allowed again. Reload a page to load images that were blocked.");
+                : "Network images allowed again. Previously blocked images may load automatically.");
         return true;
     }
 
