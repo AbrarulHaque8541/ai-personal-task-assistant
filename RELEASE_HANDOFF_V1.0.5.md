@@ -66,6 +66,8 @@ Record each as PASS / FAIL / NOT TESTED with device model, Android API, build va
 - [#193](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/193) — collision-safe WebExtension IDs and pack replacement semantics.
 - [#194](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/194) — reject malformed WebExtension match scopes instead of broadening them to all HTTPS sites.
 - [#196](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/196) — make source guards fail CI when critical MainActivity wiring is missing, rather than printing a non-failing PENDING status.
+- [#199](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/199) — apply Safe Browsing preference consistently to all open WebView tabs.
+- [#200](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/200) — clear per-tab history and SSL exception state across all open tabs.
 
 ## Related issues and proposals
 
