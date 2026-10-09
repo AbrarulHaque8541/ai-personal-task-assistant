@@ -1114,7 +1114,7 @@ public final class MainActivity extends Activity {
         browserHomeButton = compactButton("⌂", false);
         browserHomeButton.setContentDescription("Return to the local browser home screen");
         browserHomeButton.setOnClickListener(view -> showBrowserHome());
-        browserHistoryButton = compactButton("History", false);
+        browserHistoryButton = compactButton("Site history", false);
         browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
         browserSettingsButton = compactButton("Privacy", false);
