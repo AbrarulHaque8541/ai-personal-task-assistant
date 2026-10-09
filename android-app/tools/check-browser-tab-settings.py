@@ -23,7 +23,7 @@ assert "openTabs.add(browserWebView)" in clear, "active WebView must be covered 
 assert "for (DaymarkWebView tab : openTabs)" in clear, "clear-site-data must visit every open tab"
 for method in ("clearHistory()", "clearCache(true)", "clearFormData()", "clearSslPreferences()"):
     assert f"tab.{method}" in clear, f"every tab must receive {method}"
-assert "allTabDataCleared" in clear and "one or more open tabs could not clear" in clear, "partial failure must not be reported as full success"
+assert "allTabDataCleared" in clear and "Site-data cleanup was partial" in clear, "partial failure must not be reported as full success"
 assert "browserWebView.clearHistory()" not in clear, "avoid clearing only the active WebView"
 assert "This action also closes all open Daymark browser tabs and returns to browser home." in SOURCE, "destructive tab-closing side effect must be disclosed before clearing site data"
 assert "private boolean clearBrowserTabData(DaymarkWebView tab)" in clear, "each tab should use a best-effort cleanup helper"
