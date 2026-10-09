@@ -132,3 +132,20 @@ Work by: ChatGPT
 Model: GPT-6
 Tooling: GitHub MCP tools
 Timestamp (UTC): 2026-10-09T17:48:00Z
+
+## Published delta — 2026-10-09 (Vibe)
+
+This section records the live publication outcome of v1.0.5 and supersedes older "not published" wording above (kept as history).
+
+- Tag `v1.0.5` was pushed on main at 2026-10-09T19:51Z (owner-authorized). Release "Daymark v1.0.5" is live, non-draft, latest.
+- Assets verified present: `Daymark-v1.0.5-githubSideload.apk` (221,293 bytes) and `Daymark-v1.0.5-githubSideload.aab` (217,893 bytes). The APK has at least one owner download (device install).
+- **OPEN DEFECT (release-blocking for the updater):** the release body is empty (length 0). The `<!-- daymark-updater-v1 {...} -->` metadata block is missing, so the in-app updater will not offer v1.0.5. Fix and verification are coordinated on #186; do not close #186 until the body is non-empty and the updater block parses. Root cause: the publish workflow only writes notes when it creates the release itself (`gh release create` branch); if a release for the tag already exists, it only uploads assets and never writes the body.
+- Post-publish docs status: version-frozen release claims were universalized in 80f7ad7 / 5b19041 (PROJECT_PLAN.md, RELEASE_SIGNING.md, android-app/V1_ACCEPTANCE.md, android-app/README.md); docs point at Releases/latest as the source of truth and stay correct across future publishes.
+- `.github/RELEASE_TRIGGER_v1.0.5.md` was deleted after publication (its own text says to remove it after a successful release).
+- Device feedback on the published build: #221 (page never loads — fix merged at 6a6510f on main, NOT included in the v1.0.5 APK; awaiting device retest after updating Android System WebView) and #222 (browser chrome rebuild backlog for the next version). #160 remains the owner's device acceptance matrix and stays open.
+
+---
+Work by: Vibe
+Model: GLM (glm-5-latest-short)
+Tooling: GitHub MCP tools
+Timestamp (UTC): 2026-10-09T20:20:35.332Z
