@@ -31,6 +31,7 @@ import android.provider.DocumentsContract;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -264,6 +265,11 @@ public final class MainActivity extends Activity {
     private TextView browserPrivacyButton;
     private Button browserProviderPickerButton;
     private String browserLastSearchQuery = "";
+    private String lastBrowserAddress;
+    private Runnable browserLoadWatchdog;
+    private boolean browserLoadFailed;
+    private static final String BROWSER_LOG_TAG = "DaymarkBrowser";
+    private static final long BROWSER_LOAD_WATCHDOG_MS = 20000L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -413,12 +419,15 @@ public final class MainActivity extends Activity {
     @Override
     protected void onPause() {
         if (browserWebView != null) {
+            if (browserWebView.getUrl() != null) lastBrowserAddress = browserWebView.getUrl();
+            cancelBrowserLoadWatchdog();
+            Log.i(BROWSER_LOG_TAG, "backgrounded; page discarded: " + lastBrowserAddress);
             discardBrowserWebView();
             if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
             if (browserStatus != null) {
                 browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
-                        ? "The page closed when Daymark went into the background. Online remains enabled; no page was restored."
-                        : "The page closed when Daymark went into the background. Offline; WebView network loads are blocked.");
+                        ? "Daymark went into the background. The page will reopen when you return to Daymark."
+                        : "Daymark went into the background. Offline; WebView network loads are blocked.");
             }
         }
         activityResumed = false;
@@ -494,6 +503,12 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
+        if (webMode && browserWebView == null && lastBrowserAddress != null
+                && browserNetworkPolicy != null && browserNetworkPolicy.allowsRemoteLoads()) {
+            final String restoreAddress = lastBrowserAddress;
+            Log.i(BROWSER_LOG_TAG, "resumed; restoring last page: " + restoreAddress);
+            postActivityCallback(() -> navigateBrowserTo(restoreAddress));
+        }
         if (!updateTransferRunning && !verifiedSaveRunning && pendingSaveTransaction == null
                 && pendingVerifiedApk == null
                 && !recoverPendingVerifiedUpdate()) {
@@ -1197,6 +1212,11 @@ public final class MainActivity extends Activity {
         // remain a compact bottom strip while browsing.
         browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        browserStatus.setOnClickListener(view -> {
+            if (!webMode || !browserLoadFailed || lastBrowserAddress == null) return;
+            Log.i(BROWSER_LOG_TAG, "retry requested via status tap: " + lastBrowserAddress);
+            navigateBrowserTo(lastBrowserAddress);
+        });
         panel.addView(browserStatus, bottomMargin(dp(4)));
 
         browserReaderActionRow = new LinearLayout(this);
@@ -1507,6 +1527,7 @@ public final class MainActivity extends Activity {
 
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
+        Log.i(BROWSER_LOG_TAG, "navigate requested: " + address);
         final String safeAddress;
         try {
             safeAddress = BrowserAddress.requireAllowedWebUrl(address);
@@ -1544,8 +1565,29 @@ public final class MainActivity extends Activity {
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
+        lastBrowserAddress = address;
+        browserLoadFailed = false;
+        Log.i(BROWSER_LOG_TAG, "load requested: " + address);
         browserWebView.loadUrl(address);
+        scheduleBrowserLoadWatchdog(address);
         syncBrowserButtons();
+    }
+
+    private void scheduleBrowserLoadWatchdog(String address) {
+        cancelBrowserLoadWatchdog();
+        browserLoadWatchdog = activityCallbackGate.guard(() -> {
+            if (!isActivityCallbackCurrent()) return;
+            Log.e(BROWSER_LOG_TAG, "no page callback within timeout: " + address);
+            browserLoadFailed = true;
+            browserStatus.setText("The page did not open. Tap this message to try again.");
+        });
+        mainHandler.postDelayed(browserLoadWatchdog, BROWSER_LOAD_WATCHDOG_MS);
+    }
+
+    private void cancelBrowserLoadWatchdog() {
+        if (browserLoadWatchdog == null) return;
+        mainHandler.removeCallbacks(browserLoadWatchdog);
+        browserLoadWatchdog = null;
     }
 
     private boolean ensureBrowserWebView() {
@@ -1556,6 +1598,8 @@ public final class MainActivity extends Activity {
                 browserSettingsPolicy.isSafeBrowsingEnabled(), new DaymarkWebView.Listener() {
             @Override public void onPageStarted(String url) {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
+                cancelBrowserLoadWatchdog();
+                Log.i(BROWSER_LOG_TAG, "page started: " + url);
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 syncBrowserButtons();
             }
@@ -1572,6 +1616,9 @@ public final class MainActivity extends Activity {
                     injectVideoDownloadOverlay(targetRef[0]);
                     return;
                 }
+                cancelBrowserLoadWatchdog();
+                browserLoadFailed = false;
+                Log.i(BROWSER_LOG_TAG, "page finished: " + url);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
                 injectVideoDownloadOverlay(browserWebView);
@@ -1598,9 +1645,15 @@ public final class MainActivity extends Activity {
                 });
             }
 
-            @Override public void onLoadError() {
+            @Override public void onLoadError(int errorCode, String description, String failingUrl) {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
-                browserStatus.setText("The page could not load securely. Certificate errors are not bypassed.");
+                cancelBrowserLoadWatchdog();
+                browserLoadFailed = true;
+                Log.e(BROWSER_LOG_TAG, "load failed: code=" + errorCode
+                        + " description=" + description + " url=" + failingUrl);
+                browserStatus.setText(errorCode < 0
+                        ? "The page could not load securely. Certificate errors are not bypassed. Tap this message to try again."
+                        : "The page did not open (error " + errorCode + "). Tap this message to try again.");
             }
 
             @Override public void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -1642,6 +1695,7 @@ public final class MainActivity extends Activity {
                     updateBrowserTabButton();
                     return;
                 }
+                Log.e(BROWSER_LOG_TAG, "renderer gone; discarding page");
                 discardBrowserWebView(false);
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
                 if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
@@ -2971,6 +3025,7 @@ public final class MainActivity extends Activity {
             fullScreenWebDialog = null;
         }
         if (browserFullscreenView != null) exitBrowserFullscreen();
+        cancelBrowserLoadWatchdog();
         List<DaymarkWebView> openTabs = new ArrayList<>(browserTabs);
         browserTabs.clear();
         browserTabQueries.clear();
@@ -6788,5 +6843,6 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 
 
