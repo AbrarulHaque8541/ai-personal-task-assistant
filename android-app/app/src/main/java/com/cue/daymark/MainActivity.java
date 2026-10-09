@@ -1156,7 +1156,7 @@ public final class MainActivity extends Activity {
         // shortcuts, not API integrations; the catalog keeps every label/URL pair in
         // one place so the row and the catalog cannot drift apart.
         for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
-            sites.addView(browserSiteButton(entry.label, entry.httpsUrl));
+            sites.addView(browserSiteButton(entry));
         }
         sitesScroll.addView(sites);
         panel.addView(sitesScroll, bottomMargin(dp(3)));
@@ -1188,12 +1188,29 @@ public final class MainActivity extends Activity {
         return panel;
     }
 
-    private Button browserSiteButton(String label, String address) {
-        Button button = compactButton(label, false);
-        button.setContentDescription("Open the " + label + " website in Daymark's browser");
+    private Button browserSiteButton(AiSiteCatalog.Entry entry) {
+        Button button = compactButton(entry.label, false);
+        button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
-            if (browserAddressInput != null) browserAddressInput.setText(address);
+            if (!browserNetworkPolicy.allowsRemoteLoads()) {
+                showBrowserOfflineStatus();
+                return;
+            }
+            String value = browserAddressInput == null || browserAddressInput.getText() == null
+                    ? "" : browserAddressInput.getText().toString().trim();
+            String address = entry.httpsUrl;
+            if (!value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)) {
+                try {
+                    selectSearchEngine(entry.searchEngine);
+                    address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
+                } catch (IllegalArgumentException exception) {
+                    if (browserAddressInput != null) browserAddressInput.setError(exception.getMessage());
+                    browserStatus.setText("Nothing was opened. Check the question or provider address.");
+                    return;
+                }
+            }
+            if (browserAddressInput != null) browserAddressInput.setError(null);
             navigateBrowserTo(address);
         });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -1207,112 +1224,19 @@ public final class MainActivity extends Activity {
         LinearLayout home = new LinearLayout(this);
         home.setOrientation(LinearLayout.VERTICAL);
         home.setGravity(Gravity.CENTER_VERTICAL);
-        home.setPadding(dp(18), dp(16), dp(18), dp(16));
-        TextView title = text("Search your way", 22, palette.text, Typeface.BOLD);
-        home.addView(title, bottomMargin(dp(6)));
+        home.setPadding(dp(22), dp(20), dp(22), dp(20));
+        TextView title = text("A browser, when you choose", 22, palette.text, Typeface.BOLD);
+        home.addView(title, bottomMargin(dp(9)));
         TextView copy = text(
-                "Type a question in the address bar, then tap any provider below to send it in one tap. AI providers open their websites inside Daymark; direct answers and query prefill depend on each provider and sign-in. These are website shortcuts, not private API integrations. Your query and normal connection details go to the selected provider; pages may contact third parties. Online access must be enabled first. HTTP is blocked.",
-                13, palette.muted, Typeface.NORMAL);
-        copy.setLineSpacing(dp(2), 1f);
-        home.addView(copy, bottomMargin(dp(14)));
-
-        addQuickProviderSection(home, "AI assistants", new BrowserAddress.SearchEngine[] {
-                BrowserAddress.SearchEngine.CHATGPT,
-                BrowserAddress.SearchEngine.PERPLEXITY,
-                BrowserAddress.SearchEngine.GEMINI,
-                BrowserAddress.SearchEngine.CLAUDE,
-                BrowserAddress.SearchEngine.COPILOT,
-                BrowserAddress.SearchEngine.GROK,
-                BrowserAddress.SearchEngine.DEEPSEEK,
-                BrowserAddress.SearchEngine.MISTRAL,
-                BrowserAddress.SearchEngine.META_AI,
-                BrowserAddress.SearchEngine.POE,
-                BrowserAddress.SearchEngine.HUGGINGCHAT,
-                BrowserAddress.SearchEngine.QWEN_CHAT,
-                BrowserAddress.SearchEngine.DUCK_AI,
-                BrowserAddress.SearchEngine.KIMI
-        });
-        addQuickProviderSection(home, "Web search", new BrowserAddress.SearchEngine[] {
-                BrowserAddress.SearchEngine.GOOGLE,
-                BrowserAddress.SearchEngine.DUCKDUCKGO,
-                BrowserAddress.SearchEngine.BING,
-                BrowserAddress.SearchEngine.BRAVE,
-                BrowserAddress.SearchEngine.STARTPAGE,
-                BrowserAddress.SearchEngine.YAHOO,
-                BrowserAddress.SearchEngine.BAIDU,
-                BrowserAddress.SearchEngine.YANDEX,
-                BrowserAddress.SearchEngine.ECOSIA,
-                BrowserAddress.SearchEngine.ANDI,
-                BrowserAddress.SearchEngine.EXA,
-                BrowserAddress.SearchEngine.WIKIPEDIA
-        });
-
-        TextView local = text("Privacy note: the selected site receives your search. Site history stores validated HTTPS origins, not queries or page titles. Use Site history to clear local browser history and Daymark's cookies/cache/storage.",
-                11, palette.muted, Typeface.NORMAL);
+                "Browser access starts Offline. Turn Online on, choose a search engine, enter a search or HTTPS address, then tap Go or a site shortcut for each request. Your query or URL and normal connection details go to that destination; pages may contact third parties. The Online switch blocks Daymark page/resource loads only. Android System WebView Safe Browsing is platform-managed and may contact Google/Play Services for version/device-dependent hash or update checks; its provider is not selectable in Daymark. Daymark sends no task text or app analytics. HTTP is blocked; any per-site exception requires a separate explicit request. AI shortcuts are ordinary websites, not connected model APIs. No website opens automatically.",
+                14, palette.muted, Typeface.NORMAL);
+        copy.setLineSpacing(dp(3), 1f);
+        home.addView(copy, bottomMargin(dp(12)));
+        TextView local = text("Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted. Use Site history to clear it and Daymark's cookies/cache/storage.",
+                12, palette.muted, Typeface.NORMAL);
         local.setLineSpacing(dp(2), 1f);
-        home.addView(local, topMargin(dp(12)));
+        home.addView(local);
         return home;
-    }
-
-    private void addQuickProviderSection(LinearLayout home, String heading,
-            BrowserAddress.SearchEngine[] providers) {
-        TextView label = text(heading, 14, palette.text, Typeface.BOLD);
-        home.addView(label, bottomMargin(dp(5)));
-        HorizontalScrollView scroll = new HorizontalScrollView(this);
-        scroll.setHorizontalScrollBarEnabled(false);
-        scroll.setFillViewport(false);
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        for (BrowserAddress.SearchEngine provider : providers) {
-            Button chip = compactButton(provider.label, false);
-            chip.setContentDescription("Search with " + provider.label + " using the current query");
-            chip.setOnClickListener(view -> openQuickProvider(provider));
-            row.addView(chip, chipMargin());
-        }
-        scroll.addView(row);
-        home.addView(scroll, bottomMargin(dp(10)));
-    }
-
-    private void openQuickProvider(BrowserAddress.SearchEngine provider) {
-        if (!webMode || provider == null) return;
-        if (!browserNetworkPolicy.allowsRemoteLoads()) {
-            showBrowserOfflineStatus();
-            return;
-        }
-        EditText queryField = browserAddressInput != null ? browserAddressInput : quickCaptureInput;
-        String query = queryField == null || queryField.getText() == null
-                ? "" : queryField.getText().toString().trim();
-        if (query.isEmpty()) {
-            if (queryField != null) {
-                queryField.setError("Type a question or search first.");
-                queryField.requestFocus();
-            }
-            showToast("Type a question or search first.");
-            return;
-        }
-        selectSearchEngine(provider);
-        try {
-            String address = BrowserAddress.requireAllowedWebUrl(provider.searchUrl(query));
-            if (queryField != null) queryField.setError(null);
-            navigateBrowserTo(address);
-        } catch (IllegalArgumentException exception) {
-            if (queryField != null) queryField.setError(exception.getMessage());
-            browserStatus.setText("Nothing was opened. Check the search or provider address.");
-        }
-    }
-
-    private void selectSearchEngine(BrowserAddress.SearchEngine provider) {
-        searchEngine = provider;
-        browserPreferences.edit().putString(SEARCH_ENGINE_KEY, provider.name()).apply();
-        int index = provider.ordinal();
-        if (searchEngineSpinner != null && searchEngineSpinner.getSelectedItemPosition() != index) {
-            searchEngineSpinner.setSelection(index);
-        }
-        if (browserSearchEngineSpinner != null
-                && browserSearchEngineSpinner.getSelectedItemPosition() != index) {
-            browserSearchEngineSpinner.setSelection(index);
-        }
     }
 
     private void navigateFromInput() {
