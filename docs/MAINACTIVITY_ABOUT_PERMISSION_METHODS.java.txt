@@ -1,0 +1,67 @@
+// Paste into MainActivity (package com.cue.daymark)
+
+    private void showAboutApp() {
+        String versionName = "?";
+        long versionCode = 0L;
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (info != null) {
+                versionName = info.versionName == null ? "?" : info.versionName;
+                versionCode = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
+            }
+        } catch (Exception ignored) { }
+        String message =
+                "Daymark is a personal task app that keeps your list on this phone.\n\n"
+                        + "Version " + versionName + " (code " + versionCode + ")\n"
+                        + "Package " + getPackageName() + "\n\n"
+                        + "What it does\n"
+                        + "• Tasks with notes, due dates, and optional details\n"
+                        + "• Encrypted local storage and portable backup\n"
+                        + "• Optional HTTPS browser (Web mode) with search and tools\n\n"
+                        + "What it does not do\n"
+                        + "• No account, no cloud sync of your tasks\n"
+                        + "• No ads or analytics SDKs\n"
+                        + "• Does not ask for permissions just because you opened the app\n\n"
+                        + "Updates\n"
+                        + "Use Check for updates to query GitHub Releases. "
+                        + "Only a newer build signed with the same publisher key is offered.\n\n"
+                        + "Source & downloads\n"
+                        + "github.com/AbrarulHaque8541/ai-personal-task-assistant";
+        new AlertDialog.Builder(this)
+                .setTitle("About this app")
+                .setMessage(message)
+                .setPositiveButton("Check for updates", (d, w) -> checkForUpdates(true))
+                .setNeutralButton("Open releases", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(
+                                "https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest")));
+                    } catch (Exception e) {
+                        showToast("Could not open releases page");
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void showPermissionStatus() {
+        String message = "Daymark does not ask for runtime permissions when it opens.\n\n"
+                + "Why nothing pops up on launch:\n"
+                + "• Tasks and encrypted storage work without a permission prompt.\n"
+                + "• INTERNET (for the browser) is an install-time permission, not a runtime dialog.\n"
+                + "• Files you attach or backup use the system file picker when you choose them.\n\n"
+                + "Accessibility (TalkBack) is controlled in Android Settings → Accessibility — "
+                + "apps cannot turn on TalkBack with a permission dialog.\n\n"
+                + "If a future feature needs a runtime permission (for example notifications), "
+                + "Daymark will ask only at the moment that feature is used.";
+        try {
+            String[] requested = readPermissionPackageInfo().requestedPermissions;
+            if (requested != null && requested.length > 0) {
+                StringBuilder listed = new StringBuilder();
+                for (String p : requested) {
+                    listed.append("• ").append(p).append('\n');
+                }
+                message += "\n\nDeclared in this build:\n" + listed;
+            }
+        } catch (Exception ignored) { }
+        showInfo("Permission status", message);
+    }
