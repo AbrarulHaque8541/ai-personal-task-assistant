@@ -43,6 +43,8 @@ writer = store.split("private static void writeFile", 1)[1]
 assert "Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)" in writer, \
     "failed extension saves must preserve the previous pack"
 assert "file.delete()" not in writer, "failed extension saves must not delete the previous pack"
+assert "ext = ext.withEnabled(existing.enabled).withDisabledSites(existing.disabledSites)" in install, \
+    "same-content re-import must preserve enabled state and per-site pause list"
 
 # issue #194: fail-closed match scopes for imported content scripts
 assert 'matches.add("*://*/*")' not in parser, \
