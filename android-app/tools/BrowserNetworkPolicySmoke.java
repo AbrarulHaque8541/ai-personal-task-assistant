@@ -6,9 +6,9 @@ public final class BrowserNetworkPolicySmoke {
 
     public static void main(String[] args) {
         BrowserNetworkPolicy policy = new BrowserNetworkPolicy();
-        assert !policy.isOnlineEnabled() : "new installs must start offline";
-        assert !policy.allowsRemoteLoads() : "offline mode must not permit remote loads";
-        assert policy.shouldBlockWebViewLoads() : "offline mode must block WebView network loads";
+        assert policy.isOnlineEnabled() : "new installs must browse normally";
+        assert policy.allowsRemoteLoads() : "normal browser mode must permit explicit user-initiated loads";
+        assert !policy.shouldBlockWebViewLoads() : "normal browser mode must not block WebView network loads";
 
         policy.setOnlineEnabled(true);
         assert policy.isOnlineEnabled() : "explicit online choice should enable browsing";
@@ -22,6 +22,6 @@ public final class BrowserNetworkPolicySmoke {
         assert !restored.allowsRemoteLoads() : "turning offline blocks future remote loads";
         assert restored.shouldBlockWebViewLoads() : "turning offline blocks WebView resources";
 
-        System.out.println("PASS browser network policy: offline default, explicit online, saved-choice restore, and Daymark page/resource-load blocking");
+        System.out.println("PASS browser network policy: normal browsing default, explicit navigation gate, saved state, and optional internal fail-closed blocking");
     }
 }
