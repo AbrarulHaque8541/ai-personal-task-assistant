@@ -256,6 +256,16 @@ for expected in (
 for forbidden in ("addJavascriptInterface(", "shouldInterceptRequest(", "loadUrl(request.getUrl",
                  "setSupportMultipleWindows(true)"):
     assert forbidden not in webview, f"unsafe/unrequested WebView bridge or interception found: {forbidden}"
+assert "onMediaDownloadRequested(String url)" in webview and "daymark-media-download" in webview, "video overlay must route explicit user clicks through a private scheme, not a JS bridge"
+assert "installMediaDownloadOverlay();" in activity and "private void installMediaDownloadOverlay()" in activity, "loaded pages must install the player download affordance"
+assert "window.__daymarkMediaOverlayInstalled" in activity and "v.currentSrc||v.src" in activity, "overlay must detect direct HTML5 video sources without auto-downloading"
+assert "window.location.href='daymark-media-download://request?url='" in activity, "video download must require the user to tap the page overlay"
+assert "onMediaDownloadRequested(String url)" in activity and "BrowserAddress.isAllowedWebUrl(url)" in activity, "native media downloads must revalidate HTTPS URLs"
+assert "browserReaderActionRow.setVisibility(View.GONE);" in activity, "the obsolete Read full screen button must remain hidden"
+assert "browserReaderActionRow.setVisibility(available && hasPage ? View.VISIBLE : View.GONE)" not in activity, "page loads must not reveal the reader button"
+assert "lastBrowserQuery" in activity and "entry.searchEngine.searchUrl(query)" in activity, "provider switching must reuse the same typed query after a page loads"
+assert "browserProviderRow.setVisibility(View.GONE)" not in activity, "provider shortcuts must remain available after results load"
+assert "providerParams.width = dp(132)" in activity and "new LinearLayout.LayoutParams(dp(50), dp(44))" in activity, "provider selector and Go control must stay compact"
 viewport_policy = (main / "java/com/cue/daymark/BrowserViewportPolicy.java").read_text(encoding="utf-8")
 viewport_smoke = (root / "tools/BrowserViewportPolicySmoke.java").read_text(encoding="utf-8")
 assert "SUPPORT_MULTIPLE_WINDOWS = false" in viewport_policy, \
