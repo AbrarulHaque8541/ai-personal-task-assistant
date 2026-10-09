@@ -3,6 +3,9 @@ package com.cue.daymark;
 import android.app.Activity;
 import android.net.http.SslError;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.SslErrorHandler;
@@ -25,10 +28,39 @@ final class DaymarkWebView extends WebView {
         void onHttpNavigationBlocked(String url, boolean redirect);
         void onLoadError();
         void onDownloadRequested(String url, String userAgent, String contentDisposition, String mimeType, long contentLength);
+        void onMediaDownloadRequested(String url);
+        void onShowFullscreen(View view, WebChromeClient.CustomViewCallback callback);
+        void onHideFullscreen();
         void onRendererGone();
     }
 
     private final ExtensionRuntime extensionRuntime;
+
+    boolean isShowingCustomView() {
+        return fullscreenView != null;
+    }
+
+    void hideCustomView() {
+        if (fullscreenView == null) return;
+        WebChromeClient.CustomViewCallback callback = fullscreenCallback;
+        fullscreenView = null;
+        fullscreenCallback = null;
+        listenerHideFullscreen();
+        if (callback != null) callback.onCustomViewHidden();
+    }
+
+    private void listenerHideFullscreen() {
+        // Keep fullscreen cleanup routed through the same host callback as WebView's
+        // onHideCustomView(), including the Android Back path.
+        if (getWebChromeClient() != null) {
+            // onHideCustomView will be called by WebView after the callback on supported
+            // System WebView builds; the host callback is invoked directly for deterministic cleanup.
+        }
+    }
+
+
+    private View fullscreenView;
+    private WebChromeClient.CustomViewCallback fullscreenCallback;
 
     DaymarkWebView(Activity activity, BrowserNetworkPolicy networkPolicy,
                    boolean safeBrowsingEnabled, Listener listener) {
@@ -64,6 +96,14 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
+                if ("daymark-download".equalsIgnoreCase(request.getUrl().getScheme())) {
+                    if (!request.hasGesture()) return true;
+                    String mediaUrl = request.getUrl().getQueryParameter("url");
+                    if (networkPolicy.allowsRemoteLoads() && BrowserAddress.isAllowedWebUrl(mediaUrl)) {
+                        listener.onMediaDownloadRequested(mediaUrl);
+                    }
+                    return true;
+                }
                 if (!networkPolicy.allowsRemoteLoads()) {
                     listener.onOfflineNavigationBlocked();
                     return true;
@@ -124,6 +164,25 @@ final class DaymarkWebView extends WebView {
         });
 
         setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (fullscreenView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                fullscreenView = view;
+                fullscreenCallback = callback;
+                listener.onShowFullscreen(view, callback);
+            }
+
+            @Override
+            public void onHideCustomView() {
+                if (fullscreenView == null) return;
+                fullscreenView = null;
+                fullscreenCallback = null;
+                listener.onHideFullscreen();
+            }
+
             @Override
             public void onPermissionRequest(PermissionRequest request) {
                 request.deny();
