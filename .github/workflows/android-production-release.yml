@@ -112,10 +112,18 @@ jobs:
           [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
-          cert_file="$RUNNER_TEMP/release-certificate.der"
-          keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" >/dev/null
-          actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr 'A-F' 'a-f')"
-          [[ "$actual_signer" == "${expected_signer,,}" ]] || { echo "::error::Release signer mismatch; refusing publication."; exit 1; }
+          apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+          actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
+          if [[ -z "$actual_signer" ]]; then
+            cert_file="$RUNNER_TEMP/release-certificate.der"
+            keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" 2>/dev/null || true
+            if [[ -s "$cert_file" ]]; then
+              actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr 'A-F' 'a-f')"
+            fi
+          fi
+          echo "Expected signer: ${expected_signer,,}"
+          echo "Actual signer:   ${actual_signer}"
+          [[ "$actual_signer" == "${expected_signer,,}" ]] || { echo "::error::Release signer mismatch (expected ${expected_signer,,}, got ${actual_signer}); refusing publication."; exit 1; }
           mkdir -p release-artifacts
           apk_name="Daymark-v${version_name}-githubSideload.apk"
           aab_name="Daymark-v${version_name}-githubSideload.aab"
