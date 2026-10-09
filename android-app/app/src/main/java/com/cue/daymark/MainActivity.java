@@ -2160,16 +2160,107 @@ public final class MainActivity extends Activity {
     }
 
     private void showFindInPageDialog() {
-        if (browserWebView == null) return;
+        final DaymarkWebView target = browserWebView;
+        if (target == null || target.getUrl() == null) {
+            showToast("Open a page before searching its text.");
+            return;
+        }
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(16), dp(8), dp(16), dp(4));
+
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setHint("Find text on this page");
-        new AlertDialog.Builder(this).setTitle("Find in page").setView(input)
-                .setPositiveButton("Find", (d, w) -> {
-                    String query = input.getText() == null ? "" : input.getText().toString().trim();
-                    if (!query.isEmpty()) browserWebView.findAllAsync(query);
-                })
-                .setNegativeButton("Cancel", null).show();
+        input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        panel.addView(input, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView status = new TextView(this);
+        status.setTextColor(Color.GRAY);
+        status.setTextSize(12 * textScale);
+        status.setText("Type to search this page.");
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statusParams.topMargin = dp(6);
+        panel.addView(status, statusParams);
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.HORIZONTAL);
+        controls.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        Button previous = new Button(this);
+        previous.setText("Previous");
+        previous.setAllCaps(false);
+        Button next = new Button(this);
+        next.setText("Next");
+        next.setAllCaps(false);
+        previous.setEnabled(false);
+        next.setEnabled(false);
+        controls.addView(previous, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        controls.addView(next, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        panel.addView(controls);
+
+        final int[] matchCount = {0};
+        final boolean[] active = {true};
+        target.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
+            if (!active[0]) return;
+            matchCount[0] = numberOfMatches;
+            previous.setEnabled(numberOfMatches > 0);
+            next.setEnabled(numberOfMatches > 0);
+            if (!isDoneCounting) {
+                status.setText("Searching…");
+            } else if (numberOfMatches == 0) {
+                status.setText("No matches found.");
+            } else {
+                status.setText("Match " + (Math.max(0, activeMatchOrdinal) + 1)
+                        + " of " + numberOfMatches);
+            }
+        });
+
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) { }
+
+            @Override public void onTextChanged(CharSequence value, int start, int before, int count) {
+                String query = value == null ? "" : value.toString().trim();
+                matchCount[0] = 0;
+                previous.setEnabled(false);
+                next.setEnabled(false);
+                if (query.isEmpty()) {
+                    target.clearMatches();
+                    status.setText("Type to search this page.");
+                } else {
+                    status.setText("Searching…");
+                    target.findAllAsync(query);
+                }
+            }
+
+            @Override public void afterTextChanged(Editable value) { }
+        });
+        previous.setOnClickListener(view -> {
+            if (matchCount[0] > 0) target.findNext(false);
+        });
+        next.setOnClickListener(view -> {
+            if (matchCount[0] > 0) target.findNext(true);
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Find in page")
+                .setView(panel)
+                .setNegativeButton("Close", null)
+                .create();
+        dialog.setOnDismissListener(ignored -> {
+            active[0] = false;
+            target.setFindListener(null);
+            target.clearMatches();
+        });
+        dialog.show();
+        input.requestFocus();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+        }
     }
 
     private void shareCurrentBrowserUrl() {
