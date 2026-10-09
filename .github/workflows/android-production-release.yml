@@ -189,7 +189,7 @@ jobs:
             echo "- AAB SHA-256: `$AAB_SHA`"
             echo
             echo "<!-- daymark-updater-v1"
-            printf '{"applicationId":"com.cue.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
+            printf '{"applicationId":"com.cue.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
             echo "-->"
           } > "$notes"
           release_json="$RUNNER_TEMP/release.json"
