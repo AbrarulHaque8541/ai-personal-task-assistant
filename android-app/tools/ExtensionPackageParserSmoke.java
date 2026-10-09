@@ -20,7 +20,7 @@ public final class ExtensionPackageParserSmoke {
         daymarkJsonRoundTripPreservesEveryField();
         daymarkJsonValidationRejectsBadPacks();
         userscriptHeaderParsesAndGrantPolicyIsWarned();
-        bareUserscriptGetsSafeDefaults();
+        userscriptWithoutMatchIsRejected();
         webExtensionManifestTranslatesContentScriptsOnly();
         webExtensionManifestWithoutContentScriptsIsRejected();
         webExtensionMatchScopesFailClosed();
@@ -63,6 +63,8 @@ public final class ExtensionPackageParserSmoke {
         expectRejected("{\"id\":\"x\"}", "packs without a name are rejected");
         expectRejected("{\"name\":\"X\"}", "packs without an id are rejected");
         expectRejected("{\"id\":\"bad id!\",\"name\":\"X\"}", "ids with unsafe characters are rejected");
+        expectRejected("{\"id\":\"no-scope\",\"name\":\"No scope\"}", "Daymark packs without match scopes are rejected");
+        expectRejected("{\"id\":\"bad-scope\",\"name\":\"Bad scope\",\"matches\":[\"http://example.com/*\"]}", "Daymark packs with unsupported scopes are rejected");
         expectRejected("[1,2,3]", "non-object JSON payloads are rejected");
         expectRejected(null, "null pack text is rejected");
         StringBuilder huge = new StringBuilder();
@@ -98,7 +100,7 @@ public final class ExtensionPackageParserSmoke {
         check(ext.warnings.contains("@require/@resource not fetched"), "remote @require is refused with a warning");
         check(!ext.warnings.contains("unsupported @grant"), "GM_addStyle is allowed without an unsupported-grant warning");
 
-        String unsafe = "// ==UserScript==\n// @name Unsafe\n// @grant GM_setValue\n// ==/UserScript==\nbody();";
+        String unsafe = "// ==UserScript==\n// @name Unsafe\n// @match https://example.com/*\n// @grant GM_setValue\n// ==/UserScript==\nbody();";
         BrowserExtension warned = ExtensionPackageParser.parseUserScript(unsafe);
         check(warned.warnings.contains("unsupported @grant GM_setValue"),
                 "privileged GM_* grants become warnings, not APIs");
@@ -106,11 +108,10 @@ public final class ExtensionPackageParserSmoke {
                 "the description tells the user only DOM-level APIs are provided");
     }
 
-    private static void bareUserscriptGetsSafeDefaults() throws Exception {
-        BrowserExtension bare = ExtensionPackageParser.parseUserScript("console.log(1);");
-        check("Imported script".equals(bare.name), "headerless userscripts get a default name");
-        check(bare.matches.contains("*://*/*"), "headerless userscripts default to all HTTPS pages");
-        check("console.log(1);".equals(bare.js), "headerless userscripts keep their whole body");
+    private static void userscriptWithoutMatchIsRejected() {
+        expectUserscriptRejected("console.log(1);", "headerless userscripts without an explicit @match are rejected");
+        expectUserscriptRejected("// ==UserScript==\n// @name No scope\n// ==/UserScript==\nrun();",
+                "userscripts without @match are rejected instead of running on every site");
     }
 
     private static void webExtensionManifestTranslatesContentScriptsOnly() throws Exception {
@@ -189,12 +190,15 @@ public final class ExtensionPackageParserSmoke {
         // "Aa" and "BB" collide under Java's 32-bit String.hashCode(); digests must not.
         check("Aa".hashCode() == "BB".hashCode(),
                 "the fixture strings really do collide under String.hashCode()");
-        BrowserExtension first = ExtensionPackageParser.parseUserScript("Aa");
-        BrowserExtension second = ExtensionPackageParser.parseUserScript("BB");
+        String scriptA = "// ==UserScript==\\n// @name Aa\\n// @match https://example.com/*\\n// ==/UserScript==\\nrun();";
+        String scriptB = scriptA.replace("@name Aa", "@name BB");
+        check(scriptA.hashCode() == scriptB.hashCode(), "userscript fixtures share a Java String hash");
+        BrowserExtension first = ExtensionPackageParser.parseUserScript(scriptA);
+        BrowserExtension second = ExtensionPackageParser.parseUserScript(scriptB);
         check(!first.id.equals(second.id),
                 "userscript ids survive hashCode collisions without colliding");
-        check(first.id.matches("userscript\\.[0-9a-f]{16}")
-                        && second.id.matches("userscript\\.[0-9a-f]{16}"),
+        check(first.id.matches("userscript\\.[0-9a-f]{64}")
+                        && second.id.matches("userscript\\.[0-9a-f]{64}"),
                 "userscript ids are SHA-256 digests");
         check(first.id.equals(ExtensionPackageParser.parseUserScript("Aa").id),
                 "re-importing the same userscript keeps a stable id");
@@ -206,7 +210,7 @@ public final class ExtensionPackageParserSmoke {
         check(!firstId.equals(secondId), "manifest ids differ for different manifests");
         check(firstId.equals(ExtensionPackageParser.parseWebExtensionManifest(manifest).id),
                 "re-importing the same manifest keeps a stable id");
-        check(firstId.matches("webext\\.[0-9a-f]{16}"), "manifest ids are SHA-256 digests");
+        check(firstId.matches("webext\\.[0-9a-f]{64}"), "manifest ids are SHA-256 digests");
     }
 
     private static void documentStartImportsNormalizeToHonestTiming() throws Exception {
@@ -380,6 +384,18 @@ public final class ExtensionPackageParserSmoke {
         assertions++;
         try {
             ExtensionPackageParser.parseDaymarkJson(raw, false);
+            throw new AssertionError(message + ": expected rejection");
+        } catch (IllegalArgumentException expected) {
+            // rejected as expected
+        } catch (Exception other) {
+            throw new AssertionError(message + ": unexpected rejection type " + other, other);
+        }
+    }
+
+    private static void expectUserscriptRejected(String raw, String message) {
+        assertions++;
+        try {
+            ExtensionPackageParser.parseUserScript(raw);
             throw new AssertionError(message + ": expected rejection");
         } catch (IllegalArgumentException expected) {
             // rejected as expected
