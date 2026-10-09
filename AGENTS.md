@@ -1,23 +1,28 @@
 # Humans & Agents Rules — Daymark
 
-Read before code, secrets questions, or release actions. Keep this file short so any new agent can start fast.
+**If you are an AI/coding agent: read this file first, then work.** Skipping it wastes everyone’s time.
+
+Short on purpose. Hard limits are few; everywhere else, use your full capability.
 
 ## 0. Start here (60 seconds)
 
 1. **App:** Daymark — local-first Android tasks + HTTPS WebView. Package: `com.cue.daymark`.
 2. **Repo:** https://github.com/AbrarulHaque8541/ai-personal-task-assistant
-3. **Live status:** [Releases](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest) · `android-app/app/build.gradle.kts` · open Issues/PRs — never invent versions from memory.
-4. **Secrets already in Actions:** `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. **Never ask the owner for keystore files or passwords.** Never print them. Never put write tokens in the APK.
+3. **Live status:** [Releases / latest](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest) · `android-app/app/build.gradle.kts` · open Issues/PRs. Do not invent version numbers.
+4. **Secrets are already in GitHub Actions:** `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Never ask the owner for keystore files or passwords. Never print them. Never put write tokens in the APK.
 5. **Signer pin:** `UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256` = `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`
-6. **Ship path:** branch → PR → green CI → merge to `main` → tag `v` + `versionName` → `.github/workflows/android-production-release.yml` publishes signed APK/AAB + `daymark-updater-v1` notes.
+6. **Usual ship path:** branch → PR → CI → `main` → tag `v` + `versionName` → `android-production-release.yml` → signed APK/AAB + `daymark-updater-v1` notes. If you can drive that path yourself, do it — do not invent extra gates.
 
-## 1. Do the work
+## 1. Work style — capable, not blocked
 
-Prefer a focused, testable change over a long plan. Verify claims against **live** `main` and CI. Search open Issues/PRs before opening duplicates.
+- **Do the work**, not only a plan. Prefer a focused change that lands over ceremony.
+- Use the tools and access you already have (GitHub, CI, code, research). If you can open a PR, merge when appropriate, tag, or fix CI yourself, **do that** instead of waiting for a human to click for you.
+- Rules below protect package identity, signing, and user data. They are not meant to slow a capable agent down.
+- Verify claims against **live** `main` / Releases / CI. Write what is true now — not an upside-down timeline.
 
-## 2. Agent identity (mandatory)
+## 2. Agent identity (mandatory, light)
 
-Every PR description, issue body, and substantive issue/PR comment ends with:
+End PR descriptions, issue bodies, and substantive comments with:
 
 ```
 ---
@@ -27,50 +32,48 @@ Tooling: <e.g. GitHub MCP tools>
 Timestamp (UTC): <YYYY-MM-DDTHH:MM:SSZ>
 ```
 
-- Do not invent a model number. Partial identity beats a false one.
-- Identity is for **traceability**, not status. Do not claim GitHub “collaborator”, co-owner, or permanent team membership unless the owner granted that on GitHub.
-- Short “ack” replies: at least Work by + UTC timestamp.
+Traceability only. Do not invent model numbers. Do not claim GitHub “collaborator” / co-owner status unless the owner granted it on GitHub.
 
-## 3. Multi-agent coordination (lightweight)
+## 3. Multi-agent (lightweight)
 
-Many agents may work in parallel. Stay useful, not bureaucratic:
+Many agents may work at once:
 
-1. **Before coding:** skim open PRs and recent commits for the same area (browser, tasks, More menu, signing, docs).
-2. **One concern per branch/PR.** Prefer extending or reviewing an open PR over opening a near-duplicate.
-3. **Hot files** (`MainActivity.java`, signing/workflows): smaller diffs; avoid placeholder or wipe commits.
-4. **Handoff in the PR/issue body**, not only in chat: what changed, what was verified, what was not.
-5. **Success = tool result.** A PR/issue exists only when GitHub returns a number/URL. An in-chat form that was not submitted is not a PR.
-6. If two agents overlap, prefer merge/rebase on current `main` and keep the better fix — do not fight over credit.
+1. Skim open PRs/issues for the same area before duplicating.
+2. One clear concern per branch when practical.
+3. Be careful on huge files (`MainActivity.java`) and signing/workflows — no wipe/placeholder commits.
+4. A PR/issue is real only when GitHub returns a number/URL (an unsubmitted chat form is not a PR).
+5. Overlap → merge the better fix; do not fight over credit.
 
-## 4. Product invariants
+## 4. Hard product limits (short list)
 
 1. `applicationId = com.cue.daymark` forever.
-2. Same production signer pin (above); monotonic `versionCode`; tag = `v` + `versionName`.
-3. Production APK/AAB only via the production release workflow from a tag on `main`. No debug-signed “production” assets.
-4. Fail-closed encrypted storage; do not empty user tasks on error. Portable backup stays add-only compatible.
-5. HTTPS-only browsing; no broad `addJavascriptInterface` to untrusted pages; no analytics/ad SDKs.
-6. WebView ≠ full Chrome/Firefox extensions. AI site buttons are shortcuts unless a real API path exists.
+2. Same production signer pin; monotonic `versionCode`; tag = `v` + `versionName`.
+3. Production APK/AAB via the production release workflow from a tag on `main` — not a random debug APK labeled “release”.
+4. Never empty user task data on error. No analytics/ad SDKs. No broad JS bridge to untrusted pages.
+5. HTTPS-only browsing. WebView ≠ full Chrome/Firefox extensions.
 
-## 5. Release (owner or agent)
+Everything else: ship useful improvements.
 
-- **Who may tag/release:** the **owner**, or an **agent after the owner’s explicit approval** for that release (chat/issue/PR is enough).
-- Without that approval, prepare `main` and docs only — do not push `vX.Y.Z`.
-- After a tag: confirm Release assets exist; use evidence label **PUBLISHED** only then.
-- Device QA is separate from CI. Never mark DEVICE VERIFIED without a real device/emulator run.
+## 5. Release — owner or agent; standing OK
 
-## 6. Evidence labels
+- **Owner** may tag/release anytime.
+- **Agent** may tag/release when:
+  - the owner approved **this** release, **or**
+  - the owner already gave a **standing instruction** (e.g. “release without asking each time”, “keep working and releasing”, “don’t wait for approval on release”).
+- If standing approval exists, **do not** ping the owner again for each tag. Execute, then report what shipped.
+- If there is no approval and no standing instruction, prepare `main` and open/describe the release path — do not guess.
+- After a tag: confirm Release assets; say **PUBLISHED** only when the GitHub Release exists.
+- Device QA ≠ CI. Say **DEVICE VERIFIED** only after a real device/emulator check.
 
-Use precisely: **PASS** · **SOURCE-VERIFIED** · **PARTIALLY VERIFIED** · **NOT TESTED** · **DEVICE VERIFIED** · **PUBLISHED**.
+## 6. Evidence words
 
-## 7. UX bar
+**PASS** · **SOURCE-VERIFIED** · **PARTIALLY VERIFIED** · **NOT TESTED** · **DEVICE VERIFIED** · **PUBLISHED** — use them accurately.
 
-Phone-first, honest labels, ~48dp targets, nested screens consistent. Prefer useful defaults over enterprise ceremony.
-
-## 8. Status sources (do not freeze versions here)
+## 7. Status table
 
 | Question | Source |
 |----------|--------|
-| Published APK | GitHub Releases / latest |
+| Published APK | Releases / latest |
 | Tree version | `android-app/app/build.gradle.kts` |
 | Open work | Issues + PRs |
 | Signing detail | `RELEASE_SIGNING.md` |
@@ -81,4 +84,4 @@ Also: [README](README.md), [PROJECT_PLAN.md](PROJECT_PLAN.md).
 Work by: Grok
 Model: Grok 4.5 (xAI)
 Tooling: GitHub MCP tools
-Timestamp (UTC): 2026-10-09T19:27:00Z
+Timestamp (UTC): 2026-10-09T19:35:00Z
