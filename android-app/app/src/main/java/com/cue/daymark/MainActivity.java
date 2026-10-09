@@ -225,6 +225,7 @@ public final class MainActivity extends Activity {
     private LinearLayout webActions;
     private EditText browserAddressInput;
     private String lastBrowserQuery = "";
+    private final java.util.Map<DaymarkWebView, String> browserTabQueries = new java.util.HashMap<>();
     private Spinner browserSearchEngineSpinner;
     private LinearLayout browserScreen;
     private FrameLayout browserViewport;
@@ -1056,6 +1057,7 @@ public final class MainActivity extends Activity {
             String address = BrowserAddress.resolveInput(value, searchEngine);
             browserAddressInput.setError(null);
             navigateBrowserTo(address);
+            if (browserWebView != null) browserTabQueries.put(browserWebView, lastBrowserQuery);
         } catch (IllegalArgumentException exception) {
             browserAddressInput.setError(exception.getMessage());
         }
@@ -1339,8 +1341,9 @@ public final class MainActivity extends Activity {
                     ? "" : browserAddressInput.getText().toString().trim();
             selectSearchEngine(entry.searchEngine);
             String address = entry.httpsUrl;
+            String tabQuery = browserWebView == null ? "" : browserTabQueries.getOrDefault(browserWebView, "");
             String query = !value.isEmpty() && !BrowserAddress.isLikelyWebAddress(value)
-                    ? value : lastBrowserQuery;
+                    ? value : (!tabQuery.isEmpty() ? tabQuery : lastBrowserQuery);
             if (!query.isEmpty() && !BrowserAddress.isLikelyWebAddress(query)) {
                 try {
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(query));
@@ -1414,6 +1417,7 @@ public final class MainActivity extends Activity {
             String address = BrowserAddress.resolveInput(input, searchEngine);
             quickCaptureInput.setError(null);
             navigateBrowserTo(address);
+            if (browserWebView != null) browserTabQueries.put(browserWebView, lastBrowserQuery);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
             browserStatus.setText("Nothing was opened. Check the search or web address.");
@@ -1587,6 +1591,7 @@ public final class MainActivity extends Activity {
             browserWebView.setVisibility(View.GONE);
         }
         browserWebView = null;
+        lastBrowserQuery = "";
         if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
@@ -1601,6 +1606,7 @@ public final class MainActivity extends Activity {
         if (browserWebView != null && browserWebView != browserTabs.get(index)) browserWebView.onPause();
         for (DaymarkWebView tab : browserTabs) tab.setVisibility(View.GONE);
         browserWebView = browserTabs.get(index);
+        lastBrowserQuery = browserTabQueries.getOrDefault(browserWebView, "");
         browserWebView.onResume();
         browserWebView.setVisibility(View.VISIBLE);
         if (browserHomeView != null) browserHomeView.setVisibility(View.GONE);
@@ -1622,6 +1628,7 @@ public final class MainActivity extends Activity {
         DaymarkWebView current = browserWebView;
         if (current == null) return;
         browserTabs.remove(current);
+        browserTabQueries.remove(current);
         browserWebView = null;
         try {
             current.getSettings().setBlockNetworkLoads(true);
@@ -2308,6 +2315,7 @@ public final class MainActivity extends Activity {
             tab.destroy();
         }
         browserTabs.clear();
+        browserTabQueries.clear();
         browserWebView = null;
         updateBrowserTabsButton();
         syncBrowserButtons();
