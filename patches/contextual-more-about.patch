@@ -1,0 +1,116 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -789,6 +789,9 @@
+         pathButton.setVisibility(View.GONE);
+         Button moreButton = plainButton("More");
+-        moreButton.setContentDescription("Open appearance, accessibility, and permission settings");
+-        moreButton.setOnClickListener(view -> showSettingsDialog());
++        moreButton.setContentDescription("Open settings for this screen");
++        moreButton.setOnClickListener(view -> {
++            if (webMode) showBrowserOverflowMenu(view);
++            else showSettingsDialog();
++        });
+         LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(
+                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+@@ -1788,5 +1791,5 @@
+         };
+         new AlertDialog.Builder(this)
+-                .setTitle("Browser actions")
++                .setTitle("More · Browser")
+                 .setItems(actions, (dialog, which) -> {
+                     switch (which) {
+@@ -5962,48 +5965,129 @@
+     private void showSettingsDialog() {
+         LinearLayout content = new LinearLayout(this);
+         content.setOrientation(LinearLayout.VERTICAL);
+-        content.setPadding(dp(16), dp(4), dp(16), dp(8));
+-
+-        TextView intro = text(
+-                "Make Daymark feel right, manage your data, and open power features when you need them.",
+-                13, palette.muted, Typeface.NORMAL);
+-        intro.setLineSpacing(dp(2), 1f);
+-        content.addView(intro, bottomMargin(dp(12)));
+-
+-        addSettingsSection(content, "PERSONALIZE");
+-        addSettingsRow(content, "Appearance", themeLabel(),
+-                () -> showThemePicker());
+-        addSettingsRow(content, "Text size", textSizeLabel(),
+-                () -> showTextSizePicker());
+-        addSettingsRow(content, "High contrast", highContrast ? "On · stronger contrast" : "Off · standard colors",
+-                () -> toggleHighContrast());
+-
+-        addSettingsSection(content, "ACCESSIBILITY & DATA");
+-        addSettingsRow(content, "Accessibility", "Screen reader and motion support",
+-                () -> showScreenReaderInfo());
+-        addSettingsRow(content, "Permission status", permissionStatusLabel(),
+-                () -> showPermissionStatus());
+-        addSettingsRow(content, "Encrypted backup & restore", "Export or add tasks from a .dmbackup file",
+-                () -> showPortableBackupDialog());
+-
+-        addSettingsSection(content, "POWER FEATURES");
+-        addSettingsRow(content, "Browser & extensions",
+-                webMode ? "Manage page scripts and matching sites" : "Switch to Web mode; open Extensions from browser actions",
+-                () -> {
+-                    if (webMode) showBrowserExtensionsManager();
+-                    else setWebMode(true);
+-                });
+-        addSettingsRow(content, "Check for updates", "Check the signed sideload release channel",
+-                () -> checkForUpdates(true));
++        content.setPadding(dp(16), dp(6), dp(16), dp(10));
++
++        LinearLayout hero = new LinearLayout(this);
++        hero.setOrientation(LinearLayout.VERTICAL);
++        hero.setPadding(dp(14), dp(14), dp(14), dp(14));
++        hero.setBackground(shape(palette.surface, 16, palette.line));
++        String versionLine = "Daymark";
++        try {
++            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
++            if (info != null) {
++                long code = Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
++                versionLine = "Daymark  ·  " + (info.versionName == null ? "?" : info.versionName)
++                        + " (" + code + ")";
++            }
++        } catch (Exception ignored) { }
++        TextView heroTitle = text(versionLine, 16, palette.text, Typeface.BOLD);
++        TextView heroSub = text("Tasks home settings  ·  encrypted on this device", 12, palette.muted, Typeface.NORMAL);
++        heroSub.setPadding(0, dp(4), 0, 0);
++        hero.addView(heroTitle);
++        hero.addView(heroSub);
++        content.addView(hero, bottomMargin(dp(14)));
++
++        addSettingsSection(content, "QUICK ACTIONS");
++        addSettingsRow(content, "Check for updates",
++                "Look for a newer signed APK on GitHub",
++                () -> checkForUpdates(true));
++        addSettingsRow(content, "Encrypted backup & restore",
++                "Export or add tasks from a .dmbackup file",
++                () -> showPortableBackupDialog());
++        addSettingsRow(content, "About this app",
++                "What Daymark is, version, and links",
++                () -> showAboutApp());
++
++        addSettingsSection(content, "LOOK & FEEL");
++        addSettingsRow(content, "Appearance", themeLabel(),
++                () -> showThemePicker());
++        addSettingsRow(content, "Text size", textSizeLabel(),
++                () -> showTextSizePicker());
++        addSettingsRow(content, "High contrast", highContrast ? "On · stronger contrast" : "Off · standard colors",
++                () -> toggleHighContrast());
++
++        addSettingsSection(content, "ACCESS");
++        addSettingsRow(content, "Accessibility", "TalkBack labels · system accessibility",
++                () -> showScreenReaderInfo());
++        addSettingsRow(content, "Permission status", "Why no prompt on open · declared permissions",
++                () -> showPermissionStatus());
+ 
+         ScrollView scroll = new ScrollView(this);
+         scroll.setFillViewport(false);
+         scroll.setClipToPadding(false);
+         scroll.addView(content);
+         AlertDialog dialog = new AlertDialog.Builder(this)
+-                .setTitle("More")
++                .setTitle("More · Tasks")
+                 .setView(scroll)
+                 .setNegativeButton("Done", null)
+                 .create();
+@@ after showSettingsDialog add showAboutApp and replace showPermissionStatus — see docs/CONTEXTUAL_MORE.md and full agent patch file.
