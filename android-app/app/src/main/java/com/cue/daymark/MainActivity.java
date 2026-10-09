@@ -1743,6 +1743,7 @@ public final class MainActivity extends Activity {
         if (browserFullscreenView != null) exitBrowserFullscreen();
         destroyBrowserWebView(closing, true);
         if (browserTabs.isEmpty()) {
+            browserLastSearchQuery = "";
             if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
             if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
             if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
