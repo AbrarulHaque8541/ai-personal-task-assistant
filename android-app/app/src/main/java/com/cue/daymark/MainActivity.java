@@ -231,6 +231,8 @@ public final class MainActivity extends Activity {
     private FrameLayout browserViewport;
     private View browserHomeView;
     private DaymarkWebView browserWebView;
+    private final java.util.List<DaymarkWebView> browserTabs = new java.util.ArrayList<>();
+    private Button browserTabsButton;
     private Button taskModeButton;
     private Button webModeButton;
     private Button webGoButton;
@@ -1094,6 +1096,9 @@ public final class MainActivity extends Activity {
         browserHomeButton = compactButton("⌂", false);
         browserHomeButton.setContentDescription("Return to the local browser home screen");
         browserHomeButton.setOnClickListener(view -> showBrowserHome());
+        browserTabsButton = compactButton("Tabs 0", false);
+        browserTabsButton.setContentDescription("Switch between open browser tabs or create a new tab");
+        browserTabsButton.setOnClickListener(view -> showBrowserTabsDialog());
         browserHistoryButton = compactButton("Site history", false);
         browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
@@ -1116,7 +1121,7 @@ public final class MainActivity extends Activity {
         tasksButton.setContentDescription("Return to Daymark tasks");
         tasksButton.setOnClickListener(view -> setWebMode(false));
         for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserHistoryButton, browserSettingsButton,
+                browserReloadButton, browserHomeButton, browserTabsButton, browserHistoryButton, browserSettingsButton,
                 browserOverflowButton, browserMediaButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
