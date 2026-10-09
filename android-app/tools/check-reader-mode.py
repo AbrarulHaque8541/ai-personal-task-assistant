@@ -28,7 +28,13 @@ for marker in (
     "document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT", 
     "NodeFilter.FILTER_REJECT", 
     "node.getAttribute('aria-hidden')==='true'", 
-    ".slice(0,60000)",
+    ".slice(0,maxChars)",
+    "maxChars=60000,maxNodes=10000",
+    "slice(0,120).trim()",
+    "visited<maxNodes",
+    "value=value.slice(0,remaining)",
+    "length++;",
+
     "sourceUrl.equals(source.getUrl())",
     "showReaderModeDialog(title, body)",
 ):
