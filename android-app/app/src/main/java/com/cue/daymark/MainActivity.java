@@ -927,7 +927,7 @@ public final class MainActivity extends Activity {
         taskActions = new LinearLayout(this);
         taskActions.setOrientation(LinearLayout.VERTICAL);
         addTaskButton = primaryButton("Add task");
-        addTaskButton.setContentDescription("Add this task with no due date and medium priority");
+        addTaskButton.setContentDescription("Add this task in the full editor with the captured text");
         addTaskButton.setOnClickListener(view -> {
             String draft = quickCaptureInput.getText() == null
                     ? "" : quickCaptureInput.getText().toString();
