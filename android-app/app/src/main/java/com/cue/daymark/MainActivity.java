@@ -1052,8 +1052,9 @@ public final class MainActivity extends Activity {
         browserAddressInput.setSingleLine(true);
         browserAddressInput.setTextSize(14 * textScale);
         browserAddressInput.setHint("Search or enter HTTPS address");
-        browserAddressInput.setImeOptions(EditorInfo.IME_ACTION_GO);
-        browserAddressInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        browserAddressInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        browserAddressInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         browserAddressInput.setPadding(dp(12), 0, dp(8), 0);
         browserAddressInput.setTextColor(palette.text);
         browserAddressInput.setHintTextColor(palette.muted);
@@ -1064,17 +1065,30 @@ public final class MainActivity extends Activity {
         webGoButton = primaryButton("Go");
         webGoButton.setContentDescription("Open the entered web address or search");
         webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        LinearLayout.LayoutParams goParams = new LinearLayout.LayoutParams(dp(48), dp(42));
-        goParams.leftMargin = dp(6);
-        top.addView(webGoButton, goParams);
+        webGoButton.setVisibility(View.GONE);
+        top.addView(webGoButton, new LinearLayout.LayoutParams(dp(1), dp(1)));
+
+        browserProviderPickerButton = compactButton(searchEngine.label + " ▾", false);
+        browserProviderPickerButton.setTextSize(11 * textScale);
+        browserProviderPickerButton.setMinHeight(dp(34));
+        browserProviderPickerButton.setMinimumHeight(dp(34));
+        browserProviderPickerButton.setPadding(dp(6), 0, dp(6), 0);
+        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
+        browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
+        browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
+        LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+        providerParams.leftMargin = dp(5);
+        top.addView(browserProviderPickerButton, providerParams);
         bar.addView(top);
 
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
+        // Keep the legacy spinner available for existing settings/state sync, but do not
+        // consume a second row of the reading viewport.
         browserSearchEngineSpinner = new Spinner(this);
         String[] labels = new String[BrowserAddress.SearchEngine.values().length];
         for (int i = 0; i < labels.length; i++) labels[i] = BrowserAddress.SearchEngine.values()[i].label;
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, labels);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, labels);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         browserSearchEngineSpinner.setAdapter(adapter);
         int selected = java.util.Arrays.asList(labels).indexOf(searchEngine.label);
@@ -1082,32 +1096,21 @@ public final class MainActivity extends Activity {
         browserSearchEngineSpinner.setContentDescription("Choose search engine");
         browserSearchEngineSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position < 0 || position >= BrowserAddress.SearchEngine.values().length) return;
-                selectSearchEngine(BrowserAddress.SearchEngine.values()[position]);
+                if (position >= 0 && position < BrowserAddress.SearchEngine.values().length) {
+                    selectSearchEngine(BrowserAddress.SearchEngine.values()[position]);
+                }
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
         browserSearchEngineSpinner.setVisibility(View.GONE);
-        browserProviderPickerButton = compactButton(searchEngine.label + "  ▾", false);
-        browserProviderPickerButton.setTextSize(12 * textScale);
-        browserProviderPickerButton.setMinHeight(dp(38));
-        browserProviderPickerButton.setMinimumHeight(dp(38));
-        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
-        browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
-        browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
-        LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34));
-        browserProviderPickerButton.setMinHeight(dp(34));
-        browserProviderPickerButton.setMinimumHeight(dp(34));
-        bottom.addView(browserProviderPickerButton, providerParams);
-        bar.addView(bottom);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
             boolean enter = event != null
                     && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
                     && event.getAction() == KeyEvent.ACTION_DOWN;
             if (actionId == EditorInfo.IME_ACTION_GO
-                    || actionId == EditorInfo.IME_ACTION_SEARCH || enter) {
+                    || actionId == EditorInfo.IME_ACTION_SEARCH
+                    || actionId == EditorInfo.IME_ACTION_DONE || enter) {
                 navigateFromBrowserInput();
                 return true;
             }
@@ -1239,18 +1242,13 @@ public final class MainActivity extends Activity {
         });
         panel.addView(browserStatus, bottomMargin(dp(4)));
 
+        // Reader mode remains available from the browser overflow menu; never reserve a banner row.
         browserReaderActionRow = new LinearLayout(this);
-        browserReaderActionRow.setOrientation(LinearLayout.HORIZONTAL);
-        browserReaderActionRow.setGravity(Gravity.CENTER_VERTICAL);
-        browserReaderActionRow.setPadding(dp(2), 0, dp(2), 0);
         browserReaderButton = compactButton("Reader mode", true);
         browserReaderButton.setContentDescription("Extract readable article text into a local text-only view");
         browserReaderButton.setEnabled(false);
         browserReaderButton.setOnClickListener(view -> openReaderMode());
-        browserReaderActionRow.addView(browserReaderButton, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
         browserReaderActionRow.setVisibility(View.GONE);
-        panel.addView(browserReaderActionRow, bottomMargin(dp(4)));
 
         browserViewport = new FrameLayout(this);
         browserViewport.setBackgroundColor(palette.background);
