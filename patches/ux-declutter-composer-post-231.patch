@@ -1,0 +1,19 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@
+         addPrivacyCard(content);
+-        addSuggestionCard(content);
++        // DEMO SUGGESTION home card removed (#225).
++        // addSuggestionCard(content);
+         addTaskSection(content);
+@@
+-        card.addView(smartChips, bottomMargin(dp(7)));
++        // Smart chips removed from home composer (#225).
+ 
+         taskActions = new LinearLayout(this);
+@@
+-        addDetailsButton = compactButton("Add with a date or priority", false);
+-        addDetailsButton.setOnClickListener(view -> showTaskEditor(null, quickCaptureInput.getText().toString()));
+-        secondaryTaskActions.addView(addDetailsButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
++        addDetailsButton = null;
+         Button templatesButton = compactButton("Task templates", false);
