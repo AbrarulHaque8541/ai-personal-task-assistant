@@ -453,6 +453,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
         activityCallbackGate.close();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         portableCancelRequested = true;
@@ -3635,6 +3636,7 @@ public final class MainActivity extends Activity {
 
     private void syncModeUi() {
         if (taskScreen == null || browserScreen == null || quickCaptureInput == null) return;
+        if (!webMode && taskChromeHidden) setTaskChromeHidden(false);
         // Web mode is a dedicated browser workspace. Hide the task composer/dashboard
         // instead of stacking Task + Web controls and wasting the viewport.
         // Web is a dedicated workspace: Task dashboard, Task/Web switcher, and app header
