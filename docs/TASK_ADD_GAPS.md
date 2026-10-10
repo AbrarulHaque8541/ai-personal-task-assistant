@@ -42,3 +42,10 @@ Status of the task capture / Add task details flow after the v1.0.3 task-system 
 - Web prototype `tests/task-logic.test.js` — 12/12 incl. mirrored extended-field validation.
 
 Device rendering of the new editor/row/dialogs is **not** host-testable; the CI device-test workflow builds the instrumentation APK, and on-device behavior remains a manual check.
+
+## Update — v1.0.6 reminders work
+
+Two of the v1.0.3 gaps above are addressed by the v1.0.6 task-reminders work (see [TASK_REMINDERS.md](TASK_REMINDERS.md)):
+
+- **System notifications / alarms**: best-effort OS notifications through a non-exported boot receiver; `POST_NOTIFICATIONS` is requested only when a reminder is enabled. The minimal-permission, no-services policy is preserved and the v1 source guards were updated to assert it.
+- **Recurring tasks**: daily / weekly / monthly repeat rules on tasks with a due date, advanced on app open or when the reminder is shown. Portable backups do not carry repeat rules yet (restore resets repeat to "No repeat").

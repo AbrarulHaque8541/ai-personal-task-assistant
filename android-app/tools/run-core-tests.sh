@@ -5,7 +5,7 @@ BUILD_DIR=$(mktemp -d "daymark-core-tests.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 python3 "$ROOT/tools/check-backup-rules.py"
 python3 "$ROOT/tools/check-task-template-source.py" "$ROOT"
-javac --release 17 -d "$BUILD_DIR" \
+javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/host-stubs/android/content/Context.java" \
   "$ROOT/tools/host-stubs/org/json/JSONObject.java" \
   "$ROOT/tools/host-stubs/org/json/JSONArray.java" \

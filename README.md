@@ -18,6 +18,7 @@ Previous releases remain available on the [full releases page](https://github.co
 ## What it does
 
 - Local task capture, edit, completion, delete/undo, notes, due date/time, priority, subtasks, attachments, templates
+- Task reminders: in-app dialog plus best-effort OS notifications, daily/weekly/monthly repeat rules, custom notification sound — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md) for the honest limits
 - Encrypted portable backup / restore
 - HTTPS-only in-app browser: search engines, AI site shortcuts, tabs, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
 - Optional in-app update check against signed GitHub Releases (sideload flavor)
