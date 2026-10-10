@@ -237,6 +237,10 @@ public final class MainActivity extends Activity {
     private LinearLayout browserScreen;
     private FrameLayout browserViewport;
     private View browserHomeView;
+    private View browserAddressBarView;
+    private HorizontalScrollView browserToolbarScroll;
+    private Runnable browserChromeRestoreRunnable;
+    private boolean browserChromeHidden;
     private DaymarkWebView browserWebView;
     private final List<DaymarkWebView> browserTabs = new ArrayList<>();
     private final Map<DaymarkWebView, String> browserTabQueries = new HashMap<>();
@@ -450,6 +454,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (browserChromeRestoreRunnable != null) mainHandler.removeCallbacks(browserChromeRestoreRunnable);
         activityCallbackGate.close();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         portableCancelRequested = true;
@@ -1137,11 +1142,13 @@ public final class MainActivity extends Activity {
     private LinearLayout buildBrowserScreen() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.addView(buildBrowserAddressBar(), bottomMargin(dp(5)));
+        browserAddressBarView = buildBrowserAddressBar();
+        panel.addView(browserAddressBarView, bottomMargin(dp(5)));
         panel.setPadding(dp(8), dp(0), dp(8), dp(2));
 
         HorizontalScrollView toolbarScroll = new HorizontalScrollView(this);
         toolbarScroll.setHorizontalScrollBarEnabled(false);
+        browserToolbarScroll = toolbarScroll;
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         browserBackButton = compactButton("‹", false);
@@ -1229,6 +1236,10 @@ public final class MainActivity extends Activity {
         for (AiSiteCatalog.Entry entry : AiSiteCatalog.entries()) {
             sites.addView(browserSiteButton(entry));
         }
+        Button addProvider = compactButton("+ Add", false);
+        addProvider.setContentDescription("Add or choose another search engine or AI assistant shortcut");
+        addProvider.setOnClickListener(view -> showSearchProviderPicker());
+        sites.addView(addProvider, chipMargin());
         sitesScroll.addView(sites);
         browserProviderRow = sitesScroll;
         // The provider shortcuts are placed after the weighted WebView below so they
@@ -1628,6 +1639,35 @@ public final class MainActivity extends Activity {
         browserLoadWatchdog = null;
     }
 
+    private void setBrowserChromeHidden(boolean hidden) {
+        if (hidden && (!webMode || fullScreenWebDialog != null && fullScreenWebDialog.isShowing())) return;
+        if (browserChromeHidden == hidden) return;
+        browserChromeHidden = hidden;
+        View[] chrome = {browserAddressBarView, browserToolbarScroll, browserProviderRow};
+        for (View view : chrome) {
+            if (view == null) continue;
+            view.animate().cancel();
+            if (hidden) {
+                view.setVisibility(View.VISIBLE);
+                view.animate().translationY(-Math.max(view.getHeight(), dp(40)))
+                        .alpha(0f).setDuration(160L).withEndAction(() -> {
+                            if (browserChromeHidden && webMode) view.setVisibility(View.GONE);
+                        }).start();
+            } else {
+                view.setVisibility(View.VISIBLE);
+                view.setTranslationY(-Math.max(view.getHeight(), dp(40)));
+                view.setAlpha(0f);
+                view.animate().translationY(0f).alpha(1f).setDuration(190L).start();
+            }
+        }
+    }
+
+    private void scheduleBrowserChromeRestore() {
+        if (browserChromeRestoreRunnable != null) mainHandler.removeCallbacks(browserChromeRestoreRunnable);
+        browserChromeRestoreRunnable = () -> setBrowserChromeHidden(false);
+        mainHandler.postDelayed(browserChromeRestoreRunnable, 700L);
+    }
+
     private boolean ensureBrowserWebView() {
         if (!browserNetworkPolicy.allowsRemoteLoads()) return false;
         if (browserWebView != null) return true;
@@ -1757,6 +1797,13 @@ public final class MainActivity extends Activity {
             }
         });
         targetRef[0] = browserWebView;
+        browserWebView.setOnScrollChangeListener((View view, int x, int y, int oldX, int oldY) -> {
+            if (!webMode || fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) return;
+            int delta = y - oldY;
+            if (delta > dp(3)) setBrowserChromeHidden(true);
+            else if (delta < -dp(3)) setBrowserChromeHidden(false);
+            scheduleBrowserChromeRestore();
+        });
         browserWebView.getSettings().setBlockNetworkImage(browserImagesBlocked);
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
@@ -1889,9 +1936,9 @@ public final class MainActivity extends Activity {
 
     private void showBrowserOverflowMenu(View anchor) {
         final String[] actions = {
-                "Reload / Stop", "Find in page", "Share page", "Copy page URL",
-                "Open in external browser", "Desktop site", "Downloads", "Extensions",
-                "Browser settings", "Site info", "Turn off online browsing"
+                "Reload / Stop", "Find in page", "Reader mode", "Full-screen page",
+                "Share page", "Copy page URL", "Open in external browser", "Desktop site",
+                "Downloads", "Extensions", "Browser settings", "Site info", "Turn off online browsing"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -1907,30 +1954,36 @@ public final class MainActivity extends Activity {
                             showFindInPageDialog();
                             break;
                         case 2:
-                            shareCurrentBrowserUrl();
+                            openReaderMode();
                             break;
                         case 3:
-                            copyCurrentBrowserUrl();
+                            openFullScreenWebView();
                             break;
                         case 4:
-                            openCurrentBrowserExternally();
+                            shareCurrentBrowserUrl();
                             break;
                         case 5:
-                            toggleDesktopSite();
+                            copyCurrentBrowserUrl();
                             break;
                         case 6:
-                            showBrowserDownloadsDialog();
+                            openCurrentBrowserExternally();
                             break;
                         case 7:
-                            showBrowserExtensionsManager();
+                            toggleDesktopSite();
                             break;
                         case 8:
-                            showBrowserSettingsDialog();
+                            showBrowserDownloadsDialog();
                             break;
                         case 9:
-                            showBrowserSiteInfoDialog();
+                            showBrowserExtensionsManager();
                             break;
                         case 10:
+                            showBrowserSettingsDialog();
+                            break;
+                        case 11:
+                            showBrowserSiteInfoDialog();
+                            break;
+                        case 12:
                             if (browserNetworkPolicy.isOnlineEnabled()) {
                                 setBrowserOnlineEnabled(false);
                                 showToast("Online browsing is off. Pages and tabs were closed.");
@@ -3597,6 +3650,7 @@ public final class MainActivity extends Activity {
 
     private void syncModeUi() {
         if (taskScreen == null || browserScreen == null || quickCaptureInput == null) return;
+        if (webMode && browserChromeHidden) setBrowserChromeHidden(false);
         // Web mode is a dedicated browser workspace. Hide the task composer/dashboard
         // instead of stacking Task + Web controls and wasting the viewport.
         // Web is a dedicated workspace: Task dashboard, Task/Web switcher, and app header
