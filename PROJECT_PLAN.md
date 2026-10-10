@@ -2,7 +2,38 @@
 
 Daymark should remain a fast, simple, privacy-first task app that works offline, while letting interested users reveal more capability through task-specific workspaces. The ordinary task flow must not require users to learn about AI, models, plugins, terminals, or Android internals. Advanced tools should be optional, visible, modular where the distribution channel permits, and bounded by user-approved scopes.
 
-**Status snapshot.** Live GitHub state checked on 2026-10-09. Main is at `e3033ef74e370bd5b4c06b1b20c1fcc927386fb6` after PR #184 merged; source declares Daymark v1.0.5 / versionCode 6. Main CI run #351 passed host/source checks, protected signing validation, signed candidate APK/AAB generation, signer verification, and release artifact metadata verification. Publication status is not frozen in this document: the Releases page and the `versionName`/`versionCode` in `android-app/app/build.gradle.kts` are the source of truth, and a version counts as published only when its exact `v<versionName>` tag's production workflow has completed. Reader Mode, adjustable font size, sans/serif choice, light/sepia/dark themes, and image blocking are in main; physical-device acceptance remains outstanding.
+**Status snapshot.** This document contains a staged roadmap, not proof that a feature is implemented. Verify live `main`, open PRs/issues, `android-app/app/build.gradle.kts`, and the [Releases page](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases) before making implementation or publication claims. CI/build success does not establish physical-device behavior; device acceptance is tracked separately in issue #160.
+
+
+## Execution queue (checked 2026-10-10)
+
+This is the actionable priority order. A roadmap entry is not an implementation claim; move an item to **Done** only after source review and the stated checks. Recheck live issues and PRs before opening work so agents do not duplicate one another.
+
+### P0 — Stabilize the current browser before adding features
+
+1. **Browser load watchdog recovery — in review.** Track PR [#241](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/241). Confirm CI is green and the change is merged before treating the source fix as landed. The watchdog must remain armed after `onPageStarted`, preserve the bounded retry/error behavior, and never weaken HTTPS-only navigation.
+2. **Diagnose the owner-reported blank browser viewport.** Track [issue #221](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/221). After the source fix, verify on a real device whether a normal HTTPS page and a search result visibly render. Capture WebView version, Android API/device, visible lifecycle status, and logcat if available. CI is not device verification; do not close this issue based on CI alone.
+3. **Complete the Android runtime acceptance matrix.** Track [issue #160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160). Record PASS / FAIL / NOT TESTED by scenario, device/API, variant, commit SHA, and APK SHA. Cover browser navigation/renderer recovery, Reader Mode, image blocking, extensions, downloads/SAF, encrypted task data/backup restore, and same-signer upgrade. Never label a built APK as device-tested.
+4. **Regression/security audit.** Run the repository's prescribed host/source tests and Android CI after each focused change. Preserve `com.cue.daymark`, the pinned production signer, monotonic `versionCode`, HTTPS-only browsing, encrypted user data, and the prohibition on a broad JavaScript bridge to untrusted pages.
+
+### P1 — First feature after P0 stability evidence
+
+5. **Selected-text actions in the browser.** Inspect current source first and implement only missing actions. Candidate actions: Copy, Explain, Translate, Summarize, and Create Task. Keep actions in a contextual/overflow menu rather than permanently consuming viewport space. Copy and Create Task should work locally; Explain/Translate/Summarize must clearly open a user-selected provider or disclose the required API/network path. Do not imply that Daymark already has an AI backend. Acceptance: selection survives menu invocation, actions handle empty/long text safely, task creation is explicit, HTTPS/provider disclosure is preserved, and automated/source tests cover the action routing.
+6. **Per-site browser preferences.** Only proceed after checking what global controls already exist. Candidate per-origin settings: Reader preference, image loading, and theme/font choice. Keep an explicit reset/clear path; store only the minimum origin-level state, explain that current browser history/preferences may not be encrypted, and do not claim network-level ad/tracker blocking. Acceptance: preference is origin-scoped, survives the documented lifecycle, resets cleanly, and does not affect unrelated sites.
+7. **Browser diagnostics mode.** Provide a user-triggered, privacy-conscious way to expose the last navigation lifecycle/error code and WebView version to help diagnose blank-page reports. Redact query strings/fragments and credentials from displayed/exported URLs; diagnostic export must be opt-in. Acceptance: no background telemetry, no sensitive URL leakage, and useful evidence for issue #221.
+
+### P2 — Consider after the core browser and task flows are reliable
+
+8. **Command palette / quick actions.** Search existing tasks and invoke existing actions from one compact UI. Reuse current task APIs; do not create a second task store or duplicate commands. Acceptance: keyboard and touch access, accessible labels, deterministic ordering, and existing task regression tests.
+9. **Research-to-task workflow.** Let a user explicitly save selected page text/link as a task or note, with a preview before writing. Keep it local-first; external AI analysis is optional and clearly disclosed. Acceptance: user confirms saved content, URL sanitization, bounded text size, no silent background capture, and backup/restore compatibility.
+10. **Local model/runtime research — discovery only.** Do not implement or auto-download a model as part of the browser stabilization work. First document supported device/RAM/storage limits, model license, package size, thermal/battery impact, deletion, and a no-cloud-fallback policy.
+
+### Delivery rules for every queue item
+
+- One focused change per branch/PR where practical; inspect open work before starting.
+- State exact tests run and their result. Distinguish **SOURCE-VERIFIED**, **PASS**, **NOT TESTED**, **DEVICE VERIFIED**, and **PUBLISHED** accurately.
+- Add a feature to **Done** only when its acceptance criteria are met; otherwise leave it **In review**, **Blocked**, or **Planned** with the relevant PR/issue link.
+- Do not bundle speculative features into a browser bug fix. Do not create a release tag without owner approval or an existing standing release instruction.
 
 ## Current app and live repository status
 
