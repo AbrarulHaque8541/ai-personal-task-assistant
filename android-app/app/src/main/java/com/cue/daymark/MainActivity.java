@@ -4096,11 +4096,24 @@ public final class MainActivity extends Activity {
     }
 
     private View buildTaskRow(Task task) {
-        LinearLayout row = new LinearLayout(this);
+        SwipeTaskRow row = new SwipeTaskRow(this, direction -> {
+            Task current = findTask(task.id);
+            if (current == null || !canEdit()) return;
+            if (direction > 0) {
+                replaceTask(TaskLogic.toggleCompleted(current));
+                render();
+                saveTasksAsync();
+                showToast(current.completed ? "Task reopened." : "Task completed.");
+            } else {
+                showSwipeTaskActions(current);
+            }
+        });
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(7), dp(8), dp(8), dp(8));
-        row.setBackground(shape(palette.surface, 13, palette.line));
+        row.setPadding(dp(6), dp(7), dp(6), dp(7));
+        row.setBackground(shape(palette.surface, 14, palette.line));
         row.setElevation(dp(1));
+        row.setContentDescription("Task: " + task.title
+                + ". Swipe right to toggle completion; swipe left for task actions.");
 
         CheckBox checkBox = new CheckBox(this);
         checkBox.setButtonTintList(ColorStateList.valueOf(task.completed ? palette.accent : palette.muted));
@@ -4109,67 +4122,87 @@ public final class MainActivity extends Activity {
                 ? "Mark “" + task.title + "” as not done"
                 : "Mark “" + task.title + "” as done");
         checkBox.setEnabled(canEdit());
-        row.addView(checkBox, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        row.addView(checkBox, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
-        copy.setPadding(dp(2), dp(2), dp(4), dp(2));
+        copy.setPadding(dp(4), dp(1), dp(4), dp(1));
         TextView title = text(task.title, 14, task.completed ? palette.muted : palette.text, Typeface.BOLD);
+        title.setMaxLines(3);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        title.setIncludeFontPadding(false);
+        title.setLineSpacing(dp(1), 1.0f);
+        title.setContentDescription("Task name: " + task.title);
         if (task.completed) title.setPaintFlags(title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-        copy.addView(title);
+        copy.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT),
-                12, dueColor(task), Typeface.NORMAL);
-        copy.addView(details, topMargin(dp(4)));
+                11, dueColor(task), Typeface.NORMAL);
+        details.setMaxLines(2);
+        details.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        copy.addView(details, topMargin(dp(3)));
+
         LinearLayout chips = new LinearLayout(this);
         chips.setOrientation(LinearLayout.HORIZONTAL);
-        Button attachments = compactButton("Files · " + task.attachments.size(), false);
+        Button attachments = compactButton("Files " + task.attachments.size(), false);
         attachments.setContentDescription("Manage " + task.attachments.size()
                 + " attachments for task: " + task.title);
         attachments.setEnabled(canEdit());
         attachments.setOnClickListener(view -> showAttachmentManager(task));
+        attachments.setMinHeight(dp(34));
+        attachments.setMinimumHeight(dp(34));
+        attachments.setPadding(dp(8), 0, dp(8), 0);
         chips.addView(attachments, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)));
         if (!task.subtasks.isEmpty()) {
             int doneCount = TaskLogic.completedSubtaskCount(task);
-            Button subtasksChip = compactButton("Subtasks · " + doneCount + "/" + task.subtasks.size(), false);
+            Button subtasksChip = compactButton("Checklist " + doneCount + "/" + task.subtasks.size(), false);
             subtasksChip.setContentDescription("Checklist for task: " + task.title
                     + ". " + doneCount + " of " + task.subtasks.size() + " done. Open to update.");
             subtasksChip.setEnabled(canEdit());
+            subtasksChip.setMinHeight(dp(34));
+            subtasksChip.setMinimumHeight(dp(34));
+            subtasksChip.setPadding(dp(8), 0, dp(8), 0);
             subtasksChip.setOnClickListener(view -> showSubtasksDialog(task));
             chips.addView(subtasksChip, chipMargin());
         }
         if (!task.notes.isEmpty()) {
-            Button notesChip = compactButton("Note", false);
-            notesChip.setContentDescription("Show the note for task: " + task.title);
-            notesChip.setOnClickListener(view -> showNotesDialog(task));
-            chips.addView(notesChip, chipMargin());
+            Button notes = compactButton("Note", false);
+            notes.setContentDescription("Show the note for task: " + task.title);
+            notes.setMinHeight(dp(34));
+            notes.setMinimumHeight(dp(34));
+            notes.setOnClickListener(view -> showNotesDialog(task));
+            chips.addView(notes, chipMargin());
         }
         String reminder = reminderLabel(task);
         if (reminder != null && !task.completed) {
             Button reminderChip = compactButton(reminder, false);
             reminderChip.setContentDescription(reminder + " for task: " + task.title);
             reminderChip.setEnabled(false);
+            reminderChip.setMinHeight(dp(34));
+            reminderChip.setMinimumHeight(dp(34));
             chips.addView(reminderChip, chipMargin());
         }
-        copy.addView(chips, topMargin(dp(4)));
+        HorizontalScrollView chipsScroll = new HorizontalScrollView(this);
+        chipsScroll.setHorizontalScrollBarEnabled(false);
+        chipsScroll.setFillViewport(false);
+        chipsScroll.addView(chips, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        copy.addView(chipsScroll, topMargin(dp(3)));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        Button edit = compactButton("Edit", false);
-        edit.setContentDescription("Edit task: " + task.title);
-        edit.setEnabled(canEdit());
-        edit.setOnClickListener(view -> showTaskEditor(task));
-        row.addView(edit);
-        Button more = compactButton("More", false);
-        more.setContentDescription("More actions for task: " + task.title);
+        Button more = compactButton("⋮", false);
+        more.setTextSize(20 * textScale);
+        more.setMinWidth(dp(36));
+        more.setMinimumWidth(dp(36));
+        more.setMinHeight(dp(40));
+        more.setMinimumHeight(dp(40));
+        more.setPadding(0, 0, 0, 0);
+        more.setContentDescription("Task actions for: " + task.title);
         more.setEnabled(canEdit());
-        more.setOnClickListener(view -> showTaskActions(task));
-        row.addView(more);
-
-        Button delete = compactButton("Delete", true);
-        delete.setContentDescription("Delete task: " + task.title);
-        delete.setEnabled(canEdit() && pendingDeletedTask == null);
-        delete.setOnClickListener(view -> confirmDeleteTask(task));
-        row.addView(delete);
+        more.setOnClickListener(view -> showSwipeTaskActions(task));
+        row.addView(more, new LinearLayout.LayoutParams(dp(36), dp(40)));
 
         checkBox.setOnCheckedChangeListener((button, checked) -> {
             if (!canEdit() || checked == task.completed) return;
@@ -4178,6 +4211,89 @@ public final class MainActivity extends Activity {
             saveTasksAsync();
         });
         return row;
+    }
+
+    private void showSwipeTaskActions(Task task) {
+        if (task == null || !canEdit()) return;
+        String[] actions = {"Edit task", task.completed ? "Mark as not done" : "Mark as done",
+                "Task options", "Manage attachments", "Delete task"};
+        new AlertDialog.Builder(this)
+                .setTitle(task.title)
+                .setItems(actions, (dialog, which) -> {
+                    Task current = findTask(task.id);
+                    if (current == null || !canEdit()) return;
+                    if (which == 0) {
+                        showTaskEditor(current);
+                    } else if (which == 1) {
+                        replaceTask(TaskLogic.toggleCompleted(current));
+                        render();
+                        saveTasksAsync();
+                    } else if (which == 2) {
+                        showTaskActions(current);
+                    } else if (which == 3) {
+                        showAttachmentManager(current);
+                    } else if (which == 4) {
+                        confirmDeleteTask(current);
+                    }
+                })
+                .show();
+    }
+
+    private final class SwipeTaskRow extends LinearLayout {
+        interface SwipeListener { void onSwipe(int direction); }
+        private final SwipeListener listener;
+        private float downX;
+        private float downY;
+        private boolean horizontalSwipe;
+        private boolean consumedSwipe;
+
+        SwipeTaskRow(Context context, SwipeListener listener) {
+            super(context);
+            this.listener = listener;
+            setClickable(true);
+            setFocusable(true);
+        }
+
+        @Override public boolean onInterceptTouchEvent(android.view.MotionEvent event) {
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                downX = event.getX();
+                downY = event.getY();
+                horizontalSwipe = false;
+                consumedSwipe = false;
+                return false;
+            }
+            if (event.getAction() == android.view.MotionEvent.ACTION_MOVE) {
+                float dx = event.getX() - downX;
+                float dy = event.getY() - downY;
+                if (Math.abs(dx) > dp(48) && Math.abs(dx) > Math.abs(dy) * 1.35f) {
+                    horizontalSwipe = true;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override public boolean onTouchEvent(android.view.MotionEvent event) {
+            if (event.getAction() == android.view.MotionEvent.ACTION_UP && horizontalSwipe && !consumedSwipe) {
+                float dx = event.getX() - downX;
+                if (Math.abs(dx) > dp(48)) {
+                    consumedSwipe = true;
+                    if (listener != null && canEdit()) listener.onSwipe(dx > 0 ? 1 : -1);
+                }
+                performClick();
+                return true;
+            }
+            if (event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                horizontalSwipe = false;
+                return true;
+            }
+            return true;
+        }
+
+        @Override public boolean performClick() {
+            super.performClick();
+            return true;
+        }
     }
 
     private void rescheduleTaskReminders() {
