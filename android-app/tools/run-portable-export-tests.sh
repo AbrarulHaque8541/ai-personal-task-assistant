@@ -4,7 +4,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD="$ROOT/build/portable-export-tests"
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
-javac -d "$BUILD" \
+javac -encoding UTF-8 -d "$BUILD" \
     "$ROOT/app/src/main/java/com/cue/daymark/PortableExportWriter.java" \
     "$ROOT/app/src/main/java/com/cue/daymark/PortableBackupCodec.java" \
     "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
