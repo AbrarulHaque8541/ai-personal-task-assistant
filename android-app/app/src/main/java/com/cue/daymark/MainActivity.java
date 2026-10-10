@@ -441,7 +441,11 @@ public final class MainActivity extends Activity {
                 }
             }
             // WebView timers are process-wide. Pause them once while the Activity is backgrounded.
-            browserWebView.pauseTimers();
+            try {
+                browserWebView.pauseTimers();
+            } catch (RuntimeException ignored) {
+                // A renderer may already be gone; onResume's recovery path remains available.
+            }
         }
         activityResumed = false;
         super.onPause();
@@ -519,7 +523,11 @@ public final class MainActivity extends Activity {
         super.onResume();
         activityResumed = true;
         if (browserWebView != null) {
-            browserWebView.resumeTimers();
+            try {
+                browserWebView.resumeTimers();
+            } catch (RuntimeException ignored) {
+                Log.w(BROWSER_LOG_TAG, "WebView timers could not resume cleanly");
+            }
             for (DaymarkWebView tab : new ArrayList<>(browserTabs)) {
                 try {
                     tab.onResume();
@@ -1748,15 +1756,25 @@ public final class MainActivity extends Activity {
 
             @Override public void onNavigationBlocked(String url) {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
+                browserPageLoading = false;
+                cancelBrowserLoadWatchdog();
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
 
             @Override public void onOfflineNavigationBlocked() {
+                if (targetRef[0] == browserWebView) {
+                    browserPageLoading = false;
+                    cancelBrowserLoadWatchdog();
+                }
                 postActivityCallback(MainActivity.this::showBrowserOfflineStatus);
             }
 
             @Override public void onHttpNavigationBlocked(String url, boolean redirect) {
+                if (targetRef[0] == browserWebView) {
+                    browserPageLoading = false;
+                    cancelBrowserLoadWatchdog();
+                }
                 String message = redirect
                         ? "An HTTP redirect/downgrade was blocked. No insecure page was opened."
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
