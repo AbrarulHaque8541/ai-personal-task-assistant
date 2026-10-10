@@ -16,6 +16,7 @@ sh ./tools/run-text-scale-tests.sh
 sh ./tools/run-check-guard-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-browser-catalog.py "$ROOT"
+python3 ./tools/check-browser-load-watchdog.py "$ROOT"
 python3 ./tools/check-extension-trust-confirmation.py "$ROOT"
 python3 ./tools/check-browser-image-policy.py "$ROOT"
 python3 ./tools/check-extension-import-hardening.py "$ROOT"
