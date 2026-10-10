@@ -26,6 +26,14 @@ final class StartupDiagnostics {
     static final String UPDATER_ARTIFACT_LIST_FAILED = "updater.artifact_list_failed";
     /** The app version could not be read for the diagnostics panel. */
     static final String PACKAGE_INFO_FAILED = "diagnostics.package_info_failed";
+    /** A bounded automatic browser recovery was attempted. */
+    static final String BROWSER_RECOVERY_ATTEMPTED = "browser.self_heal_attempted";
+    /** Automatic browser recovery was exhausted or unavailable. */
+    static final String BROWSER_RECOVERY_EXHAUSTED = "browser.self_heal_exhausted";
+    /** Recreating a crashed WebView failed. */
+    static final String BROWSER_RENDERER_RECREATE_FAILED = "browser.self_heal_renderer_recreate_failed";
+    /** Retrying a stalled page raised a runtime exception. */
+    static final String BROWSER_RECOVERY_RETRY_FAILED = "browser.self_heal_retry_failed";
     /** Bounded so a repeated failure cannot grow memory without limit. */
     static final int MAX_EVENTS = 32;
 
