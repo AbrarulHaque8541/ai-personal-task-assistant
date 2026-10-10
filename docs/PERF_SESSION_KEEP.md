@@ -1,25 +1,26 @@
-# Performance: keep WebView session across background (2026-10-10)
+# Performance: keep WebView session across background
 
-## Problem
-`MainActivity.onPause()` called `discardBrowserWebView()`, destroying every tab.
-Resume always cold-started `loadUrl` again → slow, blank risk, wasted network.
+## Highest-impact browser performance fix
 
-## Fix (apply to MainActivity)
-1. **onPause**: for each tab call `onPause()` + `pauseTimers()`; keep instance; do not discard.
-2. **onResume**: if WebView alive, `resumeTimers()` + `onResume()`; else restore URL as today.
-3. **onDestroy** still discards (unchanged).
-4. **check-v1-source.sh** assertion: accept `pauseTimers()` OR `discardBrowserWebView()` in onPause.
+Before: every `onPause` called `discardBrowserWebView()` → full destroy → resume cold `loadUrl`.
+After: `onPause`/`pauseTimers` keep the instance; `onResume`/`resumeTimers` restore instantly.
 
-## DaymarkWebView (this PR branch)
-- `LOAD_DEFAULT` cache
-- `setLoadsImagesAutomatically(true)`
-- `LAYER_TYPE_HARDWARE`
+## Apply
+```bash
+cd android-app && patch -p2 < ../patches/perf-webview-session-keep-20261010.patch
+# paths: patch is written against MainActivity.java at repo root style — use:
+patch -p1 < patches/perf-webview-session-keep-20261010.patch
+```
 
-## Device verify
-Background Daymark for 10s while on a page → return → page should appear without full reload spinner (or much faster).
+Also update `check-v1-source.sh`:
+```
+assert on_pause and ("pauseTimers()" in on_pause.group(1) or "discardBrowserWebView()" in on_pause.group(1)), "backgrounding must pause or close the WebView"
+```
+
+`DaymarkWebView` on this branch already sets LOAD_DEFAULT, auto images, hardware layer.
 
 ---
 Work by: Grok
 Model: Grok 4.5 (xAI)
 Tooling: GitHub MCP tools
-Timestamp (UTC): 2026-10-10T15:05:00Z
+Timestamp (UTC): 2026-10-10T15:06:00Z

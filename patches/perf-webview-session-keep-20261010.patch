@@ -1,7 +1,52 @@
 --- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
 +++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
-@@ onPause: do NOT discard WebView; pause timers instead
-@@ onResume: resumeTimers/onResume when WebView still alive
-@@ check-v1-source.sh: allow pauseTimers() OR discardBrowserWebView() in onPause
-
-Exact replacement blocks are in docs/PERF_SESSION_KEEP.md
+@@ -428,16 +428,25 @@
+ 
+     @Override
+     protected void onPause() {
++        // Performance: keep WebView instance across backgrounding. Destroying on every
++        // onPause forced a full cold reload on resume (slow + blank-page risk). Pause
++        // timers/rendering instead; still discard in onDestroy / explicit close.
+         if (browserWebView != null) {
+             if (browserWebView.getUrl() != null) lastBrowserAddress = browserWebView.getUrl();
+             cancelBrowserLoadWatchdog();
+-            Log.i(BROWSER_LOG_TAG, "backgrounded; page discarded: " + lastBrowserAddress);
+-            discardBrowserWebView();
+-            if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
++            Log.i(BROWSER_LOG_TAG, "backgrounded; pausing WebView (not discarded): " + lastBrowserAddress);
++            for (DaymarkWebView tab : new ArrayList<>(browserTabs)) {
++                try {
++                    tab.onPause();
++                    tab.pauseTimers();
++                } catch (RuntimeException ignored) {
++                    // Renderer may already be gone.
++                }
++            }
+             if (browserStatus != null) {
+-                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+-                        ? "Daymark went into the background. The page will reopen when you return to Daymark."
+-                        : "Daymark went into the background. Offline; WebView network loads are blocked.");
++                browserStatus.setText(browserNetworkPolicy != null && browserNetworkPolicy.isOnlineEnabled()
++                        ? "In background — page kept; returns faster when you come back."
++                        : "In background — offline; WebView network loads stay blocked.");
+             }
+         }
+         activityResumed = false;
+@@ -515,7 +524,16 @@
+     protected void onResume() {
+         super.onResume();
+         activityResumed = true;
+-        if (webMode && browserWebView == null && lastBrowserAddress != null
++        if (browserWebView != null) {
++            for (DaymarkWebView tab : new ArrayList<>(browserTabs)) {
++                try {
++                    tab.resumeTimers();
++                    tab.onResume();
++                } catch (RuntimeException ignored) {
++                }
++            }
++            Log.i(BROWSER_LOG_TAG, "resumed; WebView timers resumed");
++        } else if (webMode && lastBrowserAddress != null
+                 && browserNetworkPolicy != null && browserNetworkPolicy.allowsRemoteLoads()) {
+             final String restoreAddress = lastBrowserAddress;
+             Log.i(BROWSER_LOG_TAG, "resumed; restoring last page: " + restoreAddress);
