@@ -46,7 +46,12 @@ play_manifest = ET.parse(root / "app/src/play/AndroidManifest.xml").getroot()
 sideload_manifest = ET.parse(root / "app/src/githubSideload/AndroidManifest.xml").getroot()
 android_name = "{http://schemas.android.com/apk/res/android}name"
 permission_names = lambda manifest_root: {item.get(android_name) for item in manifest_root.findall("uses-permission")}
-assert permission_names(manifest) == {"android.permission.INTERNET"}, "shared manifest declares only INTERNET for the HTTPS-only browser"
+assert permission_names(manifest) == {
+    "android.permission.INTERNET",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.VIBRATE",
+}, "shared manifest declares INTERNET for the HTTPS-only browser plus notification/boot/vibrate for task reminders"
 assert permission_names(play_manifest) == set(), "Play flavor must not declare permissions"
 assert permission_names(sideload_manifest) == {
     "android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"
@@ -54,7 +59,20 @@ assert permission_names(sideload_manifest) == {
 assert app.get("{http://schemas.android.com/apk/res/android}allowBackup") == "false", "backup must stay disabled"
 assert app.get("{http://schemas.android.com/apk/res/android}usesCleartextTraffic") == "false", "cleartext must stay disabled"
 assert not list(app.findall("service")), "V1 must not add services"
-assert not list(app.findall("receiver")), "V1 must not add receivers"
+receivers = app.findall("receiver")
+assert len(receivers) == 1, "only the task-reminder boot receiver is allowed"
+receiver = receivers[0]
+assert receiver.get(android_name) == ".TaskReminderReceiver", "the only receiver must be the task-reminder boot receiver"
+assert receiver.get(android + "exported") == "false", "task-reminder receiver must stay non-exported"
+receiver_actions = {
+    action.get(android_name)
+    for intent_filter in receiver.findall("intent-filter")
+    for action in intent_filter.findall("action")
+}
+assert receiver_actions == {
+    "android.intent.action.BOOT_COMPLETED",
+    "android.intent.action.QUICKBOOT_POWERON",
+}, "the boot receiver may listen only for boot-completion broadcasts"
 providers = app.findall("provider")
 assert len(providers) == 1, "only the grant-only attachment content provider is allowed"
 provider = providers[0]
@@ -476,8 +494,8 @@ assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_so
 # verbatim and still claimed "no permissions/network" for a manifest that declares
 # INTERNET for the HTTPS-only browser (issue #45) — a stale summary that contradicted
 # the assertions above it.
-print("PASS manifest/permissions: main declares INTERNET for the HTTPS-only browser; Play adds none; GitHub sideload adds ACCESS_NETWORK_STATE; no install permission or handoff, no background components, no runtime dependencies, no optional media/model binaries")
-print("PASS permission policy: manifest-backed status only; no runtime permission prompt code")
+print("PASS manifest/permissions: main declares INTERNET for the HTTPS-only browser plus POST_NOTIFICATIONS/RECEIVE_BOOT_COMPLETED/VIBRATE for task reminders; Play adds none; GitHub sideload adds ACCESS_NETWORK_STATE; no install permission or handoff, no services, one non-exported boot receiver, no runtime dependencies, no optional media/model binaries")
+print("PASS permission policy: manifest-backed browser status plus a notification permission prompt only when a reminder is enabled; no other runtime permission prompt code")
 print("PASS encrypted task-store policy: writer and reader share invalid/duplicate-task rejection")
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
 print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
