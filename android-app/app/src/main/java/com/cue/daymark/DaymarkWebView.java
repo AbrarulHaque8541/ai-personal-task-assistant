@@ -65,12 +65,14 @@ final class DaymarkWebView extends WebView {
         WebSettings settings = getSettings();
         settings.setBlockNetworkLoads(true);
         settings.setJavaScriptEnabled(true);
-        // Many sites (including Google) render poorly or blank with the default WebView UA.
         settings.setUserAgentString(
                 "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
                         + "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(false);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setLoadsImagesAutomatically(true);
+        setLayerType(View.LAYER_TYPE_HARDWARE, null);
         settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setAllowFileAccess(false);
@@ -79,9 +81,6 @@ final class DaymarkWebView extends WebView {
         settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
-        // Viewport/zoom/pop-up policy: see BrowserViewportPolicy. Multiple windows stay
-        // disabled so target="_blank" result links load in this WebView (and still pass the
-        // HTTPS/offline guard) instead of being silently dropped.
         settings.setSupportMultipleWindows(BrowserViewportPolicy.SUPPORT_MULTIPLE_WINDOWS);
         settings.setUseWideViewPort(BrowserViewportPolicy.USE_WIDE_VIEW_PORT);
         settings.setLoadWithOverviewMode(BrowserViewportPolicy.LOAD_WITH_OVERVIEW_MODE);
@@ -129,7 +128,6 @@ final class DaymarkWebView extends WebView {
             @Override
             public void onPageFinished(WebView view, String url) {
                 listener.onPageFinished(url);
-                // Local Daymark packs only (CSS/userscript-style). No chrome.* APIs, no request interception.
                 if (extensionRuntime != null && networkPolicy.allowsRemoteLoads()) {
                     extensionRuntime.onPageFinished(view, url);
                 }
@@ -159,7 +157,6 @@ final class DaymarkWebView extends WebView {
 
             @Override
             public void onFormResubmission(WebView view, android.os.Message dontResend, android.os.Message resend) {
-                // Never silently re-POST form data; avoids accidental duplicate submissions.
                 if (dontResend != null) dontResend.sendToTarget();
             }
 
@@ -203,9 +200,6 @@ final class DaymarkWebView extends WebView {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
                                          android.os.Message resultMsg) {
-                // Multiple windows are disabled, so target="_blank" / window.open navigations
-                // are loaded by this WebView and still pass through shouldOverrideUrlLoading's
-                // HTTPS/offline guard. Returning false here would silently drop them.
                 return BrowserViewportPolicy.allowsSeparateWindow();
             }
         });

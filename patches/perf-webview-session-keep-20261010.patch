@@ -1,0 +1,7 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ onPause: do NOT discard WebView; pause timers instead
+@@ onResume: resumeTimers/onResume when WebView still alive
+@@ check-v1-source.sh: allow pauseTimers() OR discardBrowserWebView() in onPause
+
+Exact replacement blocks are in docs/PERF_SESSION_KEEP.md
