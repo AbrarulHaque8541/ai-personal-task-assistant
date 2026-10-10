@@ -195,9 +195,12 @@ jobs:
           release_json="$RUNNER_TEMP/release.json"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then
             jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == false and .prerelease == false' "$release_json" >/dev/null
-            for pair in "$APK_NAME:$APK_SHA" "$AAB_NAME:$AAB_SHA"; do
+            # Verify existing assets and upload only missing assets. Never replace a published binary.
+            for pair in "$APK_NAME:$APK_SHA:$apk" "$AAB_NAME:$AAB_SHA:$aab"; do
               name="${pair%%:*}"
-              expected="${pair#*:}"
+              remainder="${pair#*:}"
+              expected="${remainder%%:*}"
+              local_path="${remainder#*:}"
               asset="$(jq -c --arg name "$name" '[.assets[] | select(.name == $name)] | .[0] // empty' "$release_json")"
               if [[ -n "$asset" ]]; then
                 url="$(jq -r '.browser_download_url' <<<"$asset")"
@@ -206,13 +209,30 @@ jobs:
                 actual="$(sha256sum "$downloaded" | awk '{print $1}')"
                 [[ "$actual" == "$expected" ]] || { echo "::error::Existing $name differs; refusing overwrite."; exit 1; }
               else
-                gh release upload "$TAG" "$apk" "$aab" --repo "$GITHUB_REPOSITORY" --clobber=false
-                break
+                gh release upload "$TAG" "$local_path" --repo "$GITHUB_REPOSITORY" --clobber=false
               fi
             done
+            # Repair notes even when the release already exists; this publishes the updater metadata.
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest
+            # Read back the actual published body and fail if the updater block was not persisted.
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+            actual_body="$(jq -r '.body // ""' "$release_json")"
+            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
+            grep -Fq '"applicationId":"com.cue.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
+            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
+            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
           else
             grep -Fq 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
             gh release create "$TAG" "$apk" "$aab" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest --verify-tag
+            # Read back and validate the newly published release body too.
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+            actual_body="$(jq -r '.body // ""' "$release_json")"
+            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
+            grep -Fq '"applicationId":"com.cue.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
+            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
+            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
           fi
 
       - name: Remove production keystore
