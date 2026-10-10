@@ -11,7 +11,12 @@ First dedicated performance track (2026-10-10). Goal: keep Tasks + embedded brow
 ## Shipped in this branch
 1. **WebView HTTP cache** — `WebSettings.LOAD_DEFAULT` so repeat navigations reuse disk cache.
 2. **Automatic images** — `setLoadsImagesAutomatically(true)` (still gated by network policy).
-3. **Hardware layer** — `LAYER_TYPE_HARDWARE` on `DaymarkWebView` for smoother scroll.
+3. **Hardware layer deferred** — not enabled by default. It can increase GPU memory pressure or expose device/WebView-specific rendering issues; enable only after representative-device measurements show a repeatable improvement.
+
+## Validation status
+- HTTP cache mode and automatic image loading are source-configured; no measured speedup is claimed.
+- Hardware-layer forcing was removed until a repeatable before/after benchmark and rendering/memory checks are available.
+- CI/build success is not a substitute for physical-device FPS, memory, or blank-viewport verification.
 
 ## Next multi-purpose work packages (implement as focused PRs, not spam)
 | ID | Area | Work |
@@ -38,7 +43,7 @@ First dedicated performance track (2026-10-10). Goal: keep Tasks + embedded brow
 One PR per package above, with: before/after note, guard updates if needed, CI green.
 
 ---
-Work by: Grok
-Model: Grok 4.5 (xAI)
+Work by: ChatGPT
+Model: GPT-6
 Tooling: GitHub MCP tools
-Timestamp (UTC): 2026-10-10T14:57:00Z
+Timestamp (UTC): 2026-10-10T15:15:04Z
