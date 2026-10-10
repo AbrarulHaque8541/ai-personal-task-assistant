@@ -71,6 +71,11 @@ final class DaymarkWebView extends WebView {
                         + "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(false);
+        // Performance: reuse HTTP disk cache; decode images (network policy still gates loads).
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setLoadsImagesAutomatically(true);
+        // Hardware compositing for smoother scroll of web content.
+        setLayerType(View.LAYER_TYPE_HARDWARE, null);
         settings.setSafeBrowsingEnabled(safeBrowsingEnabled);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setAllowFileAccess(false);
