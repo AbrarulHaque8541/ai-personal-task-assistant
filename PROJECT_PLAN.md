@@ -11,10 +11,11 @@ This is the actionable priority order. A roadmap entry is not an implementation 
 
 ### P0 — Stabilize the current browser before adding features
 
-1. **Browser load watchdog recovery — in review.** Track PR [#241](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/241). Confirm CI is green and the change is merged before treating the source fix as landed. The watchdog must remain armed after `onPageStarted`, preserve the bounded retry/error behavior, and never weaken HTTPS-only navigation.
+1. **Browser load watchdog recovery — merged (PR #241), device verification pending.** `gh pr view 241` reports MERGED at 2026-10-10T15:32:18Z (merge commit `53111f7`). The host check `android-app/tools/check-browser-load-watchdog.py android-app` returned PASS on this branch. CI status and the merge commit were not re-confirmed from this sandbox's fetched `origin/main`, so re-verify before citing it as landed. The watchdog must remain armed after `onPageStarted`, preserve the bounded retry/error behavior, and never weaken HTTPS-only navigation.
 2. **Diagnose the owner-reported blank browser viewport.** Track [issue #221](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/221). After the source fix, verify on a real device whether a normal HTTPS page and a search result visibly render. Capture WebView version, Android API/device, visible lifecycle status, and logcat if available. CI is not device verification; do not close this issue based on CI alone.
 3. **Complete the Android runtime acceptance matrix.** Track [issue #160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160). Record PASS / FAIL / NOT TESTED by scenario, device/API, variant, commit SHA, and APK SHA. Cover browser navigation/renderer recovery, Reader Mode, image blocking, extensions, downloads/SAF, encrypted task data/backup restore, and same-signer upgrade. Never label a built APK as device-tested.
 4. **Regression/security audit.** Run the repository's prescribed host/source tests and Android CI after each focused change. Preserve `com.cue.daymark`, the pinned production signer, monotonic `versionCode`, HTTPS-only browsing, encrypted user data, and the prohibition on a broad JavaScript bridge to untrusted pages.
+   - *Host run, 2026-10-10 (branch `arena/2564f1a3-ai-personal-task-assistant`, base `477b347`):* `npm test` — **PASS** (12/12). `android-app/tools/check-browser-load-watchdog.py` — **PASS**. `android-app/tools/run-core-tests.sh` — **NOT TESTED** (sandbox has no `javac`; the Java smoke tests did not run). Open PRs #243 and #246 both touch WebView lifecycle code in `DaymarkWebView`/`MainActivity` and overlap each other; they are unreviewed and must not be merged without a conflict-resolution pass.
 
 ### P1 — First feature after P0 stability evidence
 
@@ -228,3 +229,27 @@ Separate channels for CORE APP, MODULES, MODELS, PLUGINS, TOOLS — each with ve
 - Arbitrary Android app cloning/containers: NOT FEASIBLE under modern Android security; PWAs and sandboxed web workspaces are the alternative.
 - Full Linux terminal on low-end devices: DEFERRED pending a restricted-shell research spike.
 - Python bundling (~30–60 MB): ANDROID-LIMITED, download-on-demand only if the module system proves code-module safety.
+
+---
+
+## Suggested features — proposal only (not accepted, not implemented)
+
+> Added 2026-10-10 (UTC). These are **suggestions**, not queue items and not implementation claims. Each one needs an owner decision and an entry in the execution queue (with acceptance criteria) before any work starts. "Verified absent" means a grep of the current branch found no matching code; it is not a device or product-usage finding.
+
+Assumed user profile: a developer who uses Daymark for personal task tracking alongside GitHub work, values speed and privacy, and wants capture without leaving the current app. Adjust this table once the owner states the real use case.
+
+| # | Suggestion | Why it helps this profile | Current code (checked 2026-10-10) | Fit with plan |
+|---|---|---|---|---|
+| S1 | **Inbound share target**: "Share to Daymark" creates a task from shared text or URL | Capture a GitHub issue link or a snippet from any app in one step | **Verified absent**: no `ACTION_SEND` / share `intent-filter` in `AndroidManifest.xml`; only outbound browser-URL share exists | Fits the "quick capture" direction. Keep it local; prefill the title only, never auto-save |
+| S2 | **Task link field** for an issue/PR/doc URL, HTTPS-only, with one-tap open in the in-app browser | Ties a task to its GitHub item without copy-paste | Not verified; existing `notes` field can hold a URL but has no link semantics | Must reuse HTTPS-only policy in `BrowserAddress`; migration needs old-snapshot and backup tests (plan §Task evolution) |
+| S3 | **Home-screen widget** showing today's open tasks, with a quick-add button | Fastest daily check without opening the app | **Verified absent**: no `appwidget` declarations in the manifest | Needs a new receiver and must read the encrypted store safely. Consider after the P0 device matrix (#160), because a widget adds a new process-death/locked-device path |
+| S4 | **Plain-text / Markdown export** (opt-in, user-chosen file) for personal notes or a git repo | Developers often want tasks in a diffable format | Not verified. Current portable backup is encrypted, which is correct for backups but not for reading | Must clearly warn that plaintext leaves encryption. Opt-in only; no automatic writes |
+| S5 | **Keyboard and hardware-keyboard shortcuts** (new task, search, complete, next/previous task) | Power users on tablets or Bluetooth keyboards | Partially: keyboard-related code exists in Android sources, but a shortcut map was not verified | Folds into P2 #8 (command palette). Do not build a second command system |
+| S6 | **Focus timer on a task** (local, no network, no notifications by default) | Time-boxing dev work | Not verified | Low risk. Must respect Doze and battery limits; any notification uses the existing reminder rules |
+| S7 | **Diagnostics export for bug reports** (WebView version, last load error code, redacted URL) | Makes issue #221-style reports actionable | Planned as P1 #7 | Already in the queue; listed here only so the owner can prioritise it |
+
+**Already present in code, so not suggested as new work:** recurrence (`TaskLogic`, `Task`), subtasks (`Subtask.java`), notes, due time with reminder lead time (`Task.java`), task templates, encrypted backup and import, attachments with a CSV/Markdown/PDF MIME allow-list, Reader Mode, and dark theme. The plan's older text saying time-of-day and notes are absent is out of date for those fields. Update the capability table when the owner confirms them on a device.
+
+**Recommended order if the owner approves:** S1 (small, offline, clear value) → S2 (needs a migration test) → S4 (privacy-sensitive, so design first) → S5 (after P2 #8 is designed) → S3 and S6 (after device evidence for #160). S7 is already queued as P1 #7.
+
+**Decision needed from the owner:** (a) which of S1–S7 to queue; (b) the real day-to-day use case, so the profile above can be corrected.
