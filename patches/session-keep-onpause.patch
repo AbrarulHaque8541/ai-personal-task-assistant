@@ -1,0 +1,39 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@
+     protected void onPause() {
++        // Keep WebView across background: pause timers instead of destroy (perf).
+         if (browserWebView != null) {
+             if (browserWebView.getUrl() != null) lastBrowserAddress = browserWebView.getUrl();
+             cancelBrowserLoadWatchdog();
+-            Log.i(BROWSER_LOG_TAG, "backgrounded; page discarded: " + lastBrowserAddress);
+-            discardBrowserWebView();
+-            if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
++            Log.i(BROWSER_LOG_TAG, "backgrounded; pausing WebView (not discarded): " + lastBrowserAddress);
++            BrowserSessionController.pauseAll(browserTabs);
+             if (browserStatus != null) {
+-                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+-                        ? "Daymark went into the background. The page will reopen when you return to Daymark."
+-                        : "Daymark went into the background. Offline; WebView network loads are blocked.");
++                browserStatus.setText(browserNetworkPolicy != null && browserNetworkPolicy.isOnlineEnabled()
++                        ? "In background — page kept; returns faster when you come back."
++                        : "In background — offline; WebView network loads stay blocked.");
+             }
+         }
+         activityResumed = false;
+         super.onPause();
+     }
+@@
+     protected void onResume() {
+         super.onResume();
+         activityResumed = true;
+-        if (webMode && browserWebView == null && lastBrowserAddress != null
++        if (browserWebView != null) {
++            BrowserSessionController.resumeAll(browserTabs);
++            Log.i(BROWSER_LOG_TAG, "resumed; WebView timers resumed");
++        } else if (webMode && lastBrowserAddress != null
+                 && browserNetworkPolicy != null && browserNetworkPolicy.allowsRemoteLoads()) {
+             final String restoreAddress = lastBrowserAddress;
+             Log.i(BROWSER_LOG_TAG, "resumed; restoring last page: " + restoreAddress);
+             postActivityCallback(() -> navigateBrowserTo(restoreAddress));
+         }
