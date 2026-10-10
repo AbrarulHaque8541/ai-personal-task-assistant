@@ -1,0 +1,21 @@
+--- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+@@ -758,3 +758,4 @@
+         addPrivacyCard(content);
+-        addSuggestionCard(content);
++        // DEMO SUGGESTION home card removed (#225); ranking still available in task list.
++        // addSuggestionCard(content);
+         addTaskSection(content);
+@@ -924,3 +925,3 @@
+         LinearLayout.LayoutParams chip4 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip4.leftMargin = dp(5); smartChips.addView(detailsChip, chip4);
+-        card.addView(smartChips, bottomMargin(dp(7)));
++        // Smart chips removed from home composer (#225); use full editor for date/priority.
+ 
+@@ -939,5 +940,4 @@
+         secondaryTaskActions.setOrientation(LinearLayout.HORIZONTAL);
+-        addDetailsButton = compactButton("Add with a date or priority", false);
+-        addDetailsButton.setOnClickListener(view -> showTaskEditor(null, quickCaptureInput.getText().toString()));
+-        secondaryTaskActions.addView(addDetailsButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
++        // Redundant with Add task -> full editor (#225).
++        addDetailsButton = null;
+         Button templatesButton = compactButton("Task templates", false);

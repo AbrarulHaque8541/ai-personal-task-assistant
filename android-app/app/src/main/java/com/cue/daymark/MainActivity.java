@@ -767,7 +767,8 @@ public final class MainActivity extends Activity {
 
         addDashboardHeading(content);
         addPrivacyCard(content);
-        addSuggestionCard(content);
+        // DEMO SUGGESTION home card removed (#225); ranking still available in task list.
+        // addSuggestionCard(content);
         addTaskSection(content);
         addLocalStorageNote(content);
 
@@ -933,7 +934,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams chip2 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip2.leftMargin = dp(5); smartChips.addView(tomorrowChip, chip2);
         LinearLayout.LayoutParams chip3 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip3.leftMargin = dp(5); smartChips.addView(highChip, chip3);
         LinearLayout.LayoutParams chip4 = new LinearLayout.LayoutParams(0, dp(42), 1f); chip4.leftMargin = dp(5); smartChips.addView(detailsChip, chip4);
-        card.addView(smartChips, bottomMargin(dp(7)));
+        // Smart chips removed from home composer (#225); use full editor for date/priority.
 
         taskActions = new LinearLayout(this);
         taskActions.setOrientation(LinearLayout.VERTICAL);
@@ -948,9 +949,8 @@ public final class MainActivity extends Activity {
 
         LinearLayout secondaryTaskActions = new LinearLayout(this);
         secondaryTaskActions.setOrientation(LinearLayout.HORIZONTAL);
-        addDetailsButton = compactButton("Add with a date or priority", false);
-        addDetailsButton.setOnClickListener(view -> showTaskEditor(null, quickCaptureInput.getText().toString()));
-        secondaryTaskActions.addView(addDetailsButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        // Redundant with Add task -> full editor (#225).
+        addDetailsButton = null;
         Button templatesButton = compactButton("Task templates", false);
         templatesButton.setContentDescription("View, reuse, or create encrypted on-device task templates. Choosing one opens an editable task; it is not created until you confirm Create task.");
         templatesButton.setOnClickListener(view -> showTaskTemplatesDialog());
@@ -3549,7 +3549,7 @@ public final class MainActivity extends Activity {
         dueTodayCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(dueToday));
         addTaskButton.setEnabled(canEdit() && !webMode);
         addTaskButton.setAlpha(canEdit() ? 1f : 0.55f);
-        addDetailsButton.setEnabled(canEdit() && !webMode);
+        if (addDetailsButton != null) addDetailsButton.setEnabled(canEdit() && !webMode);
         quickCaptureInput.setEnabled(canEdit() || webMode);
         if (searchInput != null) searchInput.setEnabled(!storageLoading && !storageLoadFailed);
         for (View powerOnly : powerOnlyViews) {
