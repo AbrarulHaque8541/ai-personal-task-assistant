@@ -1625,7 +1625,7 @@ public final class MainActivity extends Activity {
         browserLoadWatchdog = activityCallbackGate.guard(() -> {
             if (!isActivityCallbackCurrent()) return;
             browserLoadWatchdog = null;
-            Log.e(BROWSER_LOG_TAG, "no page callback within timeout: " + address);
+            Log.e(BROWSER_LOG_TAG, "page did not finish within timeout: " + address);
             if (browserNetworkPolicy.allowsRemoteLoads()
                     && browserWebView != null
                     && BrowserAddress.isAllowedWebUrl(address)
@@ -1696,6 +1696,9 @@ public final class MainActivity extends Activity {
                 cancelBrowserLoadWatchdog();
                 Log.i(BROWSER_LOG_TAG, "page started: " + url);
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
+                // Keep the watchdog active after navigation begins: a page can start successfully
+                // but never finish, leaving the viewport blank with no further WebView callback.
+                scheduleBrowserLoadWatchdog(url);
                 syncBrowserButtons();
             }
 
