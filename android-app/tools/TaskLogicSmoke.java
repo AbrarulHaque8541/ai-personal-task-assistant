@@ -27,6 +27,7 @@ public final class TaskLogicSmoke {
         attachmentMetadataAndQuotasAreStrict();
         filtersAndSearchCompose();
         suggestionsUseOnlyTransparentLocalRules();
+        repeatRulesValidateAndAdvance();
         System.out.println("PASS Android core logic smoke tests: " + assertions + " assertions");
     }
 
@@ -342,6 +343,64 @@ public final class TaskLogicSmoke {
         check(suggestions.get(0).reason.startsWith("Overdue"), "reason explains local ranking");
         check(suggestions.stream().noneMatch(item -> "done".equals(item.task.id)), "completed tasks are excluded");
         check(TaskLogic.suggestions(new ArrayList<>(), TODAY).isEmpty(), "empty list has no suggestions");
+    }
+
+
+    private static void repeatRulesValidateAndAdvance() {
+        Task repeating = TaskLogic.create("Water the plants", "2026-10-05", "medium", "",
+                "09:00", 30, Collections.<Subtask>emptyList(), TaskLogic.REPEAT_DAILY);
+        check(TaskLogic.isValid(repeating) && TaskLogic.REPEAT_DAILY.equals(repeating.repeatRule),
+                "a daily repeat creates a valid repeating task");
+        expectIllegalArgument(() -> TaskLogic.create("Repeat without date", null, "medium", "",
+                null, null, Collections.<Subtask>emptyList(), TaskLogic.REPEAT_WEEKLY),
+                "repeat rule without a due date is rejected");
+        expectIllegalArgument(() -> TaskLogic.create("Bad repeat rule", "2026-10-05", "medium", "",
+                null, null, Collections.<Subtask>emptyList(), "hourly"),
+                "unknown repeat rules are rejected");
+        Task persistedBadRule = task("bad-repeat", "Bad", null, "medium", false, 40)
+                .withFullDetails("Bad", "", "2026-10-05", "09:00", "medium", null, "hourly",
+                        Collections.<Subtask>emptyList(), "2026-10-05T00:00:40Z");
+        check(!TaskLogic.isValid(persistedBadRule), "persisted unknown repeat rules fail validation");
+        Task persistedNoDate = task("bad-repeat-date", "Bad", null, "medium", false, 41)
+                .withFullDetails("Bad", "", null, null, "medium", null, TaskLogic.REPEAT_MONTHLY,
+                        Collections.<Subtask>emptyList(), "2026-10-05T00:00:41Z");
+        check(!TaskLogic.isValid(persistedNoDate), "persisted repeat without a due date fails validation");
+
+        ZoneId zone = ZoneId.of("UTC");
+        Instant now = Instant.parse("2026-10-08T11:00:00Z");
+        Task daily = TaskLogic.create("Daily", "2026-10-05", "medium", "", null, null,
+                Collections.<Subtask>emptyList(), TaskLogic.REPEAT_DAILY);
+        check("2026-10-09".equals(TaskLogic.advanceRepeat(daily, zone, now).dueDate),
+                "daily repeat rolls forward past every missed occurrence");
+        Task weekly = TaskLogic.create("Weekly", "2026-10-01", "medium", "", null, null,
+                Collections.<Subtask>emptyList(), TaskLogic.REPEAT_WEEKLY);
+        check("2026-10-15".equals(TaskLogic.advanceRepeat(weekly, zone, now).dueDate),
+                "weekly repeat advances a whole week past the due moment");
+        Task monthly = TaskLogic.create("Monthly", "2026-09-01", "medium", "", null, null,
+                Collections.<Subtask>emptyList(), TaskLogic.REPEAT_MONTHLY);
+        check("2026-11-01".equals(TaskLogic.advanceRepeat(monthly, zone, now).dueDate),
+                "monthly repeat advances by calendar months");
+        Task future = TaskLogic.create("Future", "2026-10-10", "medium", "", null, null,
+                Collections.<Subtask>emptyList(), TaskLogic.REPEAT_DAILY);
+        check(TaskLogic.advanceRepeat(future, zone, now) == future,
+                "future occurrences are not advanced early");
+        Task plain = TaskLogic.create("Plain", "2026-10-05", "medium");
+        check(TaskLogic.advanceRepeat(plain, zone, now) == plain,
+                "non-repeating tasks are returned unchanged");
+        Task advanced = TaskLogic.advanceRepeat(daily, zone, now);
+        check(advanced.reminderShownFire == null && TaskLogic.REPEAT_DAILY.equals(advanced.repeatRule),
+                "advancing clears the reminder shown marker and keeps the repeat rule");
+
+        Task keptRepeat = TaskLogic.update(daily, "Daily", "2026-10-05", "medium");
+        check(TaskLogic.REPEAT_DAILY.equals(keptRepeat.repeatRule),
+                "simple edits keep an existing repeat rule");
+        Task clearedRepeat = TaskLogic.update(daily, "Daily", null, "medium");
+        check(clearedRepeat.repeatRule == null && clearedRepeat.dueDate == null,
+                "clearing the due date also clears the repeat rule");
+        check("2026-10-06".equals(TaskLogic.nextDueDate("2026-10-05", TaskLogic.REPEAT_DAILY))
+                        && "2026-10-12".equals(TaskLogic.nextDueDate("2026-10-05", TaskLogic.REPEAT_WEEKLY))
+                        && "2026-11-05".equals(TaskLogic.nextDueDate("2026-10-05", TaskLogic.REPEAT_MONTHLY)),
+                "repeat rules compute the next occurrence date");
     }
 
     private static Task task(String id, String title, String dueDate, String priority, boolean completed, int second) {

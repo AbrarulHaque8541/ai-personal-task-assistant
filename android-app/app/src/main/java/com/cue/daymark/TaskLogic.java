@@ -31,6 +31,10 @@ final class TaskLogic {
     static final int[] REMINDER_LEADS = { 0, 30, 60, 1440 };
     /** Default clock time used to compute a reminder fire moment when a task has no due time. */
     static final LocalTime DEFAULT_REMINDER_TIME = LocalTime.of(9, 0);
+    /** Repeat rules that roll a task's due date forward after each occurrence; a rule requires a due date. */
+    static final String REPEAT_DAILY = "daily";
+    static final String REPEAT_WEEKLY = "weekly";
+    static final String REPEAT_MONTHLY = "monthly";
 
     private TaskLogic() { }
 
@@ -57,6 +61,8 @@ final class TaskLogic {
             return false;
         }
         if (task.reminderLeadMinutes != null && !isReminderLead(task.reminderLeadMinutes)) return false;
+        if (task.repeatRule != null
+                && (task.dueDate == null || !isRepeatRule(task.repeatRule))) return false;
         if (task.reminderShownFire != null) {
             try {
                 Instant.parse(task.reminderShownFire);
@@ -95,6 +101,21 @@ final class TaskLogic {
         return false;
     }
 
+    static boolean isRepeatRule(String rule) {
+        return REPEAT_DAILY.equals(rule) || REPEAT_WEEKLY.equals(rule) || REPEAT_MONTHLY.equals(rule);
+    }
+
+    /** Next occurrence date for a repeating task; monthly rules follow calendar months. */
+    static String nextDueDate(String dueDate, String rule) {
+        if (!isDateOnly(dueDate) || !isRepeatRule(rule)) {
+            throw new IllegalArgumentException("Choose a valid repeat rule.");
+        }
+        LocalDate date = LocalDate.parse(dueDate);
+        if (REPEAT_DAILY.equals(rule)) return date.plusDays(1).toString();
+        if (REPEAT_WEEKLY.equals(rule)) return date.plusWeeks(1).toString();
+        return date.plusMonths(1).toString();
+    }
+
     static boolean isValidTaskList(List<Task> tasks) {
         if (tasks == null) return false;
         Set<String> ids = new HashSet<>();
@@ -114,39 +135,56 @@ final class TaskLogic {
 
     static Task create(String title, String dueDate, String priority, String notes,
                        String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks) {
+        return create(title, dueDate, priority, notes, dueTime, reminderLeadMinutes, subtasks, null);
+    }
+
+    static Task create(String title, String dueDate, String priority, String notes,
+                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule) {
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);
         validateDueTime(dueDate, dueTime);
         validateReminder(reminderLeadMinutes);
+        validateRepeat(dueDate, repeatRule);
         List<Subtask> normalizedSubtasks = normalizeSubtasks(subtasks);
         String now = Instant.now().toString();
         return new Task(UUID.randomUUID().toString(), normalizedTitle, dueDate, priority,
                 false, now, now, Collections.<AttachmentRef>emptyList(), normalizedNotes,
-                dueTime, reminderLeadMinutes, null, normalizedSubtasks);
+                dueTime, reminderLeadMinutes, null, repeatRule, normalizedSubtasks);
     }
 
     static Task update(Task existing, String title, String dueDate, String priority) {
         if (existing == null) throw new IllegalArgumentException("Task is required.");
-        // Clearing the due date also clears the due time and reminder: both are meaningless
-        // (and invalid) without a date, and silently keeping them would surprise the user.
+        // Clearing the due date also clears the due time, reminder, and repeat rule: all are
+        // meaningless (and invalid) without a date, and silently keeping them would surprise the user.
         String dueTime = dueDate == null ? null : existing.dueTime;
         Integer reminderLead = dueDate == null ? null : existing.reminderLeadMinutes;
+        String repeat = dueDate == null ? null : existing.repeatRule;
         return update(existing, title, existing.notes, dueDate, dueTime, priority,
-                reminderLead, existing.subtasks);
+                reminderLead, existing.subtasks, repeat);
     }
 
     static Task update(Task existing, String title, String notes, String dueDate, String dueTime,
                        String priority, Integer reminderLeadMinutes, List<Subtask> subtasks) {
         if (existing == null) throw new IllegalArgumentException("Task is required.");
+        return update(existing, title, notes, dueDate, dueTime, priority, reminderLeadMinutes,
+                subtasks, existing.repeatRule);
+    }
+
+    static Task update(Task existing, String title, String notes, String dueDate, String dueTime,
+                       String priority, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule) {
+        if (existing == null) throw new IllegalArgumentException("Task is required.");
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);
         validateDueTime(dueDate, dueTime);
         validateReminder(reminderLeadMinutes);
+        validateRepeat(dueDate, repeatRule);
         List<Subtask> normalizedSubtasks = normalizeSubtasks(subtasks);
         return existing.withFullDetails(normalizedTitle, normalizedNotes, dueDate, dueTime,
-                priority, reminderLeadMinutes, normalizedSubtasks, Instant.now().toString());
+                priority, reminderLeadMinutes, repeatRule, normalizedSubtasks, Instant.now().toString());
     }
 
     static Task toggleCompleted(Task task) {
@@ -225,6 +263,44 @@ final class TaskLogic {
         return dueMoment.minusMinutes(task.reminderLeadMinutes).atZone(zone).toInstant();
     }
 
+    /**
+     * The due moment for a task in the given zone: the due date at the due time
+     * (or 09:00 when no time is set). Null when no valid due date exists.
+     */
+    static Instant dueMomentInstant(Task task, ZoneId zone) {
+        if (task == null || !isDateOnly(task.dueDate)) return null;
+        LocalTime time = TaskDuePresets.isTimeOnly(task.dueTime)
+                ? LocalTime.parse(task.dueTime, DateTimeFormatter.ISO_LOCAL_TIME)
+                : DEFAULT_REMINDER_TIME;
+        return LocalDateTime.of(LocalDate.parse(task.dueDate), time).atZone(zone).toInstant();
+    }
+
+    /**
+     * Rolls a repeating task forward to its first occurrence strictly after now.
+     * Returns the same instance when nothing can advance: no rule, no due date,
+     * a still-future occurrence, or a bounded guard against runaway loops.
+     */
+    static Task advanceRepeat(Task task, ZoneId zone, Instant now) {
+        if (task == null || task.repeatRule == null || !isRepeatRule(task.repeatRule)
+                || !isDateOnly(task.dueDate)) {
+            return task;
+        }
+        LocalTime time = TaskDuePresets.isTimeOnly(task.dueTime)
+                ? LocalTime.parse(task.dueTime, DateTimeFormatter.ISO_LOCAL_TIME)
+                : DEFAULT_REMINDER_TIME;
+        LocalDate date = LocalDate.parse(task.dueDate);
+        Instant dueMoment = LocalDateTime.of(date, time).atZone(zone).toInstant();
+        if (dueMoment.isAfter(now)) return task;
+        int steps = 0;
+        while (!dueMoment.isAfter(now)) {
+            steps++;
+            if (steps > 3660) return task; // bounded: ten years of daily repeats
+            date = LocalDate.parse(nextDueDate(date.toString(), task.repeatRule));
+            dueMoment = LocalDateTime.of(date, time).atZone(zone).toInstant();
+        }
+        return task.withRepeatAdvanced(date.toString(), Instant.now().toString());
+    }
+
     private static String requireTitle(String title) {
         String normalized = title == null ? "" : title.trim();
         if (normalized.isEmpty()) throw new IllegalArgumentException("Enter a task title.");
@@ -254,6 +330,12 @@ final class TaskLogic {
     private static void validateReminder(Integer reminderLeadMinutes) {
         if (reminderLeadMinutes != null && !isReminderLead(reminderLeadMinutes)) {
             throw new IllegalArgumentException("Choose a valid reminder option.");
+        }
+    }
+
+    private static void validateRepeat(String dueDate, String repeatRule) {
+        if (repeatRule != null && (dueDate == null || !isRepeatRule(repeatRule))) {
+            throw new IllegalArgumentException("A repeat rule needs a valid due date.");
         }
     }
 

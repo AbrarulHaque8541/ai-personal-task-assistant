@@ -18,7 +18,12 @@ def get_permissions(element):
     }
 
 main_perms = get_permissions(main_manifest)
-assert main_perms == {"android.permission.INTERNET"}, f"main manifest unexpected perms: {main_perms}"
+assert main_perms == {
+    "android.permission.INTERNET",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.VIBRATE",
+}, f"main manifest unexpected perms: {main_perms}"
 
 play_source_perms = get_permissions(play_source_manifest)
 assert play_source_perms == set(), f"play source manifest should declare no extra perms: {play_source_perms}"
@@ -42,19 +47,30 @@ if play_merged:
     play_perms = get_permissions(play_merged_tree)
     assert "android.permission.INTERNET" in play_perms, "Play merged manifest must retain INTERNET for WebView"
     assert "android.permission.ACCESS_NETWORK_STATE" not in play_perms, "Play merged manifest must NOT have ACCESS_NETWORK_STATE"
-    assert len(play_perms) == 1, f"Play merged manifest has unexpected extra permissions: {play_perms}"
+    assert play_perms == {
+        "android.permission.INTERNET",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+    }, f"Play merged manifest has unexpected extra permissions: {play_perms}"
     play_merged_app = play_merged_tree.find("application")
     assert play_merged_app.get(android_ns + "usesCleartextTraffic") == "false", "Play merged cleartext must be false"
-    print("PASS Play merged manifest check: INTERNET=YES, ACCESS_NETWORK_STATE=NO, cleartext=false")
+    print("PASS Play merged manifest check: INTERNET=YES, reminder perms=YES, ACCESS_NETWORK_STATE=NO, cleartext=false")
 
 if sideload_merged:
     sideload_merged_tree = ET.parse(sideload_merged[0]).getroot()
     sideload_perms = get_permissions(sideload_merged_tree)
     assert "android.permission.INTERNET" in sideload_perms, "Sideload merged manifest must have INTERNET"
     assert "android.permission.ACCESS_NETWORK_STATE" in sideload_perms, "Sideload merged manifest must have ACCESS_NETWORK_STATE"
-    assert len(sideload_perms) == 2, f"Sideload merged manifest has unexpected extra permissions: {sideload_perms}"
+    assert sideload_perms == {
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+    }, f"Sideload merged manifest has unexpected extra permissions: {sideload_perms}"
     sideload_merged_app = sideload_merged_tree.find("application")
     assert sideload_merged_app.get(android_ns + "usesCleartextTraffic") == "false", "Sideload merged cleartext must be false"
-    print("PASS Sideload merged manifest check: INTERNET=YES, ACCESS_NETWORK_STATE=YES, cleartext=false")
+    print("PASS Sideload merged manifest check: INTERNET=YES, ACCESS_NETWORK_STATE=YES, reminder perms=YES, cleartext=false")
 
-print("PASS manifest architecture policy: Play inherits INTERNET for WebView without extra permissions; Sideload adds ACCESS_NETWORK_STATE")
+print("PASS manifest architecture policy: Play and Sideload inherit INTERNET for WebView plus the POST_NOTIFICATIONS/RECEIVE_BOOT_COMPLETED/VIBRATE task-reminder permissions; Sideload alone adds ACCESS_NETWORK_STATE")

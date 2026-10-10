@@ -21,6 +21,7 @@ import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -97,6 +98,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_EXTENSION = 7813;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
     private static final int REQUEST_PORTABLE_IMPORT = 7343;
+    private static final int REQUEST_REMINDER_SOUND = 7345;
     private static final String STATE_PENDING_ATTACHMENT_TASK = "pending_attachment_task";
     private static final String STATE_PENDING_PORTABLE_IMPORT_URI = "pending_portable_import_uri";
     private static final String STATE_PENDING_PORTABLE_IMPORT_TOKEN = "pending_portable_import_token";
@@ -650,6 +652,15 @@ public final class MainActivity extends Activity {
                     }
                 });
             });
+            return;
+        }
+        if (requestCode == REQUEST_REMINDER_SOUND) {
+            if (resultCode != RESULT_OK || data == null) return;
+            Uri picked = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            TaskReminderScheduler.applySound(this, picked);
+            showToast(picked == null
+                    ? "Task reminders will use the default notification sound."
+                    : "Task reminders will use the chosen notification sound.");
             return;
         }
         if (requestCode == REQUEST_ATTACH_DOCUMENT) {
@@ -3459,6 +3470,7 @@ public final class MainActivity extends Activity {
                 if (error == null) {
                     lastSavedTasks.clear();
                     lastSavedTasks.addAll(snapshot);
+                    rescheduleTaskReminders();
                     if (pendingAttachmentCleanupTask != null
                             && findTaskIn(snapshot, pendingAttachmentCleanupTask.id) == null) {
                         pendingAttachmentCleanupSaved = true;
@@ -4134,8 +4146,36 @@ public final class MainActivity extends Activity {
         return row;
     }
 
+    private void rescheduleTaskReminders() {
+        try {
+            TaskReminderScheduler.rescheduleAll(this, tasks);
+        } catch (RuntimeException schedulingFailed) {
+            Log.w("DaymarkReminder", "Reminder alarms could not be rescheduled; they retry on the next save or app open.", schedulingFailed);
+        }
+    }
+
+    private void advanceRepeatingTasksWithoutReminders() {
+        ZoneId zone = ZoneId.systemDefault();
+        Instant now = Instant.now();
+        boolean changed = false;
+        for (Task task : tasks) {
+            if (task.completed || task.repeatRule == null || task.reminderLeadMinutes != null || task.dueDate == null) continue;
+            Task advanced = TaskLogic.advanceRepeat(task, zone, now);
+            if (advanced != task) {
+                replaceTask(advanced);
+                changed = true;
+            }
+        }
+        if (changed) {
+            render();
+            saveTasksAsync();
+        }
+    }
+
     private void checkDueReminders() {
         if (!storageReady || webMode) return;
+        rescheduleTaskReminders();
+        advanceRepeatingTasksWithoutReminders();
         Instant now = Instant.now();
         ZoneId zone = ZoneId.systemDefault();
         List<Task> due = new ArrayList<>();
@@ -4169,7 +4209,11 @@ public final class MainActivity extends Activity {
                 if (current == null || current.completed || current.reminderLeadMinutes == null) continue;
                 Instant fire = TaskLogic.reminderFireInstant(current, zone);
                 if (fire == null || shownAt.isBefore(fire) || fire.toString().equals(current.reminderShownFire)) continue;
-                replaceTask(current.withReminderShown(fire.toString(), shownAt.toString()));
+                if (current.repeatRule == null) {
+                    replaceTask(current.withReminderShown(fire.toString(), shownAt.toString()));
+                } else {
+                    replaceTask(TaskLogic.advanceRepeat(current, zone, shownAt));
+                }
                 changed = true;
             }
             if (changed) saveTasksAsync();
@@ -5024,16 +5068,59 @@ public final class MainActivity extends Activity {
         reminderSpinner.setAdapter(reminderAdapter);
         reminderSpinner.setMinimumHeight(dp(48));
         reminderSpinner.setSelection(reminderIndex(editing == null ? null : editing.reminderLeadMinutes));
+        reminderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position > 0) TaskReminderScheduler.requestNotificationPermissionIfNeeded(MainActivity.this);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
         TextView reminderHint = text(
-                "Daymark shows a reminder when you open the app after the reminder time. It does not post notifications.",
+                "Daymark schedules a best-effort Android notification for this reminder and also shows it in-app when you open the app. Alarms are inexact, so Doze or battery saver may delay them.",
                 11, palette.muted, Typeface.NORMAL);
         reminderHint.setLineSpacing(dp(2), 1f);
+        Spinner repeatSpinner = new Spinner(this);
+        repeatSpinner.setContentDescription("Choose how often this task repeats");
+        String[] repeatOptions = { "No repeat", "Daily", "Weekly", "Monthly" };
+        ArrayAdapter<String> repeatAdapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_spinner_item, repeatOptions) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView item = (TextView) super.getView(position, convertView, parent);
+                item.setTextSize(14 * textScale);
+                item.setTextColor(palette.text);
+                return item;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView item = (TextView) super.getDropDownView(position, convertView, parent);
+                item.setTextSize(14 * textScale);
+                item.setTextColor(palette.text);
+                return item;
+            }
+        };
+        repeatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        repeatSpinner.setAdapter(repeatAdapter);
+        repeatSpinner.setMinimumHeight(dp(48));
+        repeatSpinner.setSelection(repeatIndex(editing == null ? null : editing.repeatRule));
+        Button reminderSoundButton = compactButton(reminderSoundLabel(), false);
+        reminderSoundButton.setContentDescription("Choose the notification sound for task reminders");
+        reminderSoundButton.setOnClickListener(view -> showReminderSoundPicker());
         if (!templateOnly) {
             TextView reminderLabel = text("Reminder", 13, palette.muted, Typeface.BOLD);
             reminderLabel.setLetterSpacing(0.08f);
             form.addView(reminderLabel, bottomMargin(dp(4)));
             form.addView(reminderSpinner, bottomMargin(dp(4)));
             form.addView(reminderHint, bottomMargin(dp(8)));
+            TextView repeatLabel = text("Repeat", 13, palette.muted, Typeface.BOLD);
+            repeatLabel.setLetterSpacing(0.08f);
+            form.addView(repeatLabel, bottomMargin(dp(4)));
+            form.addView(repeatSpinner, bottomMargin(dp(4)));
+            form.addView(reminderSoundButton, bottomMargin(dp(8)));
         }
 
         final List<Subtask> draftSubtasks = new ArrayList<>();
@@ -5115,7 +5202,8 @@ public final class MainActivity extends Activity {
                                                     notesInput.getText() == null ? "" : notesInput.getText().toString(),
                                                     selectedTime[0],
                                                     reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
-                                                    draftSubtasks))
+                                                    draftSubtasks,
+                                                    repeatValue(repeatSpinner.getSelectedItemPosition())))
                                     .show();
                             return;
                         }
@@ -5134,7 +5222,8 @@ public final class MainActivity extends Activity {
                                         notesInput.getText() == null ? "" : notesInput.getText().toString(),
                                         selectedTime[0],
                                         reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
-                                        draftSubtasks)
+                                        draftSubtasks,
+                                        repeatValue(repeatSpinner.getSelectedItemPosition()))
                                 : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate[0], priority));
                         if (sourceTemplate == null) quickCaptureInput.setText("");
                         captureFeedback.setText(sourceTemplate == null
@@ -5145,7 +5234,8 @@ public final class MainActivity extends Activity {
                                 notesInput.getText() == null ? "" : notesInput.getText().toString(),
                                 selectedDate[0], selectedTime[0], priority,
                                 reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
-                                draftSubtasks));
+                                draftSubtasks,
+                                repeatValue(repeatSpinner.getSelectedItemPosition())));
                     }
                     dialog.dismiss();
                     render();
@@ -5187,12 +5277,12 @@ public final class MainActivity extends Activity {
     private void saveTaskFromEditor(AlertDialog dialog, Task editing, String normalized,
                                     String selectedDate, String priority, TaskTemplate sourceTemplate,
                                     String notes, String selectedTime, Integer reminderLead,
-                                    List<Subtask> subtasks) {
+                                    List<Subtask> subtasks, String repeatRule) {
         try {
             if (editing == null) {
                 tasks.add(sourceTemplate == null
                         ? TaskLogic.create(normalized, selectedDate, priority, notes,
-                                selectedTime, reminderLead, subtasks)
+                                selectedTime, reminderLead, subtasks, repeatRule)
                         : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate, priority));
                 if (sourceTemplate == null) quickCaptureInput.setText("");
                 captureFeedback.setText(sourceTemplate == null
@@ -5200,7 +5290,7 @@ public final class MainActivity extends Activity {
                         : "Task created from the reviewed template. You can edit it later in your list.");
             } else {
                 replaceTask(TaskLogic.update(editing, normalized, notes, selectedDate,
-                        selectedTime, priority, reminderLead, subtasks));
+                        selectedTime, priority, reminderLead, subtasks, repeatRule));
             }
             dialog.dismiss();
             render();
@@ -5248,6 +5338,43 @@ public final class MainActivity extends Activity {
     private Integer reminderLeadValue(int spinnerIndex) {
         if (spinnerIndex <= 0 || spinnerIndex > TaskLogic.REMINDER_LEADS.length) return null;
         return TaskLogic.REMINDER_LEADS[spinnerIndex - 1];
+    }
+
+    private int repeatIndex(String repeatRule) {
+        if (repeatRule == null) return 0;
+        if (TaskLogic.REPEAT_DAILY.equals(repeatRule)) return 1;
+        if (TaskLogic.REPEAT_WEEKLY.equals(repeatRule)) return 2;
+        if (TaskLogic.REPEAT_MONTHLY.equals(repeatRule)) return 3;
+        return 0;
+    }
+
+    private String repeatValue(int spinnerIndex) {
+        if (spinnerIndex == 1) return TaskLogic.REPEAT_DAILY;
+        if (spinnerIndex == 2) return TaskLogic.REPEAT_WEEKLY;
+        if (spinnerIndex == 3) return TaskLogic.REPEAT_MONTHLY;
+        return null;
+    }
+
+    private String reminderSoundLabel() {
+        String uri = getSharedPreferences(TaskReminderScheduler.REMINDER_PREFERENCES, MODE_PRIVATE)
+                .getString(TaskReminderScheduler.NOTIFICATION_SOUND_URI_KEY, null);
+        return uri == null ? "Notification sound: Default" : "Notification sound: Custom";
+    }
+
+    private void showReminderSoundPicker() {
+        Intent picker = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
+        picker.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION);
+        picker.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true);
+        picker.putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false);
+        picker.putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Task reminder sound");
+        String existing = getSharedPreferences(TaskReminderScheduler.REMINDER_PREFERENCES, MODE_PRIVATE)
+                .getString(TaskReminderScheduler.NOTIFICATION_SOUND_URI_KEY, null);
+        if (existing != null) picker.putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(existing));
+        try {
+            startActivityForResult(picker, REQUEST_REMINDER_SOUND);
+        } catch (RuntimeException pickerFailed) {
+            showToast("The system ringtone picker is not available on this device.");
+        }
     }
 
     private void renderDraftSubtasks(LinearLayout subtasksList, List<Subtask> draftSubtasks) {
@@ -6189,12 +6316,17 @@ public final class MainActivity extends Activity {
             } else {
                 StringBuilder details = new StringBuilder("Permissions declared by this app:\n");
                 boolean internetDeclared = false;
+                boolean notificationRemindersDeclared = false;
                 for (String permission : requested) {
                     details.append("• ").append(permission).append('\n');
                     if ("android.permission.INTERNET".equals(permission)) internetDeclared = true;
+                    if ("android.permission.POST_NOTIFICATIONS".equals(permission)) notificationRemindersDeclared = true;
                 }
                 if (internetDeclared) {
                     details.append("\nINTERNET is used for embedded browser requests only after you tap Go or choose a listed site. It does not synchronize tasks or copy task text automatically. Open pages may contact their own or third-party endpoints, which may log requests.");
+                }
+                if (notificationRemindersDeclared) {
+                    details.append("\n\nPOST_NOTIFICATIONS (Android 13+), RECEIVE_BOOT_COMPLETED, and VIBRATE exist only for task reminders. The notification permission is requested only when you enable a reminder, never at app open; if it is denied, in-app reminder dialogs still work. Alarms are inexact, so Doze or battery saver may delay a notification. The boot receiver only reschedules Daymark's own reminder alarms after a restart. No reminder text leaves the device.");
                 }
                 details.append("\nThis screen reports manifest declarations; it does not request or grant access. INTERNET is a normal permission and does not show a runtime prompt. Other runtime permission requests must follow a user action for the feature that needs them.");
                 message = details.toString();

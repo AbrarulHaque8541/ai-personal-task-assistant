@@ -34,6 +34,7 @@ allowed_permissions = {
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.SCHEDULE_EXACT_ALARM",
+    "android.permission.VIBRATE",
 }
 assert declared_permissions.issubset(allowed_permissions), f"unexpected permissions declared: {declared_permissions - allowed_permissions}"
 assert "android.permission.INTERNET" in declared_permissions, "INTERNET permission must be declared"
