@@ -29,6 +29,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserTabPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserSettingsPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/BrowserViewportPolicy.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/BrowserSelfHealingPolicy.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/ExtensionPackageParser.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/CosmeticFilterToCss.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterCore.java" \
@@ -50,6 +51,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/BrowserTabPolicySmoke.java" \
   "$ROOT/tools/BrowserSettingsPolicySmoke.java" \
   "$ROOT/tools/BrowserViewportPolicySmoke.java" \
+  "$ROOT/tools/BrowserSelfHealingPolicySmoke.java" \
   "$ROOT/tools/ExtensionPackageParserSmoke.java" \
   "$ROOT/tools/CosmeticFilterToCssSmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
@@ -64,5 +66,6 @@ java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserMediaPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserTabPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSettingsPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserViewportPolicySmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSelfHealingPolicySmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.ExtensionPackageParserSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.CosmeticFilterToCssSmoke
