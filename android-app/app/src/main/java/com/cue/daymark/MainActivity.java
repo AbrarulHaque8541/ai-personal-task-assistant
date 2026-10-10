@@ -1640,7 +1640,7 @@ public final class MainActivity extends Activity {
     }
 
     private void setBrowserChromeHidden(boolean hidden) {
-        if (!webMode || fullScreenWebDialog != null && fullScreenWebDialog.isShowing()) return;
+        if (hidden && (!webMode || fullScreenWebDialog != null && fullScreenWebDialog.isShowing())) return;
         if (browserChromeHidden == hidden) return;
         browserChromeHidden = hidden;
         View[] chrome = {browserAddressBarView, browserToolbarScroll, browserProviderRow};
@@ -3650,6 +3650,7 @@ public final class MainActivity extends Activity {
 
     private void syncModeUi() {
         if (taskScreen == null || browserScreen == null || quickCaptureInput == null) return;
+        if (webMode && browserChromeHidden) setBrowserChromeHidden(false);
         // Web mode is a dedicated browser workspace. Hide the task composer/dashboard
         // instead of stacking Task + Web controls and wasting the viewport.
         // Web is a dedicated workspace: Task dashboard, Task/Web switcher, and app header
