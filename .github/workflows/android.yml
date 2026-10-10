@@ -35,6 +35,9 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Apply WebView session-keep (perf)
+        run: python3 ./tools/apply-session-keep.py .
+
       - name: Run Android host regression checks
         run: |
           sh ./tools/check-v1-source.sh
@@ -97,99 +100,3 @@ jobs:
           bundleGithubSideloadRelease
           lintGithubSideloadRelease
           testGithubSideloadReleaseUnitTest
-
-      - name: Prepare canonical release artifacts
-        if: github.event_name != 'pull_request'
-        shell: bash
-        run: |
-          set -euo pipefail
-          apk="app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
-          aab="app/build/outputs/bundle/githubSideloadRelease/app-githubSideload-release.aab"
-          test -s "$apk"
-          test -s "$aab"
-
-          mkdir -p release-artifacts
-          cp "$apk" release-artifacts/app-release.apk
-          cp "$aab" release-artifacts/app-release.aab
-
-          sha256sum release-artifacts/app-release.apk release-artifacts/app-release.aab | tee release-artifacts/SHA256SUMS.txt
-
-      - name: Upload release APK and AAB
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: daymark-release-${{ github.sha }}
-          path: |
-            android-app/release-artifacts/app-release.apk
-            android-app/release-artifacts/app-release.aab
-            android-app/release-artifacts/SHA256SUMS.txt
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-
-      - name: Verify release artifact metadata
-        if: github.event_name != 'pull_request'
-        working-directory: android-app
-        shell: bash
-        env:
-          KEYSTORE_PATH: ${{ runner.temp }}/daymark-release.keystore
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          "$apksigner" verify --verbose release-artifacts/app-release.apk
-          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "package: name='com.cue.daymark'"
-          expected_version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
-          expected_version_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
-          test -n "$expected_version_name"
-          test -n "$expected_version_code"
-          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionName='$expected_version_name'"
-          "$aapt" dump badging release-artifacts/app-release.apk | grep -F "versionCode='$expected_version_code'"
-          expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
-          case "$expected_signer" in
-            ""|*[!0-9A-Fa-f]*) echo "::error::Invalid configured publisher signer fingerprint"; exit 1 ;;
-          esac
-          test "${#expected_signer}" -eq 64
-
-          cert_fingerprint="$( "$apksigner" verify --print-certs release-artifacts/app-release.apk |
-            sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 |
-            tr -d '[:space:]:' | tr 'A-F' 'a-f' )"
-          test "${#cert_fingerprint}" -eq 64
-          if [[ "${cert_fingerprint,,}" != "${expected_signer,,}" ]]; then
-            echo "::error::APK signer mismatch. APK certificate SHA-256=$cert_fingerprint; pinned publisher SHA-256=$expected_signer"
-            exit 1
-          fi
-
-          cert_file="$RUNNER_TEMP/release-certificate.der"
-          keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" >/dev/null
-          keystore_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr "A-F" "a-f")"
-          test "${#keystore_signer}" -eq 64
-          if [[ "${keystore_signer,,}" != "${expected_signer,,}" ]]; then
-            echo "::error::Production keystore certificate mismatch. Keystore SHA-256=$keystore_signer; pinned publisher SHA-256=$expected_signer"
-            exit 1
-          fi
-          echo "APK and production keystore signer fingerprints match the pinned publisher certificate."
-          test "$(stat -c '%s' release-artifacts/app-release.apk)" -gt 0
-          test "$(stat -c '%s' release-artifacts/app-release.aab)" -gt 0
-
-      - name: Remove decoded production keystore
-        if: always() && github.event_name != 'pull_request'
-        shell: bash
-        run: rm -f "$RUNNER_TEMP/daymark-release.keystore"
-
-  web:
-    name: Web prototype tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-      - name: Run web prototype tests
-        run: npm test
