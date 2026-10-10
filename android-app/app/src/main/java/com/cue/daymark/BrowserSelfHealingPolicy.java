@@ -34,12 +34,10 @@ final class BrowserSelfHealingPolicy {
         return true;
     }
 
-    /** A successful main-frame load clears the recovery budget for future independent failures. */
+    /** A successful main-frame load clears the budget and tracks the final (possibly redirected) URL. */
     void onPageLoaded(String address) {
-        if (address != null && address.equals(activeAddress)) automaticRecoveries = 0;
-    }
-
-    int automaticRecoveriesForCurrentAddress() {
-        return automaticRecoveries;
+        if (address == null || !address.regionMatches(true, 0, "https://", 0, 8)) return;
+        activeAddress = address;
+        automaticRecoveries = 0;
     }
 }
