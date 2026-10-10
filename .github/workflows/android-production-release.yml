@@ -236,8 +236,6 @@ jobs:
           fi
 
       - name: Remove production keystore
-
-      - name: Remove production keystore
         if: always()
         shell: bash
         run: rm -f "$RUNNER_TEMP/daymark-release.keystore" "$RUNNER_TEMP/release-certificate.der"
