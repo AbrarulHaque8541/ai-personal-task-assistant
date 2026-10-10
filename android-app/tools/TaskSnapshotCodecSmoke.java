@@ -17,6 +17,7 @@ public final class TaskSnapshotCodecSmoke {
 
     public static void main(String[] args) throws Exception {
         versionFourRoundTripsEveryField();
+        repeatRuleRoundTrips();
         legacyV1SnapshotMigratesWithDefaults();
         legacyV2SnapshotKeepsAttachmentsAndDefaults();
         legacyV3SnapshotKeepsTemplatesAndDefaults();
@@ -208,6 +209,39 @@ public final class TaskSnapshotCodecSmoke {
         check(json.contains("\\\"quoted\\\""), "quotes are escaped in encoded JSON");
         TaskSnapshotCodec.Snapshot decoded = TaskSnapshotCodec.decode(encoded);
         check(tricky.equals(decoded.tasks.get(0).notes), "escaped notes round-trip exactly");
+    }
+
+
+    private static void repeatRuleRoundTrips() throws Exception {
+        Task task = new Task("repeat-1", "Water the plants", "2026-10-05", "medium", false,
+                "2026-10-01T08:00:00Z", "2026-10-01T08:00:00Z",
+                Collections.<AttachmentRef>emptyList(), "", null, null, null, TaskLogic.REPEAT_DAILY,
+                Collections.<Subtask>emptyList());
+        byte[] encoded = TaskSnapshotCodec.encode(Collections.singletonList(task),
+                Collections.<TaskTemplate>emptyList());
+        String json = new String(encoded, StandardCharsets.UTF_8);
+        check(json.contains("\"repeatRule\":\"daily\""), "the repeat rule is encoded as a JSON string");
+        TaskSnapshotCodec.Snapshot decoded = TaskSnapshotCodec.decode(encoded);
+        check(TaskLogic.REPEAT_DAILY.equals(decoded.tasks.get(0).repeatRule),
+                "the repeat rule round-trips through the encrypted snapshot");
+        check(TaskLogic.isValidTaskList(decoded.tasks), "decoded repeating tasks pass shared validation");
+        byte[] reencoded = TaskSnapshotCodec.encode(decoded.tasks, decoded.templates);
+        check(Arrays.equals(encoded, reencoded), "repeat rule encoding is byte-stable");
+
+        String legacyV4 = "{\"version\":4,\"tasks\":[{"
+                + "\"id\":\"old-v4\",\"title\":\"Old task\",\"dueDate\":\"2026-10-06\",\"priority\":\"high\","
+                + "\"completed\":false,\"createdAt\":\"2026-10-01T00:00:00Z\",\"updatedAt\":\"2026-10-01T00:00:00Z\","
+                + "\"attachments\":[],\"notes\":\"\",\"dueTime\":null,\"reminderLeadMinutes\":null,"
+                + "\"reminderShownFire\":null,\"subtasks\":[]}],\"templates\":[]}";
+        TaskSnapshotCodec.Snapshot legacyDecoded =
+                TaskSnapshotCodec.decode(legacyV4.getBytes(StandardCharsets.UTF_8));
+        check(legacyDecoded.tasks.get(0).repeatRule == null,
+                "v4 snapshots written before repeat rules load with no repeat");
+        expectDecodeFailure(legacyV4.replace("\"dueDate\":\"2026-10-06\"", "\"dueDate\":null")
+                        .replace("\"subtasks\":[]", "\"subtasks\":[],\"repeatRule\":\"daily\""),
+                "v4 repeat rule without a due date is rejected");
+        expectDecodeFailure(legacyV4.replace("\"subtasks\":[]", "\"subtasks\":[],\"repeatRule\":\"hourly\""),
+                "v4 unknown repeat rules are rejected");
     }
 
     private static void expectDecodeFailure(String json, String message) {

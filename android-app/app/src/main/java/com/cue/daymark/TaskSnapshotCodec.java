@@ -54,6 +54,7 @@ final class TaskSnapshotCodec {
             out.name("dueTime").nullableValue(task.dueTime);
             out.name("reminderLeadMinutes").nullableValue(task.reminderLeadMinutes);
             out.name("reminderShownFire").nullableValue(task.reminderShownFire);
+            out.name("repeatRule").nullableValue(task.repeatRule);
             out.name("subtasks").beginArray();
             for (Subtask subtask : task.subtasks) {
                 out.beginObject();
@@ -122,6 +123,7 @@ final class TaskSnapshotCodec {
             String dueTime = null;
             Integer reminderLeadMinutes = null;
             String reminderShownFire = null;
+            String repeatRule = null;
             List<Subtask> subtasks = new ArrayList<>();
             boolean hasNotesKey = object.containsKey("notes");
             if (versionFour || hasNotesKey) {
@@ -137,6 +139,10 @@ final class TaskSnapshotCodec {
             }
             if (versionFour || object.containsKey("reminderShownFire")) {
                 reminderShownFire = optionalString(object, "reminderShownFire", "Task reminder state");
+            }
+            // Key-presence read: v4 snapshots written before repeat rules load with a null rule.
+            if (object.containsKey("repeatRule")) {
+                repeatRule = optionalString(object, "repeatRule", "Task repeat rule");
             }
             if (versionFour || object.containsKey("subtasks")) {
                 Object subtaskValue = object.get("subtasks");
@@ -180,7 +186,7 @@ final class TaskSnapshotCodec {
                     requiredString(object, "priority"), completed,
                     requiredString(object, "createdAt"),
                     requiredString(object, "updatedAt"), attachments,
-                    notes, dueTime, reminderLeadMinutes, reminderShownFire, subtasks);
+                    notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks);
             result.add(task);
         }
         if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");
