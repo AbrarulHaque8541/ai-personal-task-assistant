@@ -1605,6 +1605,7 @@ public final class MainActivity extends Activity {
                     && BrowserAddress.isAllowedWebUrl(address)
                     && browserSelfHealingPolicy.shouldRecover(address)) {
                 Log.w(BROWSER_LOG_TAG, "attempting one automatic recovery for stalled page");
+                StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
                 browserStatus.setText("Page stalled. Daymark is retrying once...");
                 try {
                     browserWebView.stopLoading();
@@ -1613,9 +1614,10 @@ public final class MainActivity extends Activity {
                     return;
                 } catch (RuntimeException failure) {
                     cancelBrowserLoadWatchdog();
-                    StartupDiagnostics.record("browser.self_heal_retry_failed", failure);
+                    StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_RETRY_FAILED, failure);
                 }
             }
+            StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
             browserLoadFailed = true;
             browserStatus.setText("The page did not open after one automatic recovery attempt. Tap this message to retry.");
         });
@@ -1740,17 +1742,19 @@ public final class MainActivity extends Activity {
                 if (webMode && browserNetworkPolicy.allowsRemoteLoads()
                         && BrowserAddress.isAllowedWebUrl(recoveryAddress)
                         && browserSelfHealingPolicy.shouldRecover(recoveryAddress)) {
+                    StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
                     browserStatus.setText("The page stopped unexpectedly. Rebuilding the browser and retrying once...");
                     if (ensureBrowserWebView()) {
                         loadBrowserAddress(recoveryAddress);
                         return;
                     }
-                    StartupDiagnostics.record("browser.self_heal_renderer_recreate_failed",
+                    StartupDiagnostics.record(StartupDiagnostics.BROWSER_RENDERER_RECREATE_FAILED,
                             new IllegalStateException("A replacement WebView could not be created."));
                 }
                 if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
                 if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
                 if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
+                StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
                 browserStatus.setText("The page stopped unexpectedly. Automatic recovery was limited; return to browser home and try again.");
             }
         });
