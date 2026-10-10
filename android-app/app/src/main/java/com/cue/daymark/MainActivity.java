@@ -4240,14 +4240,13 @@ public final class MainActivity extends Activity {
     }
 
     private final class SwipeTaskRow extends LinearLayout {
-        interface SwipeListener { void onSwipe(int direction); }
-        private final SwipeListener listener;
+        private final java.util.function.IntConsumer listener;
         private float downX;
         private float downY;
         private boolean horizontalSwipe;
         private boolean consumedSwipe;
 
-        SwipeTaskRow(Context context, SwipeListener listener) {
+        SwipeTaskRow(Context context, java.util.function.IntConsumer listener) {
             super(context);
             this.listener = listener;
             setClickable(true);
@@ -4278,7 +4277,7 @@ public final class MainActivity extends Activity {
                 float dx = event.getX() - downX;
                 if (Math.abs(dx) > dp(48)) {
                     consumedSwipe = true;
-                    if (listener != null && canEdit()) listener.onSwipe(dx > 0 ? 1 : -1);
+                    if (listener != null && canEdit()) listener.accept(dx > 0 ? 1 : -1);
                 }
                 performClick();
                 return true;
