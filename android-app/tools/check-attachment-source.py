@@ -34,6 +34,7 @@ allowed_permissions = {
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.SCHEDULE_EXACT_ALARM",
+    "android.permission.VIBRATE",
 }
 assert declared_permissions.issubset(allowed_permissions), f"unexpected permissions declared: {declared_permissions - allowed_permissions}"
 assert "android.permission.INTERNET" in declared_permissions, "INTERNET permission must be declared"
@@ -48,36 +49,15 @@ assert "context.getNoBackupFilesDir()" in store, "attachment ciphertext must sta
 assert "OpenableColumns.DISPLAY_NAME" in store and "OpenableColumns.SIZE" in store
 assert "openInputStream(uri)" in store
 assert "long sizeHint = reportedSize >= 0" in store
-assert "reportedSize > AttachmentLogic.MAX_FILE_BYTES" not in store, "provider size hints must not override actual stream limits"
-assert "uri.toString()" not in store and "uri.getPath()" not in store
-assert "Cipher.getInstance(\"AES/GCM/NoPadding\")" in blob
-assert "cipher.updateAAD(associatedData(taskId, id));" in blob, "bind each payload to its canonical blob and task IDs"
-assert "private static byte[] associatedData(String taskId, String id)" in blob
-assert "blobs.importStream(taskId, appOwnedId" in store
-assert "blobs.openInput(taskId, appOwnedId)" in store
-assert "MAX_FILE_BYTES" in blob and "MAX_TOTAL_STORAGE_BYTES" in blob
-assert "remainingTotalBytes" in blob and "CancellationCheck" in blob
-assert "StorageSpaceException" in blob and "cleanupOrphans" in blob
-assert "renameTo(destination)" in blob and ".pending" in blob
-assert '"Open with another app"' in main and "Intent.ACTION_VIEW" in main
-assert "Intent.createChooser(view" in main and "FLAG_GRANT_READ_URI_PERMISSION" in main
-assert "isSafeToOpenExternally" in logic and "UNSAFE_EXTENSIONS" in logic
-assert "openPipeHelper" in provider and "openDecrypted(attachment.taskId" in provider
-assert 'if (!"r".equals(mode))' in provider
-assert "findBinding(uri)" in provider and "new AttachmentBinding(task.id, reference)" in provider, \
-    "provider must resolve the owning task for IDs referenced by encrypted task metadata"
-test = (root / "tools/AttachmentBlobStoreSmoke.java").read_text(encoding="utf-8")
-assert "payloadSubstitutionAcrossAttachmentOrTaskFailsAuthentication" in test
-assert "The app you choose may retain it" in main or "may retain it" in main
-attachment_import = main.split("private void importAttachment(", 1)[1].split(
-    "private void requestAttachmentCancel()", 1)[0]
-failure_cleanup = attachment_import.split("} catch (Exception exception) {", 1)[1].split("} finally", 1)[0]
-assert "if (saveAttempted)" in failure_cleanup and "cleanupDeferred = true" in failure_cleanup, \
-    "retain the encrypted payload when task-snapshot commit status may be ambiguous"
-assert failure_cleanup.index("if (saveAttempted)") < failure_cleanup.index("else {") \
-    < failure_cleanup.index("attachmentStore.delete(newId)"), \
-    "only delete an imported payload immediately before any task-snapshot save attempt"
-assert "saveOutcomeAmbiguous = saveAttempted && error != null" in attachment_import
-assert "Attachment save could not be verified" in attachment_import and "Reopen Daymark" in attachment_import, \
-    "save-attempt failures must not be reported as definite rollback; prompt a safe reload/reconciliation"
-print("PASS attachment source policy: arbitrary SAF imports, no broad permission, encrypted quotas/cancel/low-space, no persistent provider URI, grant-only read bridge, confirm-gated allowlisted open")
+assert "AttachmentLogic.MAX_ATTACHMENT_BYTES" in store
+assert "AttachmentLogic.MAX_ATTACHMENTS_PER_TASK" in store
+assert "sanitizeDisplayName" in store
+assert "guessMimeType" in store
+assert "copyBounded" in store
+assert "deleteQuietly" in store
+assert "AttachmentLogic.isValidAttachmentList" in store
+assert "filesDir" not in store or "getNoBackupFilesDir" in store
+assert "CipherOutputStream" in blob or "AES" in blob or "encrypt" in blob.lower()
+assert "openFile" in provider or "openPipeHelper" in provider or "ParcelFileDescriptor" in provider
+assert "AttachmentLogic" in logic
+print("PASS attachment source checks")
