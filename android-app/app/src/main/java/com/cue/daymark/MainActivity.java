@@ -230,6 +230,9 @@ public final class MainActivity extends Activity {
     private View filterControlView;
     private View searchControlView;
     private View taskScreen;
+    private ScrollView taskScrollView;
+    private Runnable taskChromeRestoreRunnable;
+    private boolean taskChromeHidden;
     private LinearLayout taskActions;
     private LinearLayout webActions;
     private EditText browserAddressInput;
@@ -755,6 +758,19 @@ public final class MainActivity extends Activity {
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(false);
         scrollView.setClipToPadding(false);
+        taskScrollView = scrollView;
+        scrollView.setOnScrollChangeListener((View view, int x, int y, int oldX, int oldY) -> {
+            if (webMode) return;
+            int delta = y - oldY;
+            if (delta > dp(3)) {
+                setTaskChromeHidden(true);
+            } else if (delta < -dp(3)) {
+                setTaskChromeHidden(false);
+            }
+            if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
+            taskChromeRestoreRunnable = () -> setTaskChromeHidden(false);
+            mainHandler.postDelayed(taskChromeRestoreRunnable, 700L);
+        });
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         taskScreen = scrollView;
@@ -3593,6 +3609,28 @@ public final class MainActivity extends Activity {
         renderTaskList(today);
         renderTaskCount(today);
         renderSuggestions(today);
+    }
+
+    private void setTaskChromeHidden(boolean hidden) {
+        if (webMode || appTopBar == null || sharedComposer == null) return;
+        if (taskChromeHidden == hidden) return;
+        taskChromeHidden = hidden;
+        View[] chrome = {appTopBar, sharedComposer};
+        for (View view : chrome) {
+            view.animate().cancel();
+            if (hidden) {
+                view.setVisibility(View.VISIBLE);
+                view.animate().translationY(-Math.max(view.getHeight(), dp(48)))
+                        .alpha(0f).setDuration(180L).withEndAction(() -> {
+                            if (taskChromeHidden && !webMode) view.setVisibility(View.GONE);
+                        }).start();
+            } else {
+                view.setVisibility(View.VISIBLE);
+                view.setTranslationY(-Math.max(view.getHeight(), dp(48)));
+                view.setAlpha(0f);
+                view.animate().translationY(0f).alpha(1f).setDuration(200L).start();
+            }
+        }
     }
 
     private void syncModeUi() {
