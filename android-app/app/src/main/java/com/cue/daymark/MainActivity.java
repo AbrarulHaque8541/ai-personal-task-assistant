@@ -927,8 +927,12 @@ public final class MainActivity extends Activity {
         taskActions = new LinearLayout(this);
         taskActions.setOrientation(LinearLayout.VERTICAL);
         addTaskButton = primaryButton("Add task");
-        addTaskButton.setContentDescription("Add this task with no due date and medium priority");
-        addTaskButton.setOnClickListener(view -> addQuickTask());
+        addTaskButton.setContentDescription("Add this task in the full editor with the captured text");
+        addTaskButton.setOnClickListener(view -> {
+            String draft = quickCaptureInput.getText() == null
+                    ? "" : quickCaptureInput.getText().toString();
+            showTaskEditor(null, draft);
+        });
         taskActions.addView(addTaskButton, bottomMargin(dp(5)));
 
         LinearLayout secondaryTaskActions = new LinearLayout(this);
@@ -1087,7 +1091,11 @@ public final class MainActivity extends Activity {
         bar.addView(bottom);
 
         browserAddressInput.setOnEditorActionListener((view, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH) {
+            boolean enter = event != null
+                    && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                    && event.getAction() == KeyEvent.ACTION_DOWN;
+            if (actionId == EditorInfo.IME_ACTION_GO
+                    || actionId == EditorInfo.IME_ACTION_SEARCH || enter) {
                 navigateFromBrowserInput();
                 return true;
             }
@@ -3585,9 +3593,10 @@ public final class MainActivity extends Activity {
         }
         if (!webMode) {
             taskDraft = quickCaptureInput.getText() == null ? "" : quickCaptureInput.getText().toString();
-        } else if (browserWebView != null || !browserTabs.isEmpty()) {
-            discardBrowserWebView();
         }
+        // Switching workspaces must not destroy the browser session. Explicit tab
+        // close/clear and Activity lifecycle paths own WebView disposal.
+
         webMode = enabled;
         quickCaptureInput.setText(enabled ? "" : taskDraft);
         quickCaptureInput.setError(null);
