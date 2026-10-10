@@ -277,6 +277,7 @@ public final class MainActivity extends Activity {
     private String lastBrowserAddress;
     private Runnable browserLoadWatchdog;
     private boolean browserLoadFailed;
+    private boolean browserPageLoading;
     private final BrowserSelfHealingPolicy browserSelfHealingPolicy = new BrowserSelfHealingPolicy();
     private static final String BROWSER_LOG_TAG = "DaymarkBrowser";
     private static final long BROWSER_LOAD_WATCHDOG_MS = 20000L;
@@ -431,13 +432,19 @@ public final class MainActivity extends Activity {
         if (browserWebView != null) {
             if (browserWebView.getUrl() != null) lastBrowserAddress = browserWebView.getUrl();
             cancelBrowserLoadWatchdog();
-            Log.i(BROWSER_LOG_TAG, "backgrounded; page discarded: " + lastBrowserAddress);
-            discardBrowserWebView();
-            if (browserHomeView != null) browserHomeView.setVisibility(View.VISIBLE);
-            if (browserStatus != null) {
-                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
-                        ? "Daymark went into the background. The page will reopen when you return to Daymark."
-                        : "Daymark went into the background. Offline; WebView network loads are blocked.");
+            Log.i(BROWSER_LOG_TAG, "backgrounded; pausing WebView session: " + lastBrowserAddress);
+            for (DaymarkWebView tab : new ArrayList<>(browserTabs)) {
+                try {
+                    tab.onPause();
+                } catch (RuntimeException ignored) {
+                    // Renderer may already be gone; do not destroy other tabs during pause.
+                }
+            }
+            // WebView timers are process-wide. Pause them once while the Activity is backgrounded.
+            try {
+                browserWebView.pauseTimers();
+            } catch (RuntimeException ignored) {
+                // A renderer may already be gone; onResume's recovery path remains available.
             }
         }
         activityResumed = false;
@@ -515,7 +522,26 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
-        if (webMode && browserWebView == null && lastBrowserAddress != null
+        if (browserWebView != null) {
+            try {
+                browserWebView.resumeTimers();
+            } catch (RuntimeException ignored) {
+                Log.w(BROWSER_LOG_TAG, "WebView timers could not resume cleanly");
+            }
+            for (DaymarkWebView tab : new ArrayList<>(browserTabs)) {
+                try {
+                    tab.onResume();
+                } catch (RuntimeException ignored) {
+                    // A tab with a gone renderer will be handled by its renderer callback.
+                }
+            }
+            Log.i(BROWSER_LOG_TAG, "resumed; retained WebView session");
+            if (browserPageLoading && lastBrowserAddress != null
+                    && browserNetworkPolicy != null && browserNetworkPolicy.allowsRemoteLoads()
+                    && BrowserAddress.isAllowedWebUrl(lastBrowserAddress)) {
+                scheduleBrowserLoadWatchdog(lastBrowserAddress);
+            }
+        } else if (webMode && lastBrowserAddress != null
                 && browserNetworkPolicy != null && browserNetworkPolicy.allowsRemoteLoads()) {
             final String restoreAddress = lastBrowserAddress;
             Log.i(BROWSER_LOG_TAG, "resumed; restoring last page: " + restoreAddress);
@@ -1614,6 +1640,7 @@ public final class MainActivity extends Activity {
         browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
         lastBrowserAddress = address;
         browserLoadFailed = false;
+        browserPageLoading = true;
         Log.i(BROWSER_LOG_TAG, "load requested: " + address);
         browserWebView.loadUrl(address);
         scheduleBrowserLoadWatchdog(address);
@@ -1644,6 +1671,7 @@ public final class MainActivity extends Activity {
                 }
             }
             StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
+            browserPageLoading = false;
             browserLoadFailed = true;
             browserStatus.setText("The page did not open after one automatic recovery attempt. Tap this message to retry.");
         });
@@ -1694,6 +1722,7 @@ public final class MainActivity extends Activity {
             @Override public void onPageStarted(String url) {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 cancelBrowserLoadWatchdog();
+                browserPageLoading = true;
                 Log.i(BROWSER_LOG_TAG, "page started: " + url);
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 // Keep the watchdog active after navigation begins: a page can start successfully
@@ -1716,6 +1745,7 @@ public final class MainActivity extends Activity {
                 }
                 browserSelfHealingPolicy.onPageLoaded(url);
                 cancelBrowserLoadWatchdog();
+                browserPageLoading = false;
                 browserLoadFailed = false;
                 Log.i(BROWSER_LOG_TAG, "page finished: " + url);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
@@ -1726,15 +1756,25 @@ public final class MainActivity extends Activity {
 
             @Override public void onNavigationBlocked(String url) {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
+                browserPageLoading = false;
+                cancelBrowserLoadWatchdog();
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
 
             @Override public void onOfflineNavigationBlocked() {
+                if (targetRef[0] == browserWebView) {
+                    browserPageLoading = false;
+                    cancelBrowserLoadWatchdog();
+                }
                 postActivityCallback(MainActivity.this::showBrowserOfflineStatus);
             }
 
             @Override public void onHttpNavigationBlocked(String url, boolean redirect) {
+                if (targetRef[0] == browserWebView) {
+                    browserPageLoading = false;
+                    cancelBrowserLoadWatchdog();
+                }
                 String message = redirect
                         ? "An HTTP redirect/downgrade was blocked. No insecure page was opened."
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
@@ -1747,6 +1787,7 @@ public final class MainActivity extends Activity {
             @Override public void onLoadError(int errorCode, String description, String failingUrl) {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 cancelBrowserLoadWatchdog();
+                browserPageLoading = false;
                 browserLoadFailed = true;
                 Log.e(BROWSER_LOG_TAG, "load failed: code=" + errorCode
                         + " description=" + description + " url=" + failingUrl);
@@ -1795,6 +1836,7 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 String recoveryAddress = lastBrowserAddress;
+                browserPageLoading = false;
                 Log.e(BROWSER_LOG_TAG, "renderer gone; discarding failed WebView");
                 discardBrowserWebView(false);
                 if (webMode && browserNetworkPolicy.allowsRemoteLoads()

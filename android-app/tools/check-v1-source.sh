@@ -17,6 +17,7 @@ sh ./tools/run-check-guard-tests.sh
 python3 ./tools/check-attachment-source.py "$ROOT"
 python3 ./tools/check-browser-catalog.py "$ROOT"
 python3 ./tools/check-browser-load-watchdog.py "$ROOT"
+python3 ./tools/check-browser-session-lifecycle.py "$ROOT"
 python3 ./tools/check-extension-trust-confirmation.py "$ROOT"
 python3 ./tools/check-browser-image-policy.py "$ROOT"
 python3 ./tools/check-extension-import-hardening.py "$ROOT"
@@ -295,7 +296,7 @@ destroy_webview = re.search(r"private void destroyBrowserWebView\(DaymarkWebView
 assert discard and "destroyBrowserWebView(current, stopLoading)" in discard.group(1), "tab teardown must route through the common WebView destroy path"
 assert destroy_webview and "setBlockNetworkLoads(true)" in destroy_webview.group(1) and "stopLoading()" in destroy_webview.group(1), "offline/background teardown must block and stop each closed page"
 on_pause = re.search(r"protected void onPause\(\)\s*\{(.*?)\n    \}", activity, re.S)
-assert on_pause and "discardBrowserWebView()" in on_pause.group(1), "backgrounding must close the page"
+assert on_pause and "browserWebView.pauseTimers()" in on_pause.group(1) and "discardBrowserWebView()" not in on_pause.group(1), "backgrounding must retain the WebView session and pause timers"
 ensure_webview = re.search(r"private boolean ensureBrowserWebView\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert ensure_webview and "if (!browserNetworkPolicy.allowsRemoteLoads()) return false;" in ensure_webview.group(1), "WebView construction must fail closed while Offline"
 load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
