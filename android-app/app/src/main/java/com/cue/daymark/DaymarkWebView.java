@@ -58,6 +58,12 @@ final class DaymarkWebView extends WebView {
         super(activity);
         this.listener = listener;
         this.extensionRuntime = ExtensionRuntime.create(activity);
+        try {
+            android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+        } catch (Throwable ignored) {
+            // CookieManager may fail in headless/isolated test environments
+        }
         setFocusable(true);
         setFocusableInTouchMode(true);
         setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
@@ -142,6 +148,20 @@ final class DaymarkWebView extends WebView {
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.cancel();
                 listener.onLoadError(-1, "certificate error: " + error.getPrimaryError(), error.getUrl());
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                if (!networkPolicy.allowsRemoteLoads()) {
+                    listener.onOfflineNavigationBlocked();
+                    return;
+                }
+                if (failingUrl != null && failingUrl.toLowerCase().startsWith("http:")) {
+                    listener.onHttpNavigationBlocked(failingUrl, false);
+                } else {
+                    listener.onLoadError(errorCode, description == null ? "" : description, failingUrl);
+                }
             }
 
             @Override
