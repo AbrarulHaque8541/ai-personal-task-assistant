@@ -122,6 +122,7 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
     private static final String BROWSER_BLOCK_IMAGES_KEY = "block_network_images";
+    private static final String BROWSER_DISCLOSURE_ACK_KEY = "browser_disclosure_acknowledged_v1";
 
     private final List<Task> tasks = new ArrayList<>();
     private final List<Task> lastSavedTasks = new ArrayList<>();
@@ -272,6 +273,7 @@ public final class MainActivity extends Activity {
     private TextView browserStatus;
     private View browserProviderRow;
     private TextView browserPrivacyButton;
+    private String browserPrivacyDisclosure;
     private Button browserProviderPickerButton;
     private String browserLastSearchQuery = "";
     private String lastBrowserAddress;
@@ -1189,6 +1191,11 @@ public final class MainActivity extends Activity {
         panel.addView(browserAddressBarView, bottomMargin(dp(5)));
         panel.setPadding(dp(8), dp(0), dp(8), dp(2));
 
+        // Owner feedback (#222): the previous top row (Tasks | ‹ | › | ↻ | + | Site history |
+        // Privacy | ⋮ | Tabs | Media | Expand) cluttered the reading viewport. Back/forward/
+        // reload-stop/new-tab/tabs/more now live in ONE compact bottom control row; secondary
+        // tools (Site history, Media, Browser settings, Privacy details) are in the ⋮ overflow.
+        // The buttons below stay wired so their guarded behavior and descriptions are unchanged.
         HorizontalScrollView toolbarScroll = new HorizontalScrollView(this);
         toolbarScroll.setHorizontalScrollBarEnabled(false);
         browserToolbarScroll = toolbarScroll;
@@ -1220,9 +1227,11 @@ public final class MainActivity extends Activity {
         browserHistoryButton = compactButton("Site history", false);
         browserHistoryButton.setContentDescription("View local site history, which lists HTTPS origins only, or clear site history and site data");
         browserHistoryButton.setOnClickListener(view -> showBrowserHistoryDialog());
+        browserHistoryButton.setVisibility(View.GONE);
         browserSettingsButton = compactButton("Privacy", false);
         browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
         browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog());
+        browserSettingsButton.setVisibility(View.GONE);
         browserOverflowButton = compactButton("⋮", false);
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
@@ -1233,17 +1242,14 @@ public final class MainActivity extends Activity {
         browserMediaButton.setEnabled(false);
         browserMediaButton.setContentDescription("Find direct downloadable videos and audio on the current page");
         browserMediaButton.setOnClickListener(view -> findMediaOnPage());
+        browserMediaButton.setVisibility(View.GONE);
         browserExpandButton = compactButton("Expand", false);
         browserExpandButton.setVisibility(View.GONE);
         browserExpandButton.setContentDescription("Open the current web page in a full-screen view");
         browserExpandButton.setEnabled(false);
         browserExpandButton.setOnClickListener(view -> openFullScreenWebView());
-        Button tasksButton = compactButton("Tasks", false);
-        tasksButton.setContentDescription("Return to Daymark tasks");
-        tasksButton.setOnClickListener(view -> setWebMode(false));
-        for (Button button : Arrays.asList(tasksButton, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserTabButton, browserHistoryButton,
-                browserSettingsButton, browserOverflowButton, browserMediaButton, browserExpandButton)) {
+        for (Button button : Arrays.asList(browserBackButton, browserForwardButton,
+                browserReloadButton, browserHomeButton, browserTabButton, browserOverflowButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -1255,7 +1261,6 @@ public final class MainActivity extends Activity {
             toolbar.addView(button, params);
         }
         toolbarScroll.addView(toolbar);
-        panel.addView(toolbarScroll, bottomMargin(dp(2)));
 
         String disclosureText =
                 "Browsing is ready for explicit user-initiated navigation; no page opens until you tap Go or a site. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
@@ -1265,6 +1270,7 @@ public final class MainActivity extends Activity {
         browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
         browserPrivacyButton.setContentDescription("Browser privacy: browsing is ready for explicit user-initiated navigation; each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. Daymark's browser network policy controls Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
+        browserPrivacyDisclosure = disclosureText;
         panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
@@ -1311,6 +1317,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         panel.addView(browserViewport, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        panel.addView(browserToolbarScroll, bottomMargin(dp(2)));
         panel.addView(browserProviderRow, bottomMargin(dp(3)));
         return panel;
     }
@@ -1637,7 +1644,14 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.GONE);
         browserWebView.setVisibility(View.VISIBLE);
-        browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
+        // Owner feedback (#222): the full egress disclosure is shown before the first
+        // search of an install only; later navigations use a quiet per-page status.
+        if (!browserPreferences.getBoolean(BROWSER_DISCLOSURE_ACK_KEY, false)) {
+            browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
+            browserPreferences.edit().putBoolean(BROWSER_DISCLOSURE_ACK_KEY, true).apply();
+        } else {
+            browserStatus.setText("Opening page…");
+        }
         lastBrowserAddress = address;
         browserLoadFailed = false;
         browserPageLoading = true;
@@ -1691,16 +1705,21 @@ public final class MainActivity extends Activity {
         View[] chrome = {browserAddressBarView, browserToolbarScroll, browserProviderRow};
         for (View view : chrome) {
             if (view == null) continue;
+            // The address bar hides upward; the compact bottom control row and provider
+            // strip hide downward so the reading viewport grows from both ends.
+            float hiddenOffset = (view == browserAddressBarView)
+                    ? -Math.max(view.getHeight(), dp(40))
+                    : Math.max(view.getHeight(), dp(40));
             view.animate().cancel();
             if (hidden) {
                 view.setVisibility(View.VISIBLE);
-                view.animate().translationY(-Math.max(view.getHeight(), dp(40)))
+                view.animate().translationY(hiddenOffset)
                         .alpha(0f).setDuration(160L).withEndAction(() -> {
                             if (browserChromeHidden && webMode) view.setVisibility(View.GONE);
                         }).start();
             } else {
                 view.setVisibility(View.VISIBLE);
-                view.setTranslationY(-Math.max(view.getHeight(), dp(40)));
+                view.setTranslationY(hiddenOffset);
                 view.setAlpha(0f);
                 view.animate().translationY(0f).alpha(1f).setDuration(190L).start();
             }
@@ -1997,20 +2016,19 @@ public final class MainActivity extends Activity {
     }
 
     private void showBrowserOverflowMenu(View anchor) {
+        if (browserPrivacyDisclosure == null) browserPrivacyDisclosure = "";
         final String[] actions = {
-                "Reload / Stop", "Find in page", "Reader mode", "Full-screen page",
+                "New tab", "Find in page", "Reader mode", "Full-screen page",
                 "Share page", "Copy page URL", "Open in external browser", "Desktop site",
-                "Downloads", "Extensions", "Browser settings", "Site info", "Turn off online browsing"
+                "Downloads", "Find media on page", "Extensions", "Site history",
+                "Privacy details", "Browser settings", "Site info", "Turn off online browsing"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
                 .setItems(actions, (dialog, which) -> {
                     switch (which) {
                         case 0:
-                            if (browserWebView != null && browserWebView.getUrl() != null) {
-                                if (browserWebView.getProgress() < 100) browserWebView.stopLoading();
-                                else browserWebView.reload();
-                            }
+                            requestNewBrowserTab();
                             break;
                         case 1:
                             showFindInPageDialog();
@@ -2037,15 +2055,24 @@ public final class MainActivity extends Activity {
                             showBrowserDownloadsDialog();
                             break;
                         case 9:
-                            showBrowserExtensionsManager();
+                            findMediaOnPage();
                             break;
                         case 10:
-                            showBrowserSettingsDialog();
+                            showBrowserExtensionsManager();
                             break;
                         case 11:
-                            showBrowserSiteInfoDialog();
+                            showBrowserHistoryDialog();
                             break;
                         case 12:
+                            showInfo("Privacy & connection details", browserPrivacyDisclosure);
+                            break;
+                        case 13:
+                            showBrowserSettingsDialog();
+                            break;
+                        case 14:
+                            showBrowserSiteInfoDialog();
+                            break;
+                        case 15:
                             if (browserNetworkPolicy.isOnlineEnabled()) {
                                 setBrowserOnlineEnabled(false);
                                 showToast("Online browsing is off. Pages and tabs were closed.");
@@ -2924,6 +2951,12 @@ public final class MainActivity extends Activity {
         }
         if (browserMediaButton != null) {
             browserMediaButton.setEnabled(available && hasPage);
+        }
+        // Owner feedback (#222): the compact engine picker chip belongs beside the address
+        // bar while composing a search; once a page is loaded it auto-hides and the bottom
+        // provider strip keeps engine switching available for re-searching the same query.
+        if (browserProviderPickerButton != null) {
+            browserProviderPickerButton.setVisibility(hasPage ? View.GONE : View.VISIBLE);
         }
     }
 
@@ -7272,6 +7305,7 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 
 
 
