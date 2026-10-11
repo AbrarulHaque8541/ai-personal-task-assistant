@@ -1,4 +1,3 @@
-package com.cue.daymark;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -366,6 +365,34 @@ public final class MainActivity extends Activity {
         sanitizeStoredBrowserHistory();
         buildInterface();
         loadEncryptedTasks();
+        handleShareInIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleShareInIntent(intent);
+    }
+
+    // Android Share target: incoming ACTION_SEND plain text becomes the task draft.
+    // Nothing is created automatically; the owner reviews the draft and adds the task.
+    private void handleShareInIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
+        if (!"text/plain".equals(intent.getType())) return;
+        String shared = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (shared == null) return;
+        shared = shared.trim();
+        if (shared.isEmpty()) return;
+        if (shared.length() > 2048) shared = shared.substring(0, 2048);
+        setWebMode(false);
+        taskDraft = shared;
+        if (quickCaptureInput != null) {
+            quickCaptureInput.setText(shared);
+            quickCaptureInput.setSelection(Math.min(shared.length(), 2048));
+            quickCaptureInput.requestFocus();
+        }
+        showToast("Shared text is in your task draft. Review it, then add the task.");
     }
 
     @SuppressWarnings("deprecation")
