@@ -7,17 +7,21 @@ root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
 path = root / "app/src/main/java/com/cue/daymark/TaskLogic.java"
 text = path.read_text(encoding="utf-8")
 
+if "NaturalLanguageTaskParse.parse" in text:
+    print("TaskLogic NL already wired")
+    sys.exit(0)
+
+# Post-tags-core create signature
 old = '''    static Task create(String title, String dueDate, String priority, String notes,
                        String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
-                       String repeatRule) {
+                       String repeatRule, List<String> tags) {
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);'''
 
 new = '''    static Task create(String title, String dueDate, String priority, String notes,
                        String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
-                       String repeatRule) {
-        // Natural-language quick-add: fill empty structured fields from the title tokens.
+                       String repeatRule, List<String> tags) {
         NaturalLanguageTaskParse.Result parsed =
                 NaturalLanguageTaskParse.parse(title, java.time.LocalDate.now());
         if (parsed.title != null && !parsed.title.isEmpty()) {
@@ -34,15 +38,14 @@ new = '''    static Task create(String title, String dueDate, String priority, S
                 && !"medium".equalsIgnoreCase(parsed.priority)) {
             priority = parsed.priority;
         }
-        notes = NaturalLanguageTaskParse.notesWithTags(notes, parsed.tags);
+        if ((tags == null || tags.isEmpty()) && parsed.tags != null && !parsed.tags.isEmpty()) {
+            tags = parsed.tags;
+        }
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);'''
 
-if "NaturalLanguageTaskParse.parse" in text:
-    print("TaskLogic NL already wired")
-    sys.exit(0)
 if old not in text:
-    sys.exit("TaskLogic.create pattern missing")
+    sys.exit("TaskLogic.create(tags) pattern missing — rebase onto tags-core main")
 path.write_text(text.replace(old, new, 1), encoding="utf-8")
-print("TaskLogic NL wired")
+print("TaskLogic NL wired (tags-aware)")

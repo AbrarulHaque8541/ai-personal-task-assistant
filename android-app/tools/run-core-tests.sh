@@ -14,6 +14,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/ActivityCallbackGate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/NaturalLanguageTaskParse.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskListRenderGate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
