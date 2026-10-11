@@ -19,7 +19,7 @@ assert activity.count("browserDiagnostics.record(") >= 10, \
 for expected in ("navigate requested", "load requested", "page started", "page finished",
                  "load failed", "navigation blocked", "renderer gone", "watchdog"):
     assert expected in activity, f"missing lifecycle stage recording: {expected}"
-assert "WebView.getCurrentWebViewPackage(this)" in activity, \
+assert "WebView.getCurrentWebViewPackage()" in activity, \
     "the report must include the WebView provider version (top blank-page hypothesis for #221)"
 assert "Build.VERSION.SDK_INT" in activity and "Build.MODEL" in activity, \
     "the report must include device/API context for issue reports"
