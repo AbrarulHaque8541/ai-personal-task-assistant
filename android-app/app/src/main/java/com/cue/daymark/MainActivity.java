@@ -56,6 +56,7 @@ import android.widget.Toast;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebStorage;
+import android.webkit.WebView;
 import android.webkit.URLUtil;
 
 import java.time.Instant;
@@ -294,6 +295,7 @@ public final class MainActivity extends Activity {
     private boolean browserLoadFailed;
     private boolean browserPageLoading;
     private final BrowserSelfHealingPolicy browserSelfHealingPolicy = new BrowserSelfHealingPolicy();
+    private final BrowserDiagnostics browserDiagnostics = new BrowserDiagnostics();
     private static final String BROWSER_LOG_TAG = "DaymarkBrowser";
     private static final long BROWSER_LOAD_WATCHDOG_MS = 20000L;
 
@@ -1730,6 +1732,7 @@ public final class MainActivity extends Activity {
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
         Log.i(BROWSER_LOG_TAG, "navigate requested: " + address);
+        browserDiagnostics.record(System.currentTimeMillis(), "navigate requested", address, null);
         final String safeAddress;
         try {
             safeAddress = BrowserAddress.requireAllowedWebUrl(address);
@@ -1781,6 +1784,7 @@ public final class MainActivity extends Activity {
         browserLoadFailed = false;
         browserPageLoading = true;
         Log.i(BROWSER_LOG_TAG, "load requested: " + address);
+        browserDiagnostics.record(System.currentTimeMillis(), "load requested", address, null);
         browserWebView.loadUrl(address);
         scheduleBrowserLoadWatchdog(address);
         syncBrowserButtons();
@@ -1792,11 +1796,13 @@ public final class MainActivity extends Activity {
             if (!isActivityCallbackCurrent()) return;
             browserLoadWatchdog = null;
             Log.e(BROWSER_LOG_TAG, "page did not finish within timeout: " + address);
+            browserDiagnostics.record(System.currentTimeMillis(), "watchdog timeout (no page callback)", address, null);
             if (browserNetworkPolicy.allowsRemoteLoads()
                     && browserWebView != null
                     && BrowserAddress.isAllowedWebUrl(address)
                     && browserSelfHealingPolicy.shouldRecover(address)) {
                 Log.w(BROWSER_LOG_TAG, "attempting one automatic recovery for stalled page");
+                browserDiagnostics.record(System.currentTimeMillis(), "automatic recovery retry", address, null);
                 StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
                 browserStatus.setText("Page stalled. Daymark is retrying once...");
                 try {
@@ -1810,6 +1816,7 @@ public final class MainActivity extends Activity {
                 }
             }
             StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
+            browserDiagnostics.record(System.currentTimeMillis(), "watchdog exhausted; automatic retry budget spent", address, null);
             browserPageLoading = false;
             browserLoadFailed = true;
             browserStatus.setText("The page did not open after one automatic recovery attempt. Tap this message to retry.");
@@ -1868,6 +1875,7 @@ public final class MainActivity extends Activity {
                 cancelBrowserLoadWatchdog();
                 browserPageLoading = true;
                 Log.i(BROWSER_LOG_TAG, "page started: " + url);
+                browserDiagnostics.record(System.currentTimeMillis(), "page started", url, null);
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 // Keep the watchdog active after navigation begins: a page can start successfully
                 // but never finish, leaving the viewport blank with no further WebView callback.
@@ -1892,6 +1900,7 @@ public final class MainActivity extends Activity {
                 browserPageLoading = false;
                 browserLoadFailed = false;
                 Log.i(BROWSER_LOG_TAG, "page finished: " + url);
+                browserDiagnostics.record(System.currentTimeMillis(), "page finished", url, null);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
                 injectVideoDownloadOverlay(browserWebView);
@@ -1903,6 +1912,7 @@ public final class MainActivity extends Activity {
                 browserPageLoading = false;
                 cancelBrowserLoadWatchdog();
                 browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
+                browserDiagnostics.record(System.currentTimeMillis(), "navigation blocked (non-HTTPS)", url, null);
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
 
@@ -1924,6 +1934,7 @@ public final class MainActivity extends Activity {
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
                 postActivityCallback(() -> {
                     browserStatus.setText(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
+                    browserDiagnostics.record(System.currentTimeMillis(), "navigation blocked (HTTP)", url, message);
                     showToast("Insecure HTTP navigation blocked. Use HTTPS instead.");
                 });
             }
@@ -1935,6 +1946,8 @@ public final class MainActivity extends Activity {
                 browserLoadFailed = true;
                 Log.e(BROWSER_LOG_TAG, "load failed: code=" + errorCode
                         + " description=" + description + " url=" + failingUrl);
+                browserDiagnostics.record(System.currentTimeMillis(), "load failed", failingUrl,
+                        "error " + errorCode + ": " + description);
                 browserStatus.setText(errorCode < 0
                         ? "The page could not load securely. Certificate errors are not bypassed. Tap this message to try again."
                         : "The page did not open (error " + errorCode + "). Tap this message to try again.");
@@ -1982,6 +1995,7 @@ public final class MainActivity extends Activity {
                 String recoveryAddress = lastBrowserAddress;
                 browserPageLoading = false;
                 Log.e(BROWSER_LOG_TAG, "renderer gone; discarding failed WebView");
+                browserDiagnostics.record(System.currentTimeMillis(), "renderer gone", lastBrowserAddress, null);
                 discardBrowserWebView(false);
                 if (webMode && browserNetworkPolicy.allowsRemoteLoads()
                         && BrowserAddress.isAllowedWebUrl(recoveryAddress)
@@ -1999,6 +2013,7 @@ public final class MainActivity extends Activity {
                 if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
                 if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
                 StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
+                browserDiagnostics.record(System.currentTimeMillis(), "renderer gone; automatic recovery budget spent", lastBrowserAddress, null);
                 browserStatus.setText("The page stopped unexpectedly. Automatic recovery was limited; return to browser home and try again.");
             }
         });
@@ -2154,7 +2169,8 @@ public final class MainActivity extends Activity {
                 "New tab", "Find in page", "Reader mode", "Full-screen page",
                 "Share page", "Copy page URL", "Open in external browser", "Desktop site",
                 "Downloads", "Find media on page", "Extensions", "Site history",
-                "Privacy details", "Browser settings", "Site info", "Turn off online browsing"
+                "Privacy details", "Browser settings", "Site info", "Turn off online browsing",
+                "Diagnostics"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -2213,10 +2229,60 @@ public final class MainActivity extends Activity {
                                 showToast("Online browsing is already off.");
                             }
                             break;
+                        case 16:
+                            showBrowserDiagnosticsDialog();
+                            break;
                         default:
                             break;
                     }
                 }).show();
+    }
+
+    /**
+     * User-triggered, privacy-conscious browser diagnostics (PROJECT_PLAN P1 #7, supports #221).
+     * Local-only: the report is shown in a dialog and leaves the device only through the
+     * explicit Copy action. Recorded URLs never contain credentials, query strings, or fragments.
+     */
+    private void showBrowserDiagnosticsDialog() {
+        String webViewProvider = "unavailable";
+        try {
+            PackageInfo webViewPackage = WebView.getCurrentWebViewPackage();
+            if (webViewPackage != null) {
+                webViewProvider = webViewPackage.packageName + " " + webViewPackage.versionName;
+            }
+        } catch (RuntimeException unavailable) {
+            browserDiagnostics.record(System.currentTimeMillis(), "WebView package unavailable", null, unavailable.getMessage());
+        }
+        String appVersion = "unknown";
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            if (packageInfo.versionName != null) appVersion = packageInfo.versionName;
+        } catch (PackageManager.NameNotFoundException unavailable) {
+            browserDiagnostics.record(System.currentTimeMillis(), "app version unavailable", null, null);
+        }
+        String environment = "Daymark version: " + appVersion + "\n"
+                + "Android API: " + Build.VERSION.SDK_INT + "\n"
+                + "Device: " + Build.MANUFACTURER + " " + Build.MODEL + "\n"
+                + "WebView provider: " + webViewProvider + "\n"
+                + "Online browsing: " + (browserNetworkPolicy.isOnlineEnabled() ? "enabled" : "disabled") + "\n"
+                + "Session events (most recent " + BrowserDiagnostics.MAX_EVENTS + "):";
+        String report = browserDiagnostics.report(environment);
+        new AlertDialog.Builder(this)
+                .setTitle("Browser diagnostics")
+                .setMessage(report + "\n\nThis report stays on this device until you choose Copy. "
+                        + "It records navigation lifecycle events with URLs shown without credentials, "
+                        + "query strings, or fragments. It contains no task data and is never sent automatically.")
+                .setPositiveButton("Copy report", (dialog, which) -> {
+                    ClipboardManager clipboard =
+                            (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText(
+                                "Daymark browser diagnostics", report));
+                        showToast("Diagnostics report copied. Paste it anywhere you choose.");
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .show();
     }
 
     private void importExtensionFromUri(Uri uri) {
@@ -7439,6 +7505,7 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 
 
 
