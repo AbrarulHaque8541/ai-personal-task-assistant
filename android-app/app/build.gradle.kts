@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.cue.daymark"
-    compileSdk = 35
+    compileSdk = 36
 
     flavorDimensions += "distribution"
 
@@ -22,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "com.cue.daymark"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
         // Next release target. Same package and production signer are required for an in-place update.
         versionCode = 6
