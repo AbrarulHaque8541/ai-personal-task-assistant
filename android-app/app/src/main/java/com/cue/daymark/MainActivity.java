@@ -119,6 +119,7 @@ public final class MainActivity extends Activity {
     private static final String PENDING_SAVE_STATE_KEY = "updater.pending_save_transaction.v1";
     private static final String BROWSER_PREFERENCES = "daymark.browser.local.v1";
     private static final String BROWSER_HISTORY_KEY = "history_urls";
+    private static final String BROWSER_BOOKMARKS_KEY = "bookmarked_origins";
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
@@ -2172,6 +2173,51 @@ public final class MainActivity extends Activity {
         syncBrowserButtons();
     }
 
+    private void bookmarkCurrentBrowserPage() {
+        if (browserWebView == null || browserWebView.getUrl() == null) {
+            showToast("No page is open to bookmark.");
+            return;
+        }
+        try {
+            browserPreferences.edit().putString(BROWSER_BOOKMARKS_KEY,
+                    BrowserHistory.add(browserPreferences.getString(BROWSER_BOOKMARKS_KEY, ""),
+                            browserWebView.getUrl())).apply();
+            showToast("Page bookmarked (saved as its HTTPS origin).");
+        } catch (IllegalArgumentException invalidPage) {
+            showToast("Only valid HTTPS pages can be bookmarked.");
+        }
+    }
+
+    private void showBrowserBookmarksDialog() {
+        List<String> bookmarks = BrowserHistory.decode(browserPreferences.getString(BROWSER_BOOKMARKS_KEY, ""));
+        String[] entries = bookmarks.isEmpty() ? new String[] { "No bookmarks yet" }
+                : bookmarks.toArray(new String[0]);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Bookmarks (HTTPS origins only)")
+                .setItems(entries, (whichDialog, selected) -> {
+                    if (selected < 0 || selected >= bookmarks.size()) return;
+                    navigateBrowserTo(bookmarks.get(selected));
+                })
+                .setNeutralButton("Clear bookmarks", null)
+                .setPositiveButton("Close", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                .setOnClickListener(view -> {
+                    dialog.dismiss();
+                    new AlertDialog.Builder(this)
+                            .setTitle("Clear all bookmarks?")
+                            .setMessage("Bookmarks store local HTTPS origins only. Clearing removes every bookmark; site history and site data are untouched.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Clear bookmarks", (confirm, selected) -> {
+                                browserPreferences.edit().putString(BROWSER_BOOKMARKS_KEY,
+                                        BrowserHistory.clear()).apply();
+                                showToast("Bookmarks cleared.");
+                            })
+                            .show();
+                }));
+        dialog.show();
+    }
+
     private void showBrowserOverflowMenu(View anchor) {
         if (browserPrivacyDisclosure == null) browserPrivacyDisclosure = "";
         final String[] actions = {
@@ -2179,7 +2225,8 @@ public final class MainActivity extends Activity {
                 "Share page", "Copy page URL", "Open in external browser", "Desktop site",
                 "Downloads", "Find media on page", "Extensions", "Site history",
                 "Privacy details", "Browser settings", "Site info", "Turn off online browsing",
-                "Diagnostics"
+                "Diagnostics",
+                "Bookmark this page", "Bookmarks"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -2240,6 +2287,12 @@ public final class MainActivity extends Activity {
                             break;
                         case 16:
                             showBrowserDiagnosticsDialog();
+                            break;
+                        case 17:
+                            bookmarkCurrentBrowserPage();
+                            break;
+                        case 18:
+                            showBrowserBookmarksDialog();
                             break;
                         default:
                             break;
@@ -4190,6 +4243,9 @@ public final class MainActivity extends Activity {
         addSettingsRow(content, "Site history",
                 "Saved HTTPS origins · reopen, or clear history and site data",
                 () -> showBrowserHistoryDialog());
+        addSettingsRow(content, "Bookmarks",
+                "Saved HTTPS origins · reopen or clear bookmarks",
+                () -> showBrowserBookmarksDialog());
         addSettingsRow(content, "Extensions",
                 "Manage page scripts and matching sites",
                 () -> showBrowserExtensionsManager());
