@@ -15,6 +15,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/ActivityCallbackGate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
+  "$ROOT/app/src/main/java/com/cue/daymark/TaskListRenderGate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplate.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplateLogic.java" \
@@ -42,6 +43,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubReleaseClient.java" \
   "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubApkDownloader.java" \
   "$ROOT/tools/TaskLogicSmoke.java" \
+  "$ROOT/tools/TaskListRenderGateSmoke.java" \
   "$ROOT/tools/TaskSnapshotCodecSmoke.java" \
   "$ROOT/tools/BrowserExtensionSmoke.java" \
   "$ROOT/tools/ActivityCallbackGateSmoke.java" \
@@ -59,6 +61,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/ExtensionPackageParserSmoke.java" \
   "$ROOT/tools/CosmeticFilterToCssSmoke.java"
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
+java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskListRenderGateSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskSnapshotCodecSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserExtensionSmoke
 java -ea -cp "$BUILD_DIR" com.cue.daymark.ActivityCallbackGateSmoke
