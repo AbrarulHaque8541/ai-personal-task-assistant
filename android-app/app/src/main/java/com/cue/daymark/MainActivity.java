@@ -4454,6 +4454,23 @@ public final class MainActivity extends Activity {
             dueDate = today.plusWeeks(1).toString();
             title = title.replaceAll("(?i)\\b(next week)\\b", "").trim();
         }
+        if (dueDate == null) {
+            String[] weekdays = { "monday", "tuesday", "wednesday", "thursday",
+                    "friday", "saturday", "sunday" };
+            for (int index = 0; index < weekdays.length; index++) {
+                if (lower.matches(".*\\b(next " + weekdays[index] + "|" + weekdays[index] + ")\\b.*")) {
+                    boolean followingWeek = lower.matches(".*\\bnext " + weekdays[index] + "\\b.*");
+                    LocalDate target = today;
+                    do {
+                        target = target.plusDays(1);
+                    } while (target.getDayOfWeek() != java.time.DayOfWeek.of(index + 1));
+                    if (followingWeek) target = target.plusWeeks(1);
+                    dueDate = target.toString();
+                    title = title.replaceAll("(?i)\\b(next )?" + weekdays[index] + "\\b", "").trim();
+                    break;
+                }
+            }
+        }
         String priority = "medium";
         if (lower.matches(".*\\b(high|urgent|important)\\b.*")) {
             priority = "high";
