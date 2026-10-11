@@ -35,8 +35,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Apply home/browser redesign (UX)
-        run: python3 ./tools/apply-home-browser-redesign.py .
+      - name: Apply permission coordinator UI
+        run: python3 ./tools/apply-permission-coordinator.py .
+        continue-on-error: true
+
+      - name: Permission coordinator source checks
+        run: sh ./tools/run-permission-coordinator-tests.sh
 
       - name: Run Android host regression checks
         run: |
