@@ -55,6 +55,11 @@ final class TaskSnapshotCodec {
             out.name("reminderLeadMinutes").nullableValue(task.reminderLeadMinutes);
             out.name("reminderShownFire").nullableValue(task.reminderShownFire);
             out.name("repeatRule").nullableValue(task.repeatRule);
+            out.name("tags").beginArray();
+            for (String tag : task.tags) {
+                out.value(tag);
+            }
+            out.endArray();
             out.name("subtasks").beginArray();
             for (Subtask subtask : task.subtasks) {
                 out.beginObject();
@@ -144,6 +149,19 @@ final class TaskSnapshotCodec {
             if (object.containsKey("repeatRule")) {
                 repeatRule = optionalString(object, "repeatRule", "Task repeat rule");
             }
+            // Key-presence read: v4 snapshots written before tags load with no tags.
+            List<String> tags = new ArrayList<>();
+            if (object.containsKey("tags")) {
+                Object tagsValue = object.get("tags");
+                if (tagsValue != null) {
+                    for (Object tagItem : StrictJsonParser.array(tagsValue, "Task tag list")) {
+                        if (!(tagItem instanceof String)) {
+                            throw new IOException("Task tags are malformed.");
+                        }
+                        tags.add((String) tagItem);
+                    }
+                }
+            }
             if (versionFour || object.containsKey("subtasks")) {
                 Object subtaskValue = object.get("subtasks");
                 if (subtaskValue == null) throw new IOException("Task subtask list is malformed.");
@@ -186,7 +204,8 @@ final class TaskSnapshotCodec {
                     requiredString(object, "priority"), completed,
                     requiredString(object, "createdAt"),
                     requiredString(object, "updatedAt"), attachments,
-                    notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks);
+                    notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks,
+                    TaskLogic.normalizeTags(tags));
             result.add(task);
         }
         if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");

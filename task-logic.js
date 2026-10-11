@@ -14,6 +14,8 @@
   const MAX_SUBTASKS = 20;
   const MAX_SUBTASK_TITLE = 120;
   const REMINDER_LEADS = [0, 30, 60, 1440];
+  const MAX_TAGS = 5;
+  const MAX_TAG_CHARS = 24;
 
   function isDateOnly(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -45,6 +47,31 @@
       && typeof subtask.done === 'boolean'));
   }
 
+  function isTag(value) {
+    return typeof value === 'string' && /^[a-z0-9][a-z0-9_-]{0,23}$/.test(value);
+  }
+
+  function isValidTags(tags) {
+    if (!Array.isArray(tags) || tags.length > MAX_TAGS) return false;
+    const seen = new Set();
+    return tags.every((tag) => isTag(tag) && !seen.has(tag) && seen.add(tag));
+  }
+
+  function normalizeTags(tags) {
+    if (!Array.isArray(tags)) return [];
+    const normalized = [];
+    for (const raw of tags) {
+      if (typeof raw !== 'string') throw new Error('Tags are malformed.');
+      const tag = raw.trim().toLowerCase().replace(/ /g, '-');
+      if (!tag) continue;
+      if (tag.length > MAX_TAG_CHARS) throw new Error(`Tags can be at most ${MAX_TAG_CHARS} characters.`);
+      if (!isTag(tag)) throw new Error('Tags can use letters, numbers, hyphens, and underscores.');
+      if (!normalized.includes(tag)) normalized.push(tag);
+    }
+    if (normalized.length > MAX_TAGS) throw new Error(`A task can have at most ${MAX_TAGS} tags.`);
+    return normalized;
+  }
+
   function isValidTask(task) {
     return Boolean(task && typeof task === 'object'
       && typeof task.id === 'string' && task.id.length > 0
@@ -61,7 +88,8 @@
       && (task.reminderLeadMinutes === undefined || isReminderLead(task.reminderLeadMinutes))
       && (task.reminderShownFire === undefined || task.reminderShownFire === null
         || (typeof task.reminderShownFire === 'string' && !Number.isNaN(Date.parse(task.reminderShownFire))))
-      && (task.subtasks === undefined || isValidSubtasks(task.subtasks)));
+      && (task.subtasks === undefined || isValidSubtasks(task.subtasks))
+      && (task.tags === undefined || task.tags === null || isValidTags(task.tags)));
   }
 
   function validateStoredTasks(value) {
@@ -106,7 +134,9 @@
       if (filter === 'upcoming' && !(task.dueDate !== null && task.dueDate > today)) return false;
       if (!normalizedQuery) return true;
       const notes = typeof task.notes === 'string' ? task.notes.toLowerCase() : '';
-      return task.title.toLowerCase().includes(normalizedQuery) || notes.includes(normalizedQuery);
+      const tags = Array.isArray(task.tags) ? task.tags.join(' ').toLowerCase() : '';
+      return task.title.toLowerCase().includes(normalizedQuery) || notes.includes(normalizedQuery)
+        || tags.includes(normalizedQuery);
     }).slice().sort(compareTasks);
   }
 
@@ -138,6 +168,9 @@
     isTimeOnly,
     isReminderLead,
     isValidSubtasks,
+    isValidTags,
+    normalizeTags,
+    isTag,
     isValidTask,
     validateStoredTasks,
     getFilteredTasks,
@@ -145,7 +178,9 @@
     MAX_NOTES_CHARS,
     MAX_SUBTASKS,
     MAX_SUBTASK_TITLE,
-    REMINDER_LEADS
+    REMINDER_LEADS,
+    MAX_TAGS,
+    MAX_TAG_CHARS
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.DaymarkLogic = api;

@@ -137,6 +137,27 @@ test('legacy tasks without extended fields stay valid', () => {
   assert.equal(stored.rejectedCount, 0);
 });
 
+test('tags validate, normalize, and make tasks searchable', () => {
+  const base = task('t', 'Task', { dueDate: TODAY });
+  assert.equal(logic.isValidTask({ ...base, tags: ['work', 'errands-2'] }), true);
+  assert.equal(logic.isValidTask({ ...base, tags: ['work'] }), true);
+  assert.equal(logic.isValidTask({ ...base, tags: 'work' }), false);
+  assert.equal(logic.isValidTask({ ...base, tags: ['Work'] }), false);
+  assert.equal(logic.isValidTask({ ...base, tags: ['work', 'work'] }), false);
+  assert.equal(logic.isValidTask({ ...base, tags: Array.from({ length: 6 }, (_, i) => `t${i}`) }), false);
+  assert.equal(logic.isValidTask({ ...base, tags: ['x'.repeat(25)] }), false);
+  assert.equal(logic.isValidTask({ ...base, tags: null }), true);
+  assert.equal(logic.isTag('errands-2'), true);
+  assert.equal(logic.isTag('Errands'), false);
+  assert.deepEqual(logic.normalizeTags([' Work ', 'work', 'TO DO']), ['work', 'to-do']);
+  assert.deepEqual(logic.normalizeTags(null), []);
+  assert.throws(() => logic.normalizeTags(['x'.repeat(25)]));
+  const tagged = { ...task('tagged', 'Buy groceries', { dueDate: TODAY }), tags: ['errands-2'] };
+  const others = [task('other', 'Other'), tagged];
+  assert.deepEqual(logic.getFilteredTasks(others, 'all', 'errands', TODAY).map((i) => i.id), ['tagged']);
+  assert.deepEqual(logic.getFilteredTasks(others, 'all', 'groceries', TODAY).map((i) => i.id), ['tagged']);
+});
+
 test('search also matches notes and same-date tasks order by due time', () => {
   const withNotes = { ...task('n', 'Plain title'), notes: 'remember the éclair receipt' };
   const tasks = [task('a', 'Write report'), withNotes];
