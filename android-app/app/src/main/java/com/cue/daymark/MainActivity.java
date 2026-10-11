@@ -449,7 +449,8 @@ public final class MainActivity extends Activity {
         if (browserWebView != null) {
             if (browserWebView.getUrl() != null) lastBrowserAddress = browserWebView.getUrl();
             cancelBrowserLoadWatchdog();
-            Log.i(BROWSER_LOG_TAG, "backgrounded; pausing WebView session: " + lastBrowserAddress);
+            Log.i(BROWSER_LOG_TAG, "backgrounded; pausing WebView session: "
+                    + BrowserLogPolicy.redactedOrigin(lastBrowserAddress));
             for (DaymarkWebView tab : new ArrayList<>(browserTabs)) {
                 try {
                     tab.onPause();
@@ -561,7 +562,8 @@ public final class MainActivity extends Activity {
         } else if (webMode && lastBrowserAddress != null
                 && browserNetworkPolicy != null && browserNetworkPolicy.allowsRemoteLoads()) {
             final String restoreAddress = lastBrowserAddress;
-            Log.i(BROWSER_LOG_TAG, "resumed; restoring last page: " + restoreAddress);
+            Log.i(BROWSER_LOG_TAG, "resumed; restoring last page: "
+                    + BrowserLogPolicy.redactedOrigin(restoreAddress));
             postActivityCallback(() -> navigateBrowserTo(restoreAddress));
         }
         if (!updateTransferRunning && !verifiedSaveRunning && pendingSaveTransaction == null
@@ -1422,7 +1424,8 @@ public final class MainActivity extends Activity {
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         browserStatus.setOnClickListener(view -> {
             if (!webMode || !browserLoadFailed || lastBrowserAddress == null) return;
-            Log.i(BROWSER_LOG_TAG, "retry requested via status tap: " + lastBrowserAddress);
+            Log.i(BROWSER_LOG_TAG, "retry requested via status tap: "
+                    + BrowserLogPolicy.redactedOrigin(lastBrowserAddress));
             navigateBrowserTo(lastBrowserAddress);
         });
         panel.addView(browserStatus, bottomMargin(dp(4)));
@@ -1731,7 +1734,7 @@ public final class MainActivity extends Activity {
 
     private void navigateBrowserTo(String address) {
         if (!webMode) return;
-        Log.i(BROWSER_LOG_TAG, "navigate requested: " + address);
+        Log.i(BROWSER_LOG_TAG, "navigate requested: " + BrowserLogPolicy.redactedOrigin(address));
         browserDiagnostics.record(System.currentTimeMillis(), "navigate requested", address, null);
         final String safeAddress;
         try {
@@ -1783,7 +1786,7 @@ public final class MainActivity extends Activity {
         lastBrowserAddress = address;
         browserLoadFailed = false;
         browserPageLoading = true;
-        Log.i(BROWSER_LOG_TAG, "load requested: " + address);
+        Log.i(BROWSER_LOG_TAG, "load requested: " + BrowserLogPolicy.redactedOrigin(address));
         browserDiagnostics.record(System.currentTimeMillis(), "load requested", address, null);
         browserWebView.loadUrl(address);
         scheduleBrowserLoadWatchdog(address);
@@ -1795,7 +1798,8 @@ public final class MainActivity extends Activity {
         browserLoadWatchdog = activityCallbackGate.guard(() -> {
             if (!isActivityCallbackCurrent()) return;
             browserLoadWatchdog = null;
-            Log.e(BROWSER_LOG_TAG, "page did not finish within timeout: " + address);
+            Log.e(BROWSER_LOG_TAG, "page did not finish within timeout: "
+                    + BrowserLogPolicy.redactedOrigin(address));
             browserDiagnostics.record(System.currentTimeMillis(), "watchdog timeout (no page callback)", address, null);
             if (browserNetworkPolicy.allowsRemoteLoads()
                     && browserWebView != null
@@ -1874,7 +1878,7 @@ public final class MainActivity extends Activity {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 cancelBrowserLoadWatchdog();
                 browserPageLoading = true;
-                Log.i(BROWSER_LOG_TAG, "page started: " + url);
+                Log.i(BROWSER_LOG_TAG, "page started: " + BrowserLogPolicy.redactedOrigin(url));
                 browserDiagnostics.record(System.currentTimeMillis(), "page started", url, null);
                 browserStatus.setText("Loading page. Embedded resources may also make network requests.");
                 // Keep the watchdog active after navigation begins: a page can start successfully
@@ -1899,7 +1903,7 @@ public final class MainActivity extends Activity {
                 cancelBrowserLoadWatchdog();
                 browserPageLoading = false;
                 browserLoadFailed = false;
-                Log.i(BROWSER_LOG_TAG, "page finished: " + url);
+                Log.i(BROWSER_LOG_TAG, "page finished: " + BrowserLogPolicy.redactedOrigin(url));
                 browserDiagnostics.record(System.currentTimeMillis(), "page finished", url, null);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
                 browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
@@ -1945,7 +1949,7 @@ public final class MainActivity extends Activity {
                 browserPageLoading = false;
                 browserLoadFailed = true;
                 Log.e(BROWSER_LOG_TAG, "load failed: code=" + errorCode
-                        + " description=" + description + " url=" + failingUrl);
+                        + " origin=" + BrowserLogPolicy.redactedOrigin(failingUrl));
                 browserDiagnostics.record(System.currentTimeMillis(), "load failed", failingUrl,
                         "error " + errorCode + ": " + description);
                 browserStatus.setText(errorCode < 0
