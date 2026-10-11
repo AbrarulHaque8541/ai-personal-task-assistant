@@ -32,6 +32,7 @@ python3 ./tools/check-release-updater-metadata.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-browser-site-info.py "$ROOT"
 python3 ./tools/check-browser-diagnostics.py "$ROOT"
+python3 ./tools/check-browser-log-privacy.py "$ROOT"
 bash ./tools/check-release-identity.sh
 python3 ./tools/check-merged-manifests.py "$ROOT"
 python3 "$ROOT/tools/check-slsa-workflow.py"
