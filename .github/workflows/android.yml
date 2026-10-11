@@ -37,6 +37,13 @@ jobs:
 
       - name: Apply home/browser redesign (UX)
         run: python3 ./tools/apply-home-browser-redesign.py .
+        continue-on-error: true
+
+      - name: Apply NL quick-add wiring
+        run: python3 ./tools/apply-nl-quick-add.py .
+
+      - name: NL parse smoke
+        run: sh ./tools/run-nl-parse-tests.sh
 
       - name: Run Android host regression checks
         run: |
