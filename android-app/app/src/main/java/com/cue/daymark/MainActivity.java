@@ -1,4 +1,4 @@
-successfully downloaded text file (SHA: 212fde33a59997fe705f8fa64929d0f0342df53b)package com.cue.daymark;
+package com.cue.daymark;
 
 import android.app.Activity;
 import android.app.AlertDialog;
