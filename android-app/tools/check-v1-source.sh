@@ -30,6 +30,7 @@ python3 ./tools/check-browser-downloads-entry.py "$ROOT"
 python3 ./tools/check-release-updater-metadata.py "$ROOT"
 python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-browser-site-info.py "$ROOT"
+python3 ./tools/check-browser-diagnostics.py "$ROOT"
 bash ./tools/check-release-identity.sh
 python3 ./tools/check-merged-manifests.py "$ROOT"
 python3 "$ROOT/tools/check-slsa-workflow.py"
@@ -79,7 +80,7 @@ providers = app.findall("provider")
 assert len(providers) == 1, "only the grant-only attachment content provider is allowed"
 provider = providers[0]
 android = "{http://schemas.android.com/apk/res/android}"
-assert provider.get(android + "name") == ".AttachmentContentProvider"
+assert provider.get(android_name) == ".AttachmentContentProvider"
 assert provider.get(android + "exported") == "false" and provider.get(android + "grantUriPermissions") == "true"
 play_app = play_manifest.find("application")
 sideload_app = sideload_manifest.find("application")
@@ -515,4 +516,3 @@ print("PASS accessibility/localization source checks: scalable text, labeled con
 PY
 python3 "$ROOT/tools/check-accessibility-contrast.py"
 python3 "$ROOT/tools/check-source-check-summary.py"
-
