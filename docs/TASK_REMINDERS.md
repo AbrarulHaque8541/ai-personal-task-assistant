@@ -28,15 +28,15 @@ How reminders work after the v1.0.6 OS-reminders work, including the honest limi
 
 - Alarms are **inexact**: `setAndAllowWhileIdle` still allows Doze / battery-saver batching, so a notification can arrive late.
 - Reminders reschedule **on app open, on save, and on boot only** — no background polling between those points.
-- **Portable backups do not carry repeat rules yet**: the DMM2 format has no repeat field, so a restore resets repeat to "No repeat". In-app encrypted storage keeps repeat rules.
+- **Portable backup compatibility**: new exports use DMM3 and preserve tags, the repeat rule, and the original monthly day-of-month anchor. DMM1/DMM2 archives remain importable with their historical defaults; DMM2 cannot restore tags or repeat state it never stored.
 - On some Android versions, per-channel overrides made in system Settings may outlive an in-app sound change; the channel is recreated to apply the new sound.
 
 ## Where the code lives
 
 | Area | Files |
 |------|-------|
-| Model / rules | `Task.java`, `TaskLogic.java` (`REPEAT_DAILY`/`REPEAT_WEEKLY`/`REPEAT_MONTHLY`, `advanceRepeat`) |
-| Encrypted storage | `TaskSnapshotCodec.java` (schema v4, optional `repeatRule` key — older snapshots load unchanged) |
+| Model / rules | `Task.java` (`repeatDayOfMonth`), `TaskLogic.java` (`REPEAT_DAILY`/`REPEAT_WEEKLY`/`REPEAT_MONTHLY`, anchored `advanceRepeat`) |
+| Encrypted storage | `TaskSnapshotCodec.java` (schema v5 stores `repeatRule` and `repeatDayOfMonth`; v1–v4 snapshots still load, with legacy monthly rules anchored to their current due-date day) |
 | Scheduling | `TaskReminderScheduler.java` (alarms, request codes, channel + sound), `TaskReminderReceiver.java` (boot + notify) |
 | Wiring | `MainActivity.java` (reschedule on open/save, repeat roll-forward, editor Repeat + sound UI, permission prompt on reminder selection) |
 | Guards | `tools/check-reminder-lifecycle.py`, `tools/check-v1-source.sh`, `tools/check-merged-manifests.py` |

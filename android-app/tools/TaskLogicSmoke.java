@@ -81,7 +81,9 @@ public final class TaskLogicSmoke {
                 "new template schema is supported without dropping v1 or v2 readers");
         check(TaskSnapshotSchema.isVersionFour(4) && TaskSnapshotSchema.isSupportedVersion(4),
                 "schema v4 (notes, due time, reminders, subtasks) is supported");
-        check(!TaskSnapshotSchema.isSupportedVersion(5), "unknown future snapshot schema is rejected");
+        check(TaskSnapshotSchema.isVersionFive(5) && TaskSnapshotSchema.isSupportedVersion(5),
+                "schema v5 (monthly repeat anchor) is supported");
+        check(!TaskSnapshotSchema.isSupportedVersion(6), "unknown future snapshot schema is rejected");
     }
 
     private static void templateListsRejectDuplicatesAndExcess() {
@@ -119,7 +121,9 @@ public final class TaskLogicSmoke {
                 "v1 remains readable and v2 is supported for attachment metadata");
         check(TaskSnapshotSchema.isVersionFour(4) && TaskSnapshotSchema.isSupportedVersion(4),
                 "schema v4 is supported for notes, due time, reminders, and subtasks");
-        check(!TaskSnapshotSchema.isSupportedVersion(5), "unknown future schema versions are rejected");
+        check(TaskSnapshotSchema.isVersionFive(5) && TaskSnapshotSchema.isSupportedVersion(5),
+                "schema v5 is supported for repeat rule and monthly anchor");
+        check(!TaskSnapshotSchema.isSupportedVersion(6), "unknown future schema versions are rejected");
         check(!TaskSnapshotSchema.isVersionOne("1"), "string schema version is not coerced to a number");
         check(!TaskSnapshotSchema.isVersionOne(1.5), "fractional schema version is not truncated to one");
         check("title".equals(TaskSnapshotSchema.requireString("title")), "actual JSON string values are accepted");
@@ -374,6 +378,11 @@ public final class TaskLogicSmoke {
                 .withFullDetails("Bad", "", null, null, "medium", null, TaskLogic.REPEAT_MONTHLY,
                         Collections.<Subtask>emptyList(), null, "2026-10-05T00:00:41Z");
         check(!TaskLogic.isValid(persistedNoDate), "persisted repeat without a due date fails validation");
+        Task persistedBadAnchor = new Task("bad-repeat-anchor", "Bad", "2026-10-05", "medium", false,
+                "2026-10-05T00:00:42Z", "2026-10-05T00:00:42Z",
+                Collections.<AttachmentRef>emptyList(), "", null, null, null,
+                TaskLogic.REPEAT_MONTHLY, Integer.valueOf(32), Collections.<Subtask>emptyList());
+        check(!TaskLogic.isValid(persistedBadAnchor), "persisted monthly anchor outside 1-31 fails validation");
 
         ZoneId zone = ZoneId.of("UTC");
         Instant now = Instant.parse("2026-10-08T11:00:00Z");
@@ -389,6 +398,19 @@ public final class TaskLogicSmoke {
                 Collections.<Subtask>emptyList(), TaskLogic.REPEAT_MONTHLY);
         check("2026-11-01".equals(TaskLogic.advanceRepeat(monthly, zone, now).dueDate),
                 "monthly repeat advances by calendar months");
+        Task monthlyEnd = TaskLogic.create("Month end", "2026-01-31", "medium", "", null, null,
+                Collections.<Subtask>emptyList(), TaskLogic.REPEAT_MONTHLY);
+        check(Integer.valueOf(31).equals(monthlyEnd.repeatDayOfMonth), "monthly series captures its initial day-of-month anchor");
+        check("2026-02-28".equals(TaskLogic.nextDueDate("2026-01-31", TaskLogic.REPEAT_MONTHLY, 31))
+                        && "2026-03-31".equals(TaskLogic.nextDueDate("2026-02-28", TaskLogic.REPEAT_MONTHLY, 31)),
+                "month-end recurrence clamps in February then returns to its original day");
+        check("2024-02-29".equals(TaskLogic.nextDueDate("2024-01-31", TaskLogic.REPEAT_MONTHLY, 31))
+                        && "2026-03-30".equals(TaskLogic.nextDueDate("2026-02-28", TaskLogic.REPEAT_MONTHLY, 30)),
+                "monthly recurrence handles leap February and a day-30 anchor");
+        Task afterShortMonth = TaskLogic.advanceRepeat(monthlyEnd, zone, Instant.parse("2026-02-28T10:00:00Z"));
+        check("2026-03-31".equals(afterShortMonth.dueDate)
+                        && Integer.valueOf(31).equals(afterShortMonth.repeatDayOfMonth),
+                "missed monthly occurrence keeps its anchor when advanced after February");
         Task future = TaskLogic.create("Future", "2026-10-10", "medium", "", null, null,
                 Collections.<Subtask>emptyList(), TaskLogic.REPEAT_DAILY);
         check(TaskLogic.advanceRepeat(future, zone, now) == future,
@@ -403,6 +425,11 @@ public final class TaskLogicSmoke {
         Task keptRepeat = TaskLogic.update(daily, "Daily", "2026-10-05", "medium");
         check(TaskLogic.REPEAT_DAILY.equals(keptRepeat.repeatRule),
                 "simple edits keep an existing repeat rule");
+        Task keptMonthlyAnchor = TaskLogic.update(monthlyEnd, "Month end renamed", "2026-01-31", "medium");
+        Task changedMonthlyAnchor = TaskLogic.update(monthlyEnd, "Month end moved", "2026-01-30", "medium");
+        check(Integer.valueOf(31).equals(keptMonthlyAnchor.repeatDayOfMonth)
+                        && Integer.valueOf(30).equals(changedMonthlyAnchor.repeatDayOfMonth),
+                "editing a monthly task preserves its anchor unless the due date changes");
         Task clearedRepeat = TaskLogic.update(daily, "Daily", null, "medium");
         check(clearedRepeat.repeatRule == null && clearedRepeat.dueDate == null,
                 "clearing the due date also clears the repeat rule");

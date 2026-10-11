@@ -44,12 +44,13 @@ check("saveTasksAsync(\"Saving encrypted templates…\")" in activity,
 check("taskStore.saveSnapshot(snapshot, templateSnapshot)" in activity,
       "task and template changes commit together")
 
-check('out.name("version").value(CURRENT_VERSION)' in codec and 'CURRENT_VERSION = 4' in codec
+check('out.name("version").value(CURRENT_VERSION)' in codec and 'CURRENT_VERSION = 5' in codec
       and 'out.name("templates").beginArray()' in codec,
-      "schema v4 serializes tasks (with extended fields) and templates into the protected snapshot")
+      "schema v5 serializes tasks (with extended fields) and templates into the protected snapshot")
 check("TaskSnapshotSchema.isVersionThree(version)" in codec and "TaskSnapshotSchema.isVersionTwo(version)" in codec
-      and "TaskSnapshotSchema.isVersionFour(version)" in codec,
-      "the decoder retains schema-v1/v2/v3 migration paths and reads v4")
+      and "TaskSnapshotSchema.isVersionFour(version)" in codec
+      and "TaskSnapshotSchema.isVersionFive(version)" in codec,
+      "the decoder retains schema-v1/v2/v3/v4 migration paths and reads v5")
 check("TaskTemplateLogic.isValidList(templates)" in codec and "TaskLogic.isValidTaskList(result)" in codec,
       "decoded task and template records pass strict shared validation")
 check("TaskSnapshotCodec.decode(" in store and "TaskSnapshotCodec.encode(" in store,

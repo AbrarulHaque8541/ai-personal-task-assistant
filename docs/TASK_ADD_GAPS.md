@@ -1,7 +1,7 @@
 # Daymark — Add Task: shipped in v1.0.3
 
 Status of the task capture / Add task details flow after the v1.0.3 task-system work
-(schema v4, local encrypted store, portable backup manifest v2).
+(now schema v5, local encrypted store, portable backup manifest v3).
 
 ## What works
 
@@ -11,18 +11,18 @@ Status of the task capture / Add task details flow after the v1.0.3 task-system 
 | Add with details dialog | `showTaskEditor` — title, **notes**, due date, **due time**, priority, **reminder**, **subtasks** |
 | Due date picker + Today / Tomorrow / Next week chips | `TaskDuePresets` + editor quick dates |
 | Optional due time (HH:mm, requires a due date) | `TaskDuePresets.isTimeOnly`; shown in due labels; same-date ordering |
-| **Notes** (≤4000 chars) under the title; note chip + dialog on rows | `Task.notes`, schema v4 |
+| **Notes** (≤4000 chars) under the title; note chip + dialog on rows | `Task.notes`, schema v5 |
 | **In-app reminders** (at due time / 30 min / 1 h / 1 day before) | `Task.reminderLeadMinutes` + `reminderShownFire`; dialog on app open, shown once per fire moment. **No notification permission, no background component** — the editor hint says so. |
 | **Subtasks** (≤20, titled, toggleable) | editor "More options" checklist, row chip `Subtasks · 2/5`, quick-toggle dialog |
 | Edit existing task | Same editor |
 | Templates | Create / use template with title, due date, priority (templates do not carry notes/time/reminder/subtasks) |
 | Attachments | Separate attach flow on task row |
 | Filters | All / Today / Upcoming / Completed / Overdue / No date |
-| Search | Title **and notes**, case-insensitive |
+| Search | Title, **notes, and tags**, case-insensitive |
 | Suggestions | Deterministic due-date + due-time + priority ranking (not AI) |
 | Undo delete | Undo bar |
-| Encrypted local save | AtomicFile + Android Keystore, schema v4 (v1–v3 migrate) |
-| Portable backup | Manifest v2 (DMM2) carries notes/due time/reminder/subtasks; DMM1 backups restore with defaults |
+| Encrypted local save | AtomicFile + Android Keystore, schema v5 (v1–v4 migrate) |
+| Portable backup | Manifest v3 (DMM3) carries notes/due time/reminder/subtasks/tags/repeat rule/monthly anchor; DMM1/DMM2 backups remain importable with their historical defaults |
 
 ## Deliberately not in v1.0.3
 
@@ -36,9 +36,9 @@ Status of the task capture / Add task details flow after the v1.0.3 task-system 
 
 ## Verification
 
-- `tools/TaskSnapshotCodecSmoke` — v4 round-trip + v1/v2/v3 migration + malformed rejection (52 assertions).
-- `tools/TaskLogicSmoke` — 106 assertions incl. notes/due-time/reminder/subtask rules and reminder fire-instant math.
-- `tools/PortableBackupSmoke` — 330 assertions incl. DMM2 round-trip and legacy DMM1 decode.
+- `tools/TaskSnapshotCodecSmoke` — v5 round-trip + v1/v2/v3/v4 migration + malformed rejection (67 assertions).
+- `tools/TaskLogicSmoke` — 131 assertions incl. anchored monthly recurrence, tags, notes/due-time/reminder/subtask rules, and reminder fire-instant math.
+- `tools/PortableBackupSmoke` — 341 assertions incl. DMM3 tag/repeat round-trip and legacy DMM1/DMM2 decoding.
 - Web prototype `tests/task-logic.test.js` — 12/12 incl. mirrored extended-field validation.
 
 Device rendering of the new editor/row/dialogs is **not** host-testable; the CI device-test workflow builds the instrumentation APK, and on-device behavior remains a manual check.
@@ -48,4 +48,4 @@ Device rendering of the new editor/row/dialogs is **not** host-testable; the CI 
 Two of the v1.0.3 gaps above are addressed by the v1.0.6 task-reminders work (see [TASK_REMINDERS.md](TASK_REMINDERS.md)):
 
 - **System notifications / alarms**: best-effort OS notifications through a non-exported boot receiver; `POST_NOTIFICATIONS` is requested only when a reminder is enabled. The minimal-permission, no-services policy is preserved and the v1 source guards were updated to assert it.
-- **Recurring tasks**: daily / weekly / monthly repeat rules on tasks with a due date, advanced on app open or when the reminder is shown. Portable backups do not carry repeat rules yet (restore resets repeat to "No repeat").
+- **Recurring tasks**: daily / weekly / monthly repeat rules on tasks with a due date, advanced on app open or when the reminder is shown. Monthly tasks retain their original day-of-month when shorter months clamp; current DMM3 backups preserve the rule, anchor, and tags, while DMM1/DMM2 imports keep their historical defaults.

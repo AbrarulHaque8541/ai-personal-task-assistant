@@ -37,7 +37,8 @@ final class PortableBackupCodec {
     private static final int MAGIC = 0x444d424b; // DMBK
     private static final int MANIFEST_MAGIC_V1 = 0x444d4d31; // DMM1
     private static final int MANIFEST_MAGIC_V2 = 0x444d4d32; // DMM2 (adds notes, due time, reminder, subtasks)
-    private static final int MANIFEST_MAGIC = MANIFEST_MAGIC_V2;
+    private static final int MANIFEST_MAGIC_V3 = 0x444d4d33; // DMM3 (adds repeat rule, monthly anchor, and tags)
+    private static final int MANIFEST_MAGIC = MANIFEST_MAGIC_V3;
     private static final int VERSION = 1;
     private static final int SUITE_AES_256_GCM_HKDF_SHA256 = 1;
     private static final byte RECORD_MANIFEST = 1;
@@ -345,6 +346,12 @@ final class PortableBackupCodec {
                 writeString(out, subtask.title, TaskLogic.MAX_SUBTASK_TITLE, 480);
                 out.writeByte(subtask.done ? 1 : 0);
             }
+            out.writeByte(repeatRuleCode(task.repeatRule));
+            out.writeByte(task.repeatDayOfMonth == null ? 0 : task.repeatDayOfMonth);
+            out.writeByte(task.tags.size());
+            for (String tag : task.tags) {
+                writeString(out, tag, TaskLogic.MAX_TAG_CHARS, TaskLogic.MAX_TAG_CHARS);
+            }
         }
         out.flush();
         return bytes.toByteArray();
@@ -366,15 +373,33 @@ final class PortableBackupCodec {
         return TaskLogic.REMINDER_LEADS[code - 1];
     }
 
+    private static int repeatRuleCode(String repeatRule) {
+        if (repeatRule == null) return 0;
+        if (TaskLogic.REPEAT_DAILY.equals(repeatRule)) return 1;
+        if (TaskLogic.REPEAT_WEEKLY.equals(repeatRule)) return 2;
+        if (TaskLogic.REPEAT_MONTHLY.equals(repeatRule)) return 3;
+        throw new IllegalArgumentException("Unsupported repeat rule.");
+    }
+
+    private static String repeatRuleFromCode(int code) throws IOException {
+        if (code == 0) return null;
+        if (code == 1) return TaskLogic.REPEAT_DAILY;
+        if (code == 2) return TaskLogic.REPEAT_WEEKLY;
+        if (code == 3) return TaskLogic.REPEAT_MONTHLY;
+        throw new IOException("The manifest contains an invalid repeat rule.");
+    }
+
     static Manifest decodeManifest(byte[] plaintext, byte[] manifestRecordToken,
                                    int recordCount, String backupId) throws IOException {
         preflightManifestAttachmentCount(plaintext);
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
         int manifestMagic = in.readInt();
-        if (manifestMagic != MANIFEST_MAGIC_V1 && manifestMagic != MANIFEST_MAGIC_V2) {
+        if (manifestMagic != MANIFEST_MAGIC_V1 && manifestMagic != MANIFEST_MAGIC_V2
+                && manifestMagic != MANIFEST_MAGIC_V3) {
             throw new IOException("The task manifest format is not recognized.");
         }
-        boolean manifestV2 = manifestMagic == MANIFEST_MAGIC_V2;
+        boolean manifestV2 = manifestMagic == MANIFEST_MAGIC_V2 || manifestMagic == MANIFEST_MAGIC_V3;
+        boolean manifestV3 = manifestMagic == MANIFEST_MAGIC_V3;
         int taskCount = in.readInt();
         if (taskCount < 0 || taskCount > MAX_TASKS) throw new IOException("The task manifest has an invalid task count.");
         List<PortableTask> tasks = new ArrayList<>(taskCount);
@@ -456,6 +481,28 @@ final class PortableBackupCodec {
                     task.subtasks.add(new PortableSubtask(subtaskTitle, doneFlag == 1));
                 }
                 task.setExtendedFields(notes, dueTime, reminderLead, reminderShownFire);
+                if (manifestV3) {
+                    String repeatRule = repeatRuleFromCode(in.readUnsignedByte());
+                    int repeatDayOfMonth = in.readUnsignedByte();
+                    if (repeatDayOfMonth > 31
+                            || (TaskLogic.REPEAT_MONTHLY.equals(repeatRule) && repeatDayOfMonth == 0)
+                            || (!TaskLogic.REPEAT_MONTHLY.equals(repeatRule) && repeatDayOfMonth != 0)) {
+                        throw new IOException("The manifest contains an invalid monthly repeat date.");
+                    }
+                    task.setRepeatFields(repeatRule,
+                            repeatDayOfMonth == 0 ? null : Integer.valueOf(repeatDayOfMonth));
+                    int tagCount = in.readUnsignedByte();
+                    if (tagCount > TaskLogic.MAX_TAGS) {
+                        throw new IOException("The manifest exceeds the per-task tag limit.");
+                    }
+                    for (int tagIndex = 0; tagIndex < tagCount; tagIndex++) {
+                        String tag = readString(in, TaskLogic.MAX_TAG_CHARS, TaskLogic.MAX_TAG_CHARS);
+                        if (!TaskLogic.isTag(tag) || task.tags.contains(tag)) {
+                            throw new IOException("The manifest contains an invalid or duplicate tag.");
+                        }
+                        task.tags.add(tag);
+                    }
+                }
             }
             tasks.add(task);
         }
@@ -481,10 +528,12 @@ final class PortableBackupCodec {
         }
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(plaintext));
         int manifestMagic = in.readInt();
-        if (manifestMagic != MANIFEST_MAGIC_V1 && manifestMagic != MANIFEST_MAGIC_V2) {
+        if (manifestMagic != MANIFEST_MAGIC_V1 && manifestMagic != MANIFEST_MAGIC_V2
+                && manifestMagic != MANIFEST_MAGIC_V3) {
             throw new IOException("The task manifest format is not recognized.");
         }
-        boolean manifestV2 = manifestMagic == MANIFEST_MAGIC_V2;
+        boolean manifestV2 = manifestMagic == MANIFEST_MAGIC_V2 || manifestMagic == MANIFEST_MAGIC_V3;
+        boolean manifestV3 = manifestMagic == MANIFEST_MAGIC_V3;
         int taskCount = in.readInt();
         if (taskCount < 0 || taskCount > MAX_TASKS) throw new IOException("The task manifest has an invalid task count.");
         int totalAttachments = 0;
@@ -529,6 +578,16 @@ final class PortableBackupCodec {
                 for (int subtaskIndex = 0; subtaskIndex < subtaskCount; subtaskIndex++) {
                     skipManifestString(in, 480);
                     skipManifestBytes(in, 1);
+                }
+                if (manifestV3) {
+                    skipManifestBytes(in, 2); // repeat rule and day-of-month anchor
+                    int tagCount = in.readUnsignedByte();
+                    if (tagCount > TaskLogic.MAX_TAGS) {
+                        throw new IOException("The manifest exceeds the per-task tag limit.");
+                    }
+                    for (int tagIndex = 0; tagIndex < tagCount; tagIndex++) {
+                        skipManifestString(in, TaskLogic.MAX_TAG_CHARS);
+                    }
                 }
             }
         }
@@ -585,7 +644,8 @@ final class PortableBackupCodec {
             }
             tasks.add(new Task(randomUuidForValidation(), task.title, task.dueDate, task.priority,
                     task.completed, task.createdAt, task.updatedAt, refs,
-                    task.notes, task.dueTime, task.reminderLeadMinutes, task.reminderShownFire, subtasks));
+                    task.notes, task.dueTime, task.reminderLeadMinutes, task.reminderShownFire,
+                    task.repeatRule, task.repeatDayOfMonth, subtasks, task.tags));
         }
         return tasks;
     }
@@ -1054,7 +1114,10 @@ final class PortableBackupCodec {
         String dueTime;
         Integer reminderLeadMinutes;
         String reminderShownFire;
+        String repeatRule;
+        Integer repeatDayOfMonth;
         final List<PortableSubtask> subtasks = new ArrayList<>();
+        final List<String> tags = new ArrayList<>();
         final List<PortableAttachment> attachments = new ArrayList<>();
 
         PortableTask(byte[] taskToken, String title, String dueDate, String priority,
@@ -1083,6 +1146,11 @@ final class PortableBackupCodec {
             this.reminderLeadMinutes = reminderLeadMinutes;
             this.reminderShownFire = reminderShownFire == null || reminderShownFire.isEmpty()
                     ? null : reminderShownFire;
+        }
+
+        void setRepeatFields(String repeatRule, Integer repeatDayOfMonth) {
+            this.repeatRule = repeatRule;
+            this.repeatDayOfMonth = repeatDayOfMonth;
         }
     }
 
