@@ -1112,11 +1112,14 @@ public final class MainActivity extends Activity {
         browserAddressInput.setContentDescription("Browser address and search field");
         top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
-        webGoButton = primaryButton("Go");
-        webGoButton.setContentDescription("Open the entered web address or search");
-        webGoButton.setOnClickListener(v -> navigateFromBrowserInput());
-        webGoButton.setVisibility(View.GONE);
-        top.addView(webGoButton, new LinearLayout.LayoutParams(dp(1), dp(1)));
+        // Hidden 1x1 placeholder: hardware/IME Enter already navigates via the editor
+        // action listener above. Never reuse the composer's webGoButton field here —
+        // reassigning it orphaned the composer's Go button reference (build order dependent).
+        Button browserGoButton = primaryButton("Go");
+        browserGoButton.setContentDescription("Open the entered web address or search");
+        browserGoButton.setOnClickListener(v -> navigateFromBrowserInput());
+        browserGoButton.setVisibility(View.GONE);
+        top.addView(browserGoButton, new LinearLayout.LayoutParams(dp(1), dp(1)));
 
         browserProviderPickerButton = compactButton(searchEngine.label + " ▾", false);
         browserProviderPickerButton.setTextSize(11 * textScale);
@@ -7305,6 +7308,7 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 
 
 
