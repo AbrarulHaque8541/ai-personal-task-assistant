@@ -313,6 +313,15 @@ public final class TaskLogicSmoke {
         check(TaskLogic.filter(searchable, TaskLogic.FILTER_ALL, "plain", TODAY).size() == 1,
                 "search still matches titles when notes differ");
 
+        Task tagged = task("tagged", "Buy groceries", null, "medium", false, 9).withTags(
+                Collections.singletonList("errands-2"), "2026-10-05T00:00:09Z");
+        check(TaskLogic.isValid(tagged), "tagged tasks stay valid");
+        check(TaskLogic.filter(Arrays.asList(tasks.get(0), tagged), TaskLogic.FILTER_ALL, "errands", TODAY).size() == 1,
+                "search also matches task tags");
+        check(TaskLogic.normalizeTags(Arrays.asList(" Work ", "work", "TO DO"))
+                        .equals(Arrays.asList("work", "to-do")),
+                "tags normalize, lowercase, hyphenate, and dedupe");
+
         List<Task> timed = Arrays.asList(
                 task("late", "Late today", TODAY.toString(), "low", false, 6)
                         .withFullDetails("Late today", "", TODAY.toString(), "18:00", "low", null,
@@ -359,11 +368,11 @@ public final class TaskLogicSmoke {
                 "unknown repeat rules are rejected");
         Task persistedBadRule = task("bad-repeat", "Bad", null, "medium", false, 40)
                 .withFullDetails("Bad", "", "2026-10-05", "09:00", "medium", null, "hourly",
-                        Collections.<Subtask>emptyList(), "2026-10-05T00:00:40Z");
+                        Collections.<Subtask>emptyList(), null, "2026-10-05T00:00:40Z");
         check(!TaskLogic.isValid(persistedBadRule), "persisted unknown repeat rules fail validation");
         Task persistedNoDate = task("bad-repeat-date", "Bad", null, "medium", false, 41)
                 .withFullDetails("Bad", "", null, null, "medium", null, TaskLogic.REPEAT_MONTHLY,
-                        Collections.<Subtask>emptyList(), "2026-10-05T00:00:41Z");
+                        Collections.<Subtask>emptyList(), null, "2026-10-05T00:00:41Z");
         check(!TaskLogic.isValid(persistedNoDate), "persisted repeat without a due date fails validation");
 
         ZoneId zone = ZoneId.of("UTC");

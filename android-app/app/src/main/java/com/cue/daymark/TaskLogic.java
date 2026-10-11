@@ -27,6 +27,9 @@ final class TaskLogic {
     static final int MAX_NOTES_CHARS = 4000;
     static final int MAX_SUBTASKS = 20;
     static final int MAX_SUBTASK_TITLE = 120;
+    /** Tags per task and characters per tag, enforced on create/update and on decode. */
+    static final int MAX_TAGS = 5;
+    static final int MAX_TAG_CHARS = 24;
     /** Reminder lead options offered by the editor, in minutes before the due moment. */
     static final int[] REMINDER_LEADS = { 0, 30, 60, 1440 };
     /** Default clock time used to compute a reminder fire moment when a task has no due time. */
@@ -71,6 +74,7 @@ final class TaskLogic {
             }
         }
         if (!isValidSubtasks(task.subtasks)) return false;
+        if (!isValidTags(task.tags)) return false;
         try {
             Instant.parse(task.createdAt);
             Instant.parse(task.updatedAt);
@@ -103,6 +107,42 @@ final class TaskLogic {
 
     static boolean isRepeatRule(String rule) {
         return REPEAT_DAILY.equals(rule) || REPEAT_WEEKLY.equals(rule) || REPEAT_MONTHLY.equals(rule);
+    }
+
+    /** A tag is lowercase alphanumerics, hyphens, or underscores; 1-24 characters. */
+    static boolean isTag(String tag) {
+        return tag != null && tag.matches("[a-z0-9][a-z0-9_-]{0,23}");
+    }
+
+    static boolean isValidTags(List<String> tags) {
+        if (tags == null || tags.size() > MAX_TAGS) return false;
+        Set<String> seen = new HashSet<>();
+        for (String tag : tags) {
+            if (!isTag(tag) || !seen.add(tag)) return false;
+        }
+        return true;
+    }
+
+    /** Trims, lowercases, and hyphenates tags; drops empties, dedupes, and enforces limits. */
+    static List<String> normalizeTags(List<String> tags) {
+        if (tags == null) return Collections.emptyList();
+        List<String> normalized = new ArrayList<>();
+        for (String raw : tags) {
+            if (raw == null) throw new IllegalArgumentException("Tags are malformed.");
+            String tag = raw.trim().toLowerCase(Locale.ROOT).replace(' ', '-');
+            if (tag.isEmpty()) continue;
+            if (tag.length() > MAX_TAG_CHARS) {
+                throw new IllegalArgumentException("Tags can be at most " + MAX_TAG_CHARS + " characters.");
+            }
+            if (!isTag(tag)) {
+                throw new IllegalArgumentException("Tags can use letters, numbers, hyphens, and underscores.");
+            }
+            if (!normalized.contains(tag)) normalized.add(tag);
+        }
+        if (normalized.size() > MAX_TAGS) {
+            throw new IllegalArgumentException("A task can have at most " + MAX_TAGS + " tags.");
+        }
+        return Collections.unmodifiableList(normalized);
     }
 
     /** Next occurrence date for a repeating task; monthly rules follow calendar months. */
@@ -141,6 +181,13 @@ final class TaskLogic {
     static Task create(String title, String dueDate, String priority, String notes,
                        String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
                        String repeatRule) {
+        return create(title, dueDate, priority, notes, dueTime, reminderLeadMinutes, subtasks,
+                repeatRule, null);
+    }
+
+    static Task create(String title, String dueDate, String priority, String notes,
+                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule, List<String> tags) {
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);
@@ -148,10 +195,11 @@ final class TaskLogic {
         validateReminder(reminderLeadMinutes);
         validateRepeat(dueDate, repeatRule);
         List<Subtask> normalizedSubtasks = normalizeSubtasks(subtasks);
+        List<String> normalizedTags = normalizeTags(tags);
         String now = Instant.now().toString();
         return new Task(UUID.randomUUID().toString(), normalizedTitle, dueDate, priority,
                 false, now, now, Collections.<AttachmentRef>emptyList(), normalizedNotes,
-                dueTime, reminderLeadMinutes, null, repeatRule, normalizedSubtasks);
+                dueTime, reminderLeadMinutes, null, repeatRule, normalizedSubtasks, normalizedTags);
     }
 
     static Task update(Task existing, String title, String dueDate, String priority) {
@@ -176,6 +224,14 @@ final class TaskLogic {
                        String priority, Integer reminderLeadMinutes, List<Subtask> subtasks,
                        String repeatRule) {
         if (existing == null) throw new IllegalArgumentException("Task is required.");
+        return update(existing, title, notes, dueDate, dueTime, priority, reminderLeadMinutes,
+                subtasks, repeatRule, existing.tags);
+    }
+
+    static Task update(Task existing, String title, String notes, String dueDate, String dueTime,
+                       String priority, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule, List<String> tags) {
+        if (existing == null) throw new IllegalArgumentException("Task is required.");
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);
@@ -183,8 +239,10 @@ final class TaskLogic {
         validateReminder(reminderLeadMinutes);
         validateRepeat(dueDate, repeatRule);
         List<Subtask> normalizedSubtasks = normalizeSubtasks(subtasks);
+        List<String> normalizedTags = normalizeTags(tags);
         return existing.withFullDetails(normalizedTitle, normalizedNotes, dueDate, dueTime,
-                priority, reminderLeadMinutes, repeatRule, normalizedSubtasks, Instant.now().toString());
+                priority, reminderLeadMinutes, repeatRule, normalizedSubtasks, normalizedTags,
+                Instant.now().toString());
     }
 
     static Task toggleCompleted(Task task) {
@@ -372,6 +430,7 @@ final class TaskLogic {
             if (!normalizedQuery.isEmpty()) {
                 String searchable = task.title.toLowerCase(Locale.ROOT)
                         + " " + task.notes.toLowerCase(Locale.ROOT)
+                        + " " + String.join(" ", task.tags)
                         + " " + task.priority.toLowerCase(Locale.ROOT)
                         + " " + (task.dueDate == null ? "no date" : task.dueDate);
                 if (!searchable.contains(normalizedQuery)) continue;

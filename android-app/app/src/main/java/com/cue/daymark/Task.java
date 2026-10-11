@@ -24,6 +24,8 @@ final class Task {
     /** Optional repeat rule that rolls the due date forward: null, "daily", "weekly", or "monthly". Requires dueDate. */
     final String repeatRule;
     final List<Subtask> subtasks;
+    /** Optional tags for search and grouping: lowercase, hyphenated, at most 5. Empty when unset. */
+    final List<String> tags;
 
     Task(String id, String title, String dueDate, String priority, boolean completed,
          String createdAt, String updatedAt) {
@@ -49,6 +51,15 @@ final class Task {
          String createdAt, String updatedAt, List<AttachmentRef> attachments,
          String notes, String dueTime, Integer reminderLeadMinutes, String reminderShownFire,
          String repeatRule, List<Subtask> subtasks) {
+        this(id, title, dueDate, priority, completed, createdAt, updatedAt, attachments,
+                notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks,
+                Collections.emptyList());
+    }
+
+    Task(String id, String title, String dueDate, String priority, boolean completed,
+         String createdAt, String updatedAt, List<AttachmentRef> attachments,
+         String notes, String dueTime, Integer reminderLeadMinutes, String reminderShownFire,
+         String repeatRule, List<Subtask> subtasks, List<String> tags) {
         this.id = id;
         this.title = title;
         this.dueDate = dueDate;
@@ -65,51 +76,59 @@ final class Task {
         this.repeatRule = repeatRule == null || repeatRule.isEmpty() ? null : repeatRule;
         this.subtasks = subtasks == null ? null
                 : Collections.unmodifiableList(new ArrayList<>(subtasks));
+        this.tags = tags == null ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(tags));
     }
 
     Task withDetails(String nextTitle, String nextDueDate, String nextPriority, String timestamp) {
         return new Task(id, nextTitle, nextDueDate, nextPriority, completed, createdAt, timestamp,
-                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks);
+                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks, tags);
     }
 
     Task withFullDetails(String nextTitle, String nextNotes, String nextDueDate, String nextDueTime,
                          String nextPriority, Integer nextReminderLead, List<Subtask> nextSubtasks,
                          String timestamp) {
         return withFullDetails(nextTitle, nextNotes, nextDueDate, nextDueTime, nextPriority,
-                nextReminderLead, repeatRule, nextSubtasks, timestamp);
+                nextReminderLead, repeatRule, nextSubtasks, tags, timestamp);
     }
 
     Task withFullDetails(String nextTitle, String nextNotes, String nextDueDate, String nextDueTime,
                          String nextPriority, Integer nextReminderLead, String nextRepeatRule,
-                         List<Subtask> nextSubtasks, String timestamp) {
+                         List<Subtask> nextSubtasks, List<String> nextTags, String timestamp) {
         return new Task(id, nextTitle, nextDueDate, nextPriority, completed, createdAt, timestamp,
                 attachments, nextNotes, nextDueTime, nextReminderLead, reminderShownFire,
-                nextRepeatRule, nextSubtasks);
+                nextRepeatRule, nextSubtasks, nextTags);
     }
 
     Task withCompleted(boolean nextCompleted, String timestamp) {
         return new Task(id, title, dueDate, priority, nextCompleted, createdAt, timestamp,
-                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks);
+                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks, tags);
     }
 
     Task withSubtasks(List<Subtask> nextSubtasks, String timestamp) {
         return new Task(id, title, dueDate, priority, completed, createdAt, timestamp,
-                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, nextSubtasks);
+                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, nextSubtasks, tags);
     }
 
     Task withReminderShown(String fireInstant, String timestamp) {
         return new Task(id, title, dueDate, priority, completed, createdAt, timestamp,
-                attachments, notes, dueTime, reminderLeadMinutes, fireInstant, repeatRule, subtasks);
+                attachments, notes, dueTime, reminderLeadMinutes, fireInstant, repeatRule, subtasks, tags);
     }
 
     /** Rolls a repeating task to its next occurrence: moves the due date, clears the shown marker, keeps the rule. */
     Task withRepeatAdvanced(String nextDueDate, String timestamp) {
         return new Task(id, title, nextDueDate, priority, completed, createdAt, timestamp,
-                attachments, notes, dueTime, reminderLeadMinutes, null, repeatRule, subtasks);
+                attachments, notes, dueTime, reminderLeadMinutes, null, repeatRule, subtasks, tags);
     }
 
     Task withAttachments(List<AttachmentRef> nextAttachments) {
         return new Task(id, title, dueDate, priority, completed, createdAt, updatedAt,
-                nextAttachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks);
+                nextAttachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks, tags);
+    }
+
+    /** Replaces the tag list; normalization happens in TaskLogic before this is called. */
+    Task withTags(List<String> nextTags, String timestamp) {
+        return new Task(id, title, dueDate, priority, completed, createdAt, timestamp,
+                attachments, notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks, nextTags);
     }
 }
