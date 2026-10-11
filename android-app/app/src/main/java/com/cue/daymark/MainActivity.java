@@ -258,6 +258,19 @@ public final class MainActivity extends Activity {
     private Button browserBackButton;
     private Button browserForwardButton;
     private Button browserReloadButton;
+    private LinearLayout bottomNavigationBar;
+    private View navTasksTab;
+    private View navWebTab;
+    private View navTemplatesTab;
+    private View navSettingsTab;
+    private TextView navTasksIcon;
+    private TextView navTasksLabel;
+    private TextView navWebIcon;
+    private TextView navWebLabel;
+    private TextView navTemplatesIcon;
+    private TextView navTemplatesLabel;
+    private TextView navSettingsIcon;
+    private TextView navSettingsLabel;
     private Button browserHomeButton;
     private Button browserHistoryButton;
     private Button browserSettingsButton;
@@ -828,11 +841,118 @@ public final class MainActivity extends Activity {
         root.addView(browserScreen, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         addUndoBar();
+        bottomNavigationBar = buildBottomNavigationBar();
+        root.addView(bottomNavigationBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         applySystemBarsAndInsets();
         setContentView(root);
         root.requestApplyInsets();
         syncModeUi();
         render();
+    }
+
+    private LinearLayout buildBottomNavigationBar() {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setBackgroundColor(palette.surface);
+
+        View topDivider = new View(this);
+        topDivider.setBackgroundColor(palette.line);
+        container.addView(topDivider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(4), dp(3), dp(4), dp(3));
+
+        LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(0, dp(50), 1f);
+
+        navTasksTab = buildNavTab("✓", "Tasks", "View your tasks and dashboard", view -> setWebMode(false));
+        navWebTab = buildNavTab("🌐", "Web", "Open web browser and search", view -> setWebMode(true));
+        navTemplatesTab = buildNavTab("📑", "Templates", "Open task templates", view -> showTaskTemplatesDialog());
+        navSettingsTab = buildNavTab("⚙", "Settings", "Open Daymark settings", view -> showSettingsDialog());
+
+        bar.addView(navTasksTab, tabParams);
+        bar.addView(navWebTab, tabParams);
+        bar.addView(navTemplatesTab, tabParams);
+        bar.addView(navSettingsTab, tabParams);
+
+        container.addView(bar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return container;
+    }
+
+    private View buildNavTab(String symbol, String label, String contentDesc, View.OnClickListener listener) {
+        LinearLayout tab = new LinearLayout(this);
+        tab.setOrientation(LinearLayout.VERTICAL);
+        tab.setGravity(Gravity.CENTER);
+        tab.setClickable(true);
+        tab.setFocusable(true);
+        tab.setContentDescription(contentDesc);
+        tab.setOnClickListener(listener);
+
+        TextView iconView = text(symbol, 16, palette.muted, Typeface.NORMAL);
+        iconView.setGravity(Gravity.CENTER);
+        TextView labelView = text(label, 11, palette.muted, Typeface.NORMAL);
+        labelView.setGravity(Gravity.CENTER);
+
+        if ("Tasks".equals(label)) {
+            navTasksIcon = iconView;
+            navTasksLabel = labelView;
+        } else if ("Web".equals(label)) {
+            navWebIcon = iconView;
+            navWebLabel = labelView;
+        } else if ("Templates".equals(label)) {
+            navTemplatesIcon = iconView;
+            navTemplatesLabel = labelView;
+        } else if ("Settings".equals(label)) {
+            navSettingsIcon = iconView;
+            navSettingsLabel = labelView;
+        }
+
+        tab.addView(iconView);
+        tab.addView(labelView);
+        return tab;
+    }
+
+    private void syncBottomNavSelection() {
+        if (navTasksTab == null || navWebTab == null) return;
+        boolean inWeb = webMode;
+
+        // Tasks tab
+        if (navTasksIcon != null && navTasksLabel != null) {
+            navTasksIcon.setTextColor(inWeb ? palette.muted : palette.accent);
+            navTasksIcon.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.NORMAL : Typeface.BOLD));
+            navTasksLabel.setTextColor(inWeb ? palette.muted : palette.accent);
+            navTasksLabel.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.NORMAL : Typeface.BOLD));
+            navTasksTab.setBackground(inWeb ? null : shape(palette.accentSoft, 12, palette.accentSoft));
+            navTasksTab.setContentDescription(inWeb
+                    ? "Tasks page. Switch to tasks and dashboard."
+                    : "Tasks page, selected.");
+        }
+
+        // Web tab
+        if (navWebIcon != null && navWebLabel != null) {
+            navWebIcon.setTextColor(inWeb ? palette.accent : palette.muted);
+            navWebIcon.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.BOLD : Typeface.NORMAL));
+            navWebLabel.setTextColor(inWeb ? palette.accent : palette.muted);
+            navWebLabel.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.BOLD : Typeface.NORMAL));
+            navWebTab.setBackground(inWeb ? shape(palette.accentSoft, 12, palette.accentSoft) : null);
+            navWebTab.setContentDescription(inWeb
+                    ? "Web browser page, selected."
+                    : "Web browser page. Switch to web browser and search.");
+        }
+
+        // Templates & Settings tabs
+        if (navTemplatesIcon != null && navTemplatesLabel != null) {
+            navTemplatesIcon.setTextColor(palette.muted);
+            navTemplatesLabel.setTextColor(palette.muted);
+        }
+        if (navSettingsIcon != null && navSettingsLabel != null) {
+            navSettingsIcon.setTextColor(palette.muted);
+            navSettingsLabel.setTextColor(palette.muted);
+        }
     }
 
     private View buildTopBar() {
@@ -1637,6 +1757,8 @@ public final class MainActivity extends Activity {
         }
         try {
             browserWebView.getSettings().setBlockNetworkLoads(false);
+            browserWebView.onResume();
+            browserWebView.resumeTimers();
         } catch (SecurityException denied) {
             setBrowserOnlineEnabled(false);
             if (browserOnlineToggle != null) browserOnlineToggle.setChecked(false);
@@ -1705,7 +1827,7 @@ public final class MainActivity extends Activity {
         if (hidden && (!webMode || fullScreenWebDialog != null && fullScreenWebDialog.isShowing())) return;
         if (browserChromeHidden == hidden) return;
         browserChromeHidden = hidden;
-        View[] chrome = {browserAddressBarView, browserToolbarScroll, browserProviderRow};
+        View[] chrome = {browserAddressBarView, browserToolbarScroll, browserProviderRow, bottomNavigationBar};
         for (View view : chrome) {
             if (view == null) continue;
             // The address bar hides upward; the compact bottom control row and provider
@@ -1896,6 +2018,14 @@ public final class MainActivity extends Activity {
         browserTabs.add(browserWebView);
         browserTabQueries.put(browserWebView, browserLastSearchQuery);
         updateBrowserTabButton();
+        if (activityResumed) {
+            try {
+                browserWebView.onResume();
+                browserWebView.resumeTimers();
+            } catch (RuntimeException ignored) {
+                Log.w(BROWSER_LOG_TAG, "Failed to resume newly created WebView");
+            }
+        }
         return true;
     }
 
@@ -3771,6 +3901,7 @@ public final class MainActivity extends Activity {
     private void syncModeUi() {
         if (!webMode && taskChromeHidden) setTaskChromeHidden(false);
         if (taskScreen == null || browserScreen == null || quickCaptureInput == null) return;
+        syncBottomNavSelection();
         if (webMode && browserChromeHidden) setBrowserChromeHidden(false);
         // Web mode is a dedicated browser workspace. Hide the task composer/dashboard
         // instead of stacking Task + Web controls and wasting the viewport.
