@@ -366,6 +366,30 @@ public final class MainActivity extends Activity {
         sanitizeStoredBrowserHistory();
         buildInterface();
         loadEncryptedTasks();
+        handleShareInIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleShareInIntent(intent);
+    }
+
+    // Android Share target: ACTION_SEND plain text becomes the task draft so the
+    // user can review it in the full editor before any task is created.
+    private void handleShareInIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return;
+        if (!"text/plain".equals(intent.getType())) return;
+        CharSequence shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        String text = shared == null ? "" : shared.toString().trim();
+        if (text.isEmpty()) return;
+        if (text.length() > 2048) text = text.substring(0, 2048);
+        setWebMode(false);
+        taskDraft = text;
+        quickCaptureInput.setText(text);
+        quickCaptureInput.setSelection(Math.min(text.length(), 2048));
+        quickCaptureInput.requestFocus();
+        showToast("Shared text is in your task draft. Review it, then add the task.");
     }
 
     @SuppressWarnings("deprecation")
