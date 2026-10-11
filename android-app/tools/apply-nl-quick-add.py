@@ -11,18 +11,7 @@ if "NaturalLanguageTaskParse.parse" in text:
     print("TaskLogic NL already wired")
     sys.exit(0)
 
-# Post-tags-core create signature
-old = '''    static Task create(String title, String dueDate, String priority, String notes,
-                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
-                       String repeatRule, List<String> tags) {
-        String normalizedTitle = requireTitle(title);
-        String normalizedNotes = requireNotes(notes);
-        validateDetails(dueDate, priority);'''
-
-new = '''    static Task create(String title, String dueDate, String priority, String notes,
-                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
-                       String repeatRule, List<String> tags) {
-        NaturalLanguageTaskParse.Result parsed =
+nl_block = '''        NaturalLanguageTaskParse.Result parsed =
                 NaturalLanguageTaskParse.parse(title, java.time.LocalDate.now());
         if (parsed.title != null && !parsed.title.isEmpty()) {
             title = parsed.title;
@@ -38,14 +27,46 @@ new = '''    static Task create(String title, String dueDate, String priority, S
                 && !"medium".equalsIgnoreCase(parsed.priority)) {
             priority = parsed.priority;
         }
-        if ((tags == null || tags.isEmpty()) && parsed.tags != null && !parsed.tags.isEmpty()) {
+'''
+
+# Prefer tags-aware create
+old_tags = '''    static Task create(String title, String dueDate, String priority, String notes,
+                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule, List<String> tags) {
+        String normalizedTitle = requireTitle(title);
+        String normalizedNotes = requireNotes(notes);
+        validateDetails(dueDate, priority);'''
+
+new_tags = '''    static Task create(String title, String dueDate, String priority, String notes,
+                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule, List<String> tags) {
+''' + nl_block + '''        if ((tags == null || tags.isEmpty()) && parsed.tags != null && !parsed.tags.isEmpty()) {
             tags = parsed.tags;
         }
         String normalizedTitle = requireTitle(title);
         String normalizedNotes = requireNotes(notes);
         validateDetails(dueDate, priority);'''
 
-if old not in text:
-    sys.exit("TaskLogic.create(tags) pattern missing — rebase onto tags-core main")
-path.write_text(text.replace(old, new, 1), encoding="utf-8")
-print("TaskLogic NL wired (tags-aware)")
+old_legacy = '''    static Task create(String title, String dueDate, String priority, String notes,
+                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule) {
+        String normalizedTitle = requireTitle(title);
+        String normalizedNotes = requireNotes(notes);
+        validateDetails(dueDate, priority);'''
+
+new_legacy = '''    static Task create(String title, String dueDate, String priority, String notes,
+                       String dueTime, Integer reminderLeadMinutes, List<Subtask> subtasks,
+                       String repeatRule) {
+''' + nl_block + '''        notes = NaturalLanguageTaskParse.notesWithTags(notes, parsed.tags);
+        String normalizedTitle = requireTitle(title);
+        String normalizedNotes = requireNotes(notes);
+        validateDetails(dueDate, priority);'''
+
+if old_tags in text:
+    path.write_text(text.replace(old_tags, new_tags, 1), encoding="utf-8")
+    print("TaskLogic NL wired (tags-aware)")
+elif old_legacy in text:
+    path.write_text(text.replace(old_legacy, new_legacy, 1), encoding="utf-8")
+    print("TaskLogic NL wired (legacy notes tags)")
+else:
+    sys.exit("TaskLogic.create pattern missing")
