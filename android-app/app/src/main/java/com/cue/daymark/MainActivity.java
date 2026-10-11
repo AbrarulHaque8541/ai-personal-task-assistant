@@ -1,4 +1,4 @@
-package com.cue.daymark;
+successfully downloaded text file (SHA: 212fde33a59997fe705f8fa64929d0f0342df53b)package com.cue.daymark;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -4161,6 +4161,17 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(explanation);
+        // Browser settings owns every browser control (docs/TASK_BROWSER_PAGE_GAPS.md §2):
+        // engine default, site history, extensions, images, and Safe Browsing in one place.
+        addSettingsRow(content, "Default search engine",
+                searchEngine.label + " · used for address-bar searches",
+                () -> showSearchProviderPicker());
+        addSettingsRow(content, "Site history",
+                "Saved HTTPS origins · reopen, or clear history and site data",
+                () -> showBrowserHistoryDialog());
+        addSettingsRow(content, "Extensions",
+                "Manage page scripts and matching sites",
+                () -> showBrowserExtensionsManager());
         content.addView(imagesToggle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
         content.addView(safeBrowsingToggle, new LinearLayout.LayoutParams(
@@ -6698,12 +6709,6 @@ public final class MainActivity extends Activity {
                 () -> showPortableBackupDialog());
 
         addSettingsSection(content, "POWER FEATURES");
-        addSettingsRow(content, "Browser & extensions",
-                webMode ? "Manage page scripts and matching sites" : "Switch to Web mode; open Extensions from browser actions",
-                () -> {
-                    if (webMode) showBrowserExtensionsManager();
-                    else setWebMode(true);
-                });
         addSettingsRow(content, "Check for updates", "Check the signed sideload release channel",
                 () -> checkForUpdates(true));
 
