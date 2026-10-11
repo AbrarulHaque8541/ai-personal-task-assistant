@@ -126,6 +126,7 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
     private static final String BROWSER_BLOCK_IMAGES_KEY = "block_network_images";
+    private static final String BROWSER_DESKTOP_DEFAULT_KEY = "desktop_site_default";
     private static final String BROWSER_DISCLOSURE_ACK_KEY = "browser_disclosure_acknowledged_v1";
 
     private final List<Task> tasks = new ArrayList<>();
@@ -194,6 +195,7 @@ public final class MainActivity extends Activity {
     private BrowserNetworkPolicy browserNetworkPolicy = new BrowserNetworkPolicy();
     private BrowserSettingsPolicy browserSettingsPolicy = new BrowserSettingsPolicy();
     private boolean browserImagesBlocked;
+    private boolean browserDesktopDefault;
     private boolean suppressBrowserOnlineToggleListener;
     private boolean suppressSafeBrowsingToggleListener;
     private String taskDraft = "";
@@ -360,6 +362,7 @@ public final class MainActivity extends Activity {
         browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
         registerDaymarkBackCallback();
         browserImagesBlocked = readBrowserImagesBlockedPreference();
+        browserDesktopDefault = readBrowserDesktopDefaultPreference();
         sanitizeStoredBrowserHistory();
         buildInterface();
         loadEncryptedTasks();
@@ -407,6 +410,15 @@ public final class MainActivity extends Activity {
             return browserPreferences.getBoolean(BROWSER_BLOCK_IMAGES_KEY, false);
         } catch (ClassCastException invalidPreference) {
             browserPreferences.edit().remove(BROWSER_BLOCK_IMAGES_KEY).apply();
+            return false;
+        }
+    }
+
+    private boolean readBrowserDesktopDefaultPreference() {
+        try {
+            return browserPreferences.getBoolean(BROWSER_DESKTOP_DEFAULT_KEY, false);
+        } catch (ClassCastException invalidPreference) {
+            browserPreferences.edit().remove(BROWSER_DESKTOP_DEFAULT_KEY).apply();
             return false;
         }
     }
@@ -2061,6 +2073,11 @@ public final class MainActivity extends Activity {
             scheduleBrowserChromeRestore();
         });
         browserWebView.getSettings().setBlockNetworkImage(browserImagesBlocked);
+        if (browserDesktopDefault) {
+            String mobileUa = android.webkit.WebSettings.getDefaultUserAgent(this);
+            browserWebView.getSettings().setUserAgentString(
+                    mobileUa.replace("Mobile", "X11").replace("Android", "Linux"));
+        }
         browserWebView.setBackgroundColor(palette.surface);
         browserWebView.setVisibility(View.GONE);
         browserViewport.addView(browserWebView, new FrameLayout.LayoutParams(
@@ -4276,6 +4293,14 @@ public final class MainActivity extends Activity {
                 ? "Safe Browsing is enabled. Turn it off only after reviewing the protection warning."
                 : "Safe Browsing is disabled. Turn it on to restore protection against known harmful pages.");
 
+        CheckBox desktopDefaultToggle = new CheckBox(this);
+        desktopDefaultToggle.setText("Request desktop site by default");
+        desktopDefaultToggle.setMinHeight(dp(48));
+        desktopDefaultToggle.setChecked(browserDesktopDefault);
+        desktopDefaultToggle.setContentDescription(browserDesktopDefault
+                ? "New browser tabs request desktop sites. Turn off for mobile sites."
+                : "New browser tabs request mobile sites. Turn on to request desktop sites by default.");
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(explanation);
@@ -4296,6 +4321,8 @@ public final class MainActivity extends Activity {
         content.addView(imagesToggle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
         content.addView(safeBrowsingToggle, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+        content.addView(desktopDefaultToggle, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
 
         AlertDialog settingsDialog = new AlertDialog.Builder(this)
@@ -4354,6 +4381,14 @@ public final class MainActivity extends Activity {
                         }
                     })
                     .show();
+        });
+
+        desktopDefaultToggle.setOnCheckedChangeListener((button, enabled) -> {
+            browserDesktopDefault = enabled;
+            browserPreferences.edit().putBoolean(BROWSER_DESKTOP_DEFAULT_KEY, enabled).apply();
+            button.setContentDescription(enabled
+                    ? "New browser tabs request desktop sites. Turn off for mobile sites."
+                    : "New browser tabs request mobile sites. Turn on to request desktop sites by default.");
         });
         settingsDialog.show();
     }
