@@ -149,7 +149,7 @@ public final class TaskLogicSmoke {
                 "overlong notes are rejected");
         Task longNotes = task("notes", "Notes", null, "medium", false, 30);
         check(!TaskLogic.isValid(longNotes.withFullDetails(longNotes.title, "x".repeat(4001),
-                null, null, "medium", null, Collections.<Subtask>emptyList(), null, longNotes.updatedAt)),
+                null, null, "medium", null, Collections.<Subtask>emptyList(), longNotes.updatedAt)),
                 "persisted overlong notes fail validation");
 
         Task existing = TaskLogic.create("Edit me", "2026-10-05", "medium", "note", "09:00", 60,
@@ -306,7 +306,7 @@ public final class TaskLogicSmoke {
 
         Task withNotes = task("notes-search", "Plain title", null, "medium", false, 5)
                 .withFullDetails("Plain title", "remember the \u00e9clair receipt", null, null,
-                        "medium", null, Collections.<Subtask>emptyList(), null, "2026-10-05T00:00:05Z");
+                        "medium", null, Collections.<Subtask>emptyList(), "2026-10-05T00:00:05Z");
         List<Task> searchable = Arrays.asList(tasks.get(0), withNotes);
         check(TaskLogic.filter(searchable, TaskLogic.FILTER_ALL, "éclair", TODAY).size() == 1,
                 "search also matches task notes");
@@ -325,10 +325,10 @@ public final class TaskLogicSmoke {
         List<Task> timed = Arrays.asList(
                 task("late", "Late today", TODAY.toString(), "low", false, 6)
                         .withFullDetails("Late today", "", TODAY.toString(), "18:00", "low", null,
-                                Collections.<Subtask>emptyList(), null, "2026-10-05T00:00:06Z"),
+                                Collections.<Subtask>emptyList(), "2026-10-05T00:00:06Z"),
                 task("early", "Early today", TODAY.toString(), "low", false, 7)
                         .withFullDetails("Early today", "", TODAY.toString(), "08:00", "low", null,
-                                Collections.<Subtask>emptyList(), null, "2026-10-05T00:00:07Z"),
+                                Collections.<Subtask>emptyList(), "2026-10-05T00:00:07Z"),
                 task("untimed", "Untimed today", TODAY.toString(), "low", false, 8));
         List<Task> ordered = TaskLogic.filter(timed, TaskLogic.FILTER_ALL, "", TODAY);
         check("early".equals(ordered.get(0).id) && "late".equals(ordered.get(1).id)
