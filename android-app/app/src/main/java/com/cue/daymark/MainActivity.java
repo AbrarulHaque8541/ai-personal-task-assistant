@@ -4394,6 +4394,16 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /** Splits a comma-separated editor tags field; normalization happens in TaskLogic. */
+    private List<String> parseEditorTags(String raw) {
+        List<String> tags = new ArrayList<>();
+        for (String part : raw.split(",")) {
+            String tag = part.trim();
+            if (!tag.isEmpty()) tags.add(tag);
+        }
+        return tags;
+    }
+
     private SmartTaskDraft parseSmartTaskDraft(String raw) {
         String title = raw.trim();
         String lower = title.toLowerCase(Locale.ROOT);
@@ -4417,8 +4427,13 @@ public final class MainActivity extends Activity {
             priority = "low";
             title = title.replaceAll("(?i)\\blow\\b", "").trim();
         }
+        List<String> tags = new ArrayList<>();
+        java.util.regex.Matcher tagMatcher = java.util.regex.Pattern
+                .compile("(?:^|\\s)#([A-Za-z0-9][A-Za-z0-9_-]{0,23})").matcher(title);
+        while (tagMatcher.find()) tags.add(tagMatcher.group(1).toLowerCase(Locale.ROOT));
+        title = title.replaceAll("(?i)(?:^|\\s)#[A-Za-z0-9][A-Za-z0-9_-]{0,23}", " ");
         title = title.replaceAll("\\s{2,}", " ").replaceAll("^[,.:;\\-]+|[,.:;\\-]+$", "").trim();
-        return new SmartTaskDraft(title, dueDate, priority);
+        return new SmartTaskDraft(title, dueDate, priority, tags);
     }
 
     private String dueLabelForDate(String date) {
@@ -4433,10 +4448,12 @@ public final class MainActivity extends Activity {
         final String title;
         final String dueDate;
         final String priority;
-        SmartTaskDraft(String title, String dueDate, String priority) {
+        final List<String> tags;
+        SmartTaskDraft(String title, String dueDate, String priority, List<String> tags) {
             this.title = title;
             this.dueDate = dueDate;
             this.priority = priority;
+            this.tags = tags;
         }
     }
 
@@ -4549,7 +4566,7 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-            tasks.add(TaskLogic.create(title, draft.dueDate, draft.priority));
+            tasks.add(TaskLogic.create(title, draft.dueDate, draft.priority, "", null, null, null, null, draft.tags));
             quickCaptureInput.setText("");
             quickCaptureInput.setError(null);
             captureFeedback.setText("Task added" + (draft.dueDate == null ? "" : " with " + dueLabelForDate(draft.dueDate)) + " and " + draft.priority + " priority. Tap Edit for more options.");
@@ -4645,7 +4662,8 @@ public final class MainActivity extends Activity {
         copy.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT),
+        String tagSummary = task.tags.isEmpty() ? "" : "  ·  #" + String.join(" #", task.tags);
+        TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT) + tagSummary,
                 11, dueColor(task), Typeface.NORMAL);
         details.setMaxLines(2);
         details.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -5596,6 +5614,16 @@ public final class MainActivity extends Activity {
         notesInput.setGravity(Gravity.TOP | Gravity.START);
         if (editing != null) notesInput.setText(editing.notes);
 
+        EditText tagsInput = new EditText(this);
+        tagsInput.setSingleLine(true);
+        tagsInput.setTextSize(14 * textScale);
+        tagsInput.setHint("Tags (optional, comma separated)");
+        tagsInput.setContentDescription("Optional tags for this task, up to 5, comma separated");
+        tagsInput.setFilters(new InputFilter[] { new InputFilter.LengthFilter(160) });
+        if (editing != null && !editing.tags.isEmpty()) {
+            tagsInput.setText(String.join(", ", editing.tags));
+        }
+
         TextView fieldLabel = text("Due date (optional)", 13, palette.muted, Typeface.BOLD);
         fieldLabel.setLetterSpacing(0.08f);
         form.addView(fieldLabel, bottomMargin(dp(4)));
@@ -5637,6 +5665,7 @@ public final class MainActivity extends Activity {
         form.addView(quickDates, bottomMargin(dp(14)));
 
         if (!templateOnly) form.addView(notesInput, bottomMargin(dp(10)));
+        if (!templateOnly) form.addView(tagsInput, bottomMargin(dp(10)));
 
         final String[] selectedTime = { editing == null ? null : editing.dueTime };
         LinearLayout timeActions = new LinearLayout(this);
@@ -5844,6 +5873,8 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 String priority = priorityValue(prioritySpinner.getSelectedItemPosition());
+                List<String> editorTags = parseEditorTags(
+                        tagsInput.getText() == null ? "" : tagsInput.getText().toString());
                 if (!templateOnly) {
                     String normalizedKey = normalized.toLowerCase(Locale.ROOT);
                     for (Task existing : tasks) {
@@ -5860,7 +5891,8 @@ public final class MainActivity extends Activity {
                                                     selectedTime[0],
                                                     reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
                                                     draftSubtasks,
-                                                    repeatValue(repeatSpinner.getSelectedItemPosition())))
+                                                    repeatValue(repeatSpinner.getSelectedItemPosition()),
+                                                    editorTags))
                                     .show();
                             return;
                         }
@@ -5880,7 +5912,8 @@ public final class MainActivity extends Activity {
                                         selectedTime[0],
                                         reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
                                         draftSubtasks,
-                                        repeatValue(repeatSpinner.getSelectedItemPosition()))
+                                        repeatValue(repeatSpinner.getSelectedItemPosition()),
+                                        editorTags)
                                 : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate[0], priority));
                         if (sourceTemplate == null) quickCaptureInput.setText("");
                         captureFeedback.setText(sourceTemplate == null
@@ -5892,7 +5925,8 @@ public final class MainActivity extends Activity {
                                 selectedDate[0], selectedTime[0], priority,
                                 reminderLeadValue(reminderSpinner.getSelectedItemPosition()),
                                 draftSubtasks,
-                                repeatValue(repeatSpinner.getSelectedItemPosition())));
+                                repeatValue(repeatSpinner.getSelectedItemPosition()),
+                                editorTags));
                     }
                     dialog.dismiss();
                     render();
@@ -5934,12 +5968,12 @@ public final class MainActivity extends Activity {
     private void saveTaskFromEditor(AlertDialog dialog, Task editing, String normalized,
                                     String selectedDate, String priority, TaskTemplate sourceTemplate,
                                     String notes, String selectedTime, Integer reminderLead,
-                                    List<Subtask> subtasks, String repeatRule) {
+                                    List<Subtask> subtasks, String repeatRule, List<String> tags) {
         try {
             if (editing == null) {
                 tasks.add(sourceTemplate == null
                         ? TaskLogic.create(normalized, selectedDate, priority, notes,
-                                selectedTime, reminderLead, subtasks, repeatRule)
+                                selectedTime, reminderLead, subtasks, repeatRule, tags)
                         : TaskTemplateLogic.instantiate(sourceTemplate, normalized, selectedDate, priority));
                 if (sourceTemplate == null) quickCaptureInput.setText("");
                 captureFeedback.setText(sourceTemplate == null
@@ -5947,7 +5981,7 @@ public final class MainActivity extends Activity {
                         : "Task created from the reviewed template. You can edit it later in your list.");
             } else {
                 replaceTask(TaskLogic.update(editing, normalized, notes, selectedDate,
-                        selectedTime, priority, reminderLead, subtasks, repeatRule));
+                        selectedTime, priority, reminderLead, subtasks, repeatRule, tags));
             }
             dialog.dismiss();
             render();
