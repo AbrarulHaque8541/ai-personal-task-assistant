@@ -17,6 +17,7 @@ import android.webkit.WebViewClient;
 import android.webkit.WebResourceError;
 import android.webkit.DownloadListener;
 import android.graphics.Bitmap;
+import android.os.Build;
 
 /** A narrow wrapper around Android System WebView; no native bridge or request interception is used. */
 final class DaymarkWebView extends WebView {
@@ -67,8 +68,12 @@ final class DaymarkWebView extends WebView {
         setFocusable(true);
         setFocusableInTouchMode(true);
         setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         WebSettings settings = getSettings();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            settings.setOffscreenPreRaster(true);
+        }
         settings.setBlockNetworkLoads(true);
         settings.setJavaScriptEnabled(true);
         // Many sites (including Google) render poorly or blank with the default WebView UA.

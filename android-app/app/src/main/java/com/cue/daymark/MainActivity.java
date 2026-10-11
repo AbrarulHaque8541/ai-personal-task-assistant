@@ -136,6 +136,8 @@ public final class MainActivity extends Activity {
     private final List<View> powerOnlyViews = new ArrayList<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ActivityCallbackGate activityCallbackGate = new ActivityCallbackGate();
+    private final TaskListRenderGate taskListRenderGate = TaskListRenderGate.create();
+    private Runnable searchDebounceRunnable;
 
     private ExecutorService storageExecutor;
     private ExecutorService updaterExecutor;
@@ -3653,7 +3655,13 @@ public final class MainActivity extends Activity {
         searchClear.setBackground(shape(palette.accentSoft, 8, palette.accentSoft));
         searchClear.setContentDescription("Clear task search");
         searchClear.setOnClickListener(view -> {
+            if (searchDebounceRunnable != null) {
+                mainHandler.removeCallbacks(searchDebounceRunnable);
+            }
             searchInput.setText("");
+            searchQuery = "";
+            renderTaskList();
+            renderTaskCount();
             searchInput.requestFocus();
         });
         searchRow.addView(searchClear, new LinearLayout.LayoutParams(
@@ -3666,8 +3674,14 @@ public final class MainActivity extends Activity {
             @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
                 searchQuery = text == null ? "" : text.toString();
-                renderTaskList();
-                renderTaskCount();
+                if (searchDebounceRunnable != null) {
+                    mainHandler.removeCallbacks(searchDebounceRunnable);
+                }
+                searchDebounceRunnable = () -> {
+                    renderTaskList();
+                    renderTaskCount();
+                };
+                mainHandler.postDelayed(searchDebounceRunnable, 150);
             }
             @Override public void afterTextChanged(Editable editable) { }
         });
@@ -4329,6 +4343,7 @@ public final class MainActivity extends Activity {
 
     private void renderTaskList(LocalDate today) {
         if (storageLoading || storageLoadFailed) {
+            taskListRenderGate.invalidate();
             taskList.removeAllViews();
             if (storageLoading) {
                 emptyTitle.setText("Opening saved tasks");
@@ -4345,6 +4360,9 @@ public final class MainActivity extends Activity {
         String selectedFilter = powerMode ? activeFilter : TaskLogic.FILTER_ALL;
         String selectedQuery = powerMode ? searchQuery : "";
         List<Task> visible = TaskLogic.filter(tasks, selectedFilter, selectedQuery, today);
+        if (!taskListRenderGate.shouldRebuild(selectedFilter, selectedQuery, visible, storageSaveFailed)) {
+            return;
+        }
         taskList.removeAllViews();
         for (Task task : visible) {
             taskList.addView(buildTaskRow(task), bottomMargin(dp(8)));
