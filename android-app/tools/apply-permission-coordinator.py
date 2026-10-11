@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Wire PermissionCoordinator into MainActivity permission UI (idempotent)."""
 from pathlib import Path
-import re
 import sys
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
 path = root / "app/src/main/java/com/cue/daymark/MainActivity.java"
 text = path.read_text(encoding="utf-8")
 
-# Settings rows
 old_row = (
     '        addSettingsRow(content, "Permission status", permissionStatusLabel(),\n'
     '                () -> showPermissionStatus());'
@@ -19,26 +17,14 @@ new_row = (
     '        addSettingsRow(content, "More permission settings", "Alarms & accessibility",\n'
     '                () -> showAdvancedPermissionSettings());'
 )
-if "showPermissionActionsDialog()" in text and "More permission settings" in text:
-    pass  # rows ok
-elif old_row in text:
+
+if old_row in text:
     text = text.replace(old_row, new_row, 1)
+    print("settings rows updated")
+elif "() -> showPermissionActionsDialog()" in text:
+    print("settings rows already point at actions dialog")
 else:
-    # looser match
-    text2, n = re.subn(
-        r'addSettingsRow\(content, "Permission status", permissionStatusLabel\(\),\s*'\n'
-        r'\(\) -> showPermissionStatus\(\)\);',
-        'addSettingsRow(content, "Permission status", permissionStatusLabel(),\n'
-        '                () -> showPermissionActionsDialog());\n'
-        '        addSettingsRow(content, "More permission settings", "Alarms & accessibility",\n'
-        '                () -> showAdvancedPermissionSettings());',
-        text,
-        count=1,
-    )
-    if n:
-        text = text2
-    else:
-        print("WARN: permission settings row not found")
+    print("WARN: permission settings row pattern not found")
 
 helpers = '''
     private void showPermissionActionsDialog() {
@@ -88,14 +74,18 @@ helpers = '''
     }
 '''
 
-if "showPermissionActionsDialog" not in text:
+if "private void showPermissionActionsDialog()" not in text:
     idx = text.rfind("}")
     if idx < 0:
         sys.exit("no class end")
     text = text[:idx] + helpers + "\n" + text[idx:]
+    print("helpers inserted")
 elif "onRequestPermissionsResult" not in text:
     idx = text.rfind("}")
     text = text[:idx] + helpers + "\n" + text[idx:]
+    print("helpers inserted (result handler)")
+else:
+    print("helpers already present")
 
 path.write_text(text, encoding="utf-8")
 print("PermissionCoordinator UI wired")
