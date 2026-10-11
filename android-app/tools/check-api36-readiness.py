@@ -23,7 +23,16 @@ assert '[[ "$target_sdk" == "36" ]]' in workflow, (
     "device-test artifact validator must agree on target SDK 36"
 )
 assert "public void onBackPressed()" in activity, (
-    "API 36 review must account for the Activity's existing custom Back semantics"
+    "legacy Back handling must be explicitly considered during migration"
+)
+assert "OnBackInvokedCallback" in activity and "registerOnBackInvokedCallback" in activity, (
+    "API 33+ must register the predictive Back callback before target SDK 36 is considered implemented"
+)
+assert "unregisterOnBackInvokedCallback" in activity, (
+    "the Activity must unregister its predictive Back callback during teardown"
+)
+assert "handleDaymarkBackNavigation()" in activity, (
+    "legacy and predictive Back must delegate to the same navigation handler"
 )
 
 print(
