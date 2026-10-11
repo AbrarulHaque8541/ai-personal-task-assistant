@@ -2198,6 +2198,21 @@ public final class MainActivity extends Activity {
         syncBrowserButtons();
     }
 
+    private void saveCurrentPageAsTask() {
+        // Research loop (docs/TASK_BROWSER_PAGE_GAPS.md section 5 C): a page the
+        // owner is reading becomes a task. The URL stays in the encrypted local
+        // task store; nothing is sent anywhere by this action.
+        if (browserWebView == null || browserWebView.getUrl() == null) {
+            showToast("No page is open to save as a task.");
+            return;
+        }
+        String title = browserWebView.getTitle();
+        if (title == null || title.trim().isEmpty()) title = "Read this page";
+        final String draftTitle = "Read: " + title.trim() + " \u00b7 " + browserWebView.getUrl();
+        setWebMode(false);
+        postActivityCallback(() -> showTaskEditor(null, draftTitle));
+    }
+
     private void bookmarkCurrentBrowserPage() {
         if (browserWebView == null || browserWebView.getUrl() == null) {
             showToast("No page is open to bookmark.");
@@ -2251,7 +2266,8 @@ public final class MainActivity extends Activity {
                 "Downloads", "Find media on page", "Extensions", "Site history",
                 "Privacy details", "Browser settings", "Site info", "Turn off online browsing",
                 "Diagnostics",
-                "Bookmark this page", "Bookmarks"
+                "Bookmark this page", "Bookmarks",
+                "Save page as task"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -2318,6 +2334,9 @@ public final class MainActivity extends Activity {
                             break;
                         case 18:
                             showBrowserBookmarksDialog();
+                            break;
+                        case 19:
+                            saveCurrentPageAsTask();
                             break;
                         default:
                             break;
