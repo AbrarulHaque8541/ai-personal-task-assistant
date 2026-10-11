@@ -189,7 +189,7 @@ jobs:
           target_sdk="$(sed -n "s/^targetSdkVersion:[[:space:]]*'\([^']*\)'.*/\1/p" "$badging")"
           [[ "$app_id" == "com.cue.daymark" ]] || { echo "Unexpected application ID: $app_id" >&2; exit 1; }
           [[ "$min_sdk" == "26" ]] || { echo "Unexpected min SDK: $min_sdk" >&2; exit 1; }
-          [[ "$target_sdk" == "35" ]] || { echo "Unexpected target SDK: $target_sdk" >&2; exit 1; }
+          [[ "$target_sdk" == "36" ]] || { echo "Unexpected target SDK: $target_sdk" >&2; exit 1; }
           [[ -n "$version_name" && -n "$version_code" ]] || { echo "APK version metadata is missing" >&2; exit 1; }
 
           if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" ]]; then

@@ -58,6 +58,8 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.URLUtil;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -136,6 +138,7 @@ public final class MainActivity extends Activity {
     private final List<View> powerOnlyViews = new ArrayList<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ActivityCallbackGate activityCallbackGate = new ActivityCallbackGate();
+    private OnBackInvokedCallback daymarkBackCallback;
     private final TaskListRenderGate taskListRenderGate = TaskListRenderGate.create();
     private Runnable searchDebounceRunnable;
 
@@ -354,6 +357,7 @@ public final class MainActivity extends Activity {
                 browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
         browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
         browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
+        registerDaymarkBackCallback();
         browserImagesBlocked = readBrowserImagesBlockedPreference();
         sanitizeStoredBrowserHistory();
         buildInterface();
@@ -419,8 +423,28 @@ public final class MainActivity extends Activity {
         }
     }
 
-    @Override
+        @Override
     public void onBackPressed() {
+        // Keep Android 8-12 behavior. API 33+ routes gesture/button Back through
+        // the registered callback below; this remains a fallback when predictive
+        // Back is unavailable or disabled by platform settings.
+        handleDaymarkBackNavigation();
+    }
+
+    private void registerDaymarkBackCallback() {
+        if (Build.VERSION.SDK_INT < 33 || daymarkBackCallback != null) return;
+        daymarkBackCallback = this::handleDaymarkBackNavigation;
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, daymarkBackCallback);
+    }
+
+    private void unregisterDaymarkBackCallback() {
+        if (Build.VERSION.SDK_INT < 33 || daymarkBackCallback == null) return;
+        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(daymarkBackCallback);
+        daymarkBackCallback = null;
+    }
+
+    private void handleDaymarkBackNavigation() {
         if (browserFullscreenView != null) {
             if (browserWebView != null) browserWebView.hideCustomView();
             else exitBrowserFullscreen();
@@ -443,7 +467,7 @@ public final class MainActivity extends Activity {
             setWebMode(false);
             return;
         }
-        super.onBackPressed();
+        finish();
     }
 
     @Override
@@ -486,6 +510,7 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
         if (browserChromeRestoreRunnable != null) mainHandler.removeCallbacks(browserChromeRestoreRunnable);
+        unregisterDaymarkBackCallback();
         activityCallbackGate.close();
         if (undoDismissal != null) mainHandler.removeCallbacks(undoDismissal);
         portableCancelRequested = true;
