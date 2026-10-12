@@ -17,7 +17,7 @@ ChatGPT, Perplexity, Google Gemini, Claude, Microsoft Copilot, Grok, DeepSeek, P
 - Tapping a provider also selects and persists its corresponding provider for the existing Go/Search action.
 - Query-prefill behavior is controlled by each third-party website. Some providers may ignore the query, require sign-in, or ask the user to submit the question again. A guaranteed in-app generated answer requires a supported API and user-authorized credentials; this feature does not bypass provider access controls.
 - Provider chips are horizontally scrollable to keep the interface compact on phones. The full search catalog remains available in the native selector.
-- The browser remains offline until the user enables Online. Queries are not sent in the background.
+- Browsing is enabled by default. Daymark sends a search or opens a destination only after you tap **Go** or a provider/site shortcut. You can turn online browsing off from **Browser actions**; queries are not sent in the background.
 
 ## Security and scope
 
