@@ -27,5 +27,8 @@ assert "unregisterOnBackInvokedCallback" in activity, "Back callback must be unr
 assert "handleDaymarkBackNavigation()" in activity, "legacy and predictive Back must share one handler"
 assert "registerDaymarkBackCallback();" in activity, "callback registration must be wired into Activity setup"
 assert "unregisterDaymarkBackCallback();" in activity, "callback cleanup must be wired into Activity teardown"
+assert re.search(r'@SuppressLint\("GestureBackNavigation"\)\s+@Override\s+public void onBackPressed\(', activity), (
+    "lint suppression must be scoped to the pre-API-33 legacy back override"
+)
 
-print("PASS API 36 target, AGP 8.12.2/Gradle 8.13 toolchain, and predictive-Back source assertions; runtime acceptance remains NOT TESTED")
+print("PASS API 36 target, AGP 8.12.2/Gradle 8.13 toolchain, platform predictive-Back callback, and scoped legacy-lint assertions; runtime acceptance remains NOT TESTED")

@@ -58,6 +58,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.URLUtil;
+import android.annotation.SuppressLint;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
@@ -460,11 +461,11 @@ public final class MainActivity extends Activity {
         }
     }
 
-        @Override
+    // AndroidX lint cannot model this app's direct framework OnBackInvokedCallback;
+    // retain the legacy Activity hook only for API 32 and lower.
+    @SuppressLint("GestureBackNavigation")
+    @Override
     public void onBackPressed() {
-        // Keep Android 8-12 behavior. API 33+ routes gesture/button Back through
-        // the registered callback below; this remains a fallback when predictive
-        // Back is unavailable or disabled by platform settings.
         handleDaymarkBackNavigation();
     }
 
@@ -7745,7 +7746,6 @@ public final class MainActivity extends Activity {
         }
     }
 }
-
 
 
 
