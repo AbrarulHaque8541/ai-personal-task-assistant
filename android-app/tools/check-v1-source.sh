@@ -194,14 +194,21 @@ assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
-assert "BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED" in activity, "browser network default must be explicit"
-assert "browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();" in activity, "legacy Offline preference must migrate to enabled"
-assert "browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();" in activity, "runtime failure must not persist a hidden Offline state"
-assert "putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)" in activity and "putBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" not in activity, "the removed Offline control must not persist a hidden disabled state"
+network_policy = (main / "java/com/cue/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
+online_pref = activity.split("private boolean readBrowserOnlinePreference()", 1)[1].split("private boolean readSafeBrowsingPreference()", 1)[0]
+assert "static final boolean DEFAULT_ONLINE_ENABLED = false;" in network_policy, "fresh installs must default to Offline"
+assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in online_pref and "getBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, false)" in online_pref
+assert "BrowserNetworkPolicy.hasExplicitOptIn(savedOnlineChoice, explicitConsent)" in online_pref, "restoration must require the current explicit-consent marker"
+assert "browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();" in online_pref, "legacy implicit Online state must be discarded, not migrated"
+assert "browserPreferences.edit().putBoolean" not in online_pref, "preference reads must never grant Online automatically"
+assert "static boolean hasExplicitOptIn(boolean savedOnlineChoice, boolean savedConsent)" in network_policy
 assert "browserOnlineToggle = null;" in activity and "Internet access is requested when you search or open a site." in activity, "browser UI must not expose an Online/Offline toggle"
 assert "new CheckBox(this)" not in activity[activity.index("private View buildBrowserAddressBar()"):activity.index("private void navigateFromBrowserInput()")], "address bar must not create an Online/Offline checkbox"
 assert "confirmBrowserOnlineAccess(() -> loadBrowserAddress(safeAddress))" in activity, "first navigation should continue after explicit network consent"
 assert "confirmBrowserOnlineAccess()" in activity and "setPositiveButton(\"Enable Online\"" in activity, "Online must require confirmation after its disclosure"
+online_setter = activity.split("private void setBrowserOnlineEnabled(boolean enabled)", 1)[1].split("private void confirmBrowserOnlineAccess()", 1)[0]
+assert ".putBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, true)" in online_setter, "the explicit opt-in marker must be saved only when Online is enabled"
+assert ".remove(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY)" in online_setter, "turning Offline off must clear the saved consent marker"
 assert "private String browserLastSearchQuery = \"\";" in activity, "browser should retain the last submitted query for provider switching"
 assert "panel.addView(browserProviderRow, bottomMargin(dp(3)));" in activity, "provider shortcuts should be positioned after the weighted WebView as a bottom strip"
 assert "browserLastSearchQuery" in activity and "selectSearchEngine(entry.searchEngine)" in activity, "provider shortcuts should reuse the previous query with the selected provider"
@@ -511,7 +518,7 @@ print("PASS encrypted task-store policy: writer and reader share invalid/duplica
 print("PASS lifecycle policy: task/storage/attachment/browser callbacks are suppressed after Activity destruction")
 print("PASS portable backup policy: bounded AES-GCM format, SAF create-only export, snapshot-last restore journal")
 print("PASS task/browser separation: web input does not create tasks or receive task-draft prefill")
-print("PASS browser policy: normal browsing by default, legacy Offline state migrated, HTTPS navigation still requires a separate user tap")
+print("PASS browser policy: fresh installs Offline; legacy implicit Online is rejected; explicit disclosure opt-in is required; HTTPS navigation still requires a separate Go/site tap")
 print("PASS browser policy: encoded explicit search, HTTPS-only with HTTP/redirect downgrade blocking, no JS bridge/request interceptor")
 print("PASS browser settings: Safe Browsing defaults on, confirmed opt-out persists, and current/future WebViews track the preference")
 print("PASS WebView source security: Safe Browsing, mixed-content/file-access restrictions, SSL cancel, site permission denial, pop-up/download handling")

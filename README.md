@@ -20,7 +20,7 @@ Previous releases remain available on the [full releases page](https://github.co
 - Local task capture, edit, completion, delete/undo, notes, due date/time, priority, subtasks, attachments, templates
 - Task reminders: in-app dialog plus best-effort OS notifications, daily/weekly/monthly repeat rules, custom notification sound — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md) for the honest limits
 - Encrypted portable backup / restore
-- HTTPS-only in-app browser: search engines, AI site shortcuts, tabs, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
+- HTTPS-only in-app browser: starts Offline; first remote navigation requires an explicit disclosure and opt-in. Search engines, AI site shortcuts, tabs, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
 - Optional in-app update check against signed GitHub Releases (sideload flavor)
 
 ## Agents & contributors
@@ -33,14 +33,14 @@ Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)**
 
 ## Build and test
 
-From `android-app/`:
+From the repository root:
 
 ```bash
-sh tools/check-v1-source.sh
-./gradlew --no-daemon assembleGithubSideloadDebug lintGithubSideloadDebug testGithubSideloadDebugUnitTest
+sh android-app/tools/check-v1-source.sh
+npm test
 ```
 
-Root web prototype: `npm test`.
+For Android SDK setup, both debug-flavor build commands, measured artifact metadata, and the device-test caveats, see [`android-app/README.md`](android-app/README.md).
 
 ## License
 

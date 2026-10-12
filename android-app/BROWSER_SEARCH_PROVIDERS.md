@@ -17,7 +17,7 @@ ChatGPT, Perplexity, Google Gemini, Claude, Microsoft Copilot, Grok, DeepSeek, P
 - Tapping a provider also selects and persists its corresponding provider for the existing Go/Search action.
 - Query-prefill behavior is controlled by each third-party website. Some providers may ignore the query, require sign-in, or ask the user to submit the question again. A guaranteed in-app generated answer requires a supported API and user-authorized credentials; this feature does not bypass provider access controls.
 - Provider chips are horizontally scrollable to keep the interface compact on phones. The full search catalog remains available in the native selector.
-- The browser remains offline until the user enables Online. Queries are not sent in the background.
+- Browsing starts Offline. The first requested Go/search/provider navigation displays a data/network disclosure and requires the user's explicit **Enable Online** choice before continuing; enabling Online alone sends no request. The user can switch browsing Offline again from **Browser actions**. Queries are not sent in the background.
 
 ## Security and scope
 
