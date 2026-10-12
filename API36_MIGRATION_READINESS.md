@@ -11,7 +11,8 @@ Google Play requires new app submissions and app updates to target Android 16 / 
 
 - Gradle `compileSdk` and `targetSdk` use API 36; the device-test artifact validator is aligned.
 - `MainActivity` registers an API 33+ `OnBackInvokedCallback`; legacy and predictive Back share the same handler for WebView history, fullscreen exit, tab close and browser-to-task fallback. The old `onBackPressed()` remains for pre-33 compatibility.
-- The source guard checks callback registration/cleanup and target SDK alignment.
+- Base `main` paired API 36 with AGP 8.8.2 / Gradle 8.10.2, although official AGP 8.8 support stops at API 35. This branch updates to AGP 8.12.2 / Gradle 8.13, the API 36-compatible pair documented by Android.
+- The source guard checks callback registration/cleanup, target SDK alignment, and the selected AGP/Gradle toolchain.
 - Unrelated changes from main, including the task-list render gate and WebView hardware acceleration, must be preserved during review.
 
 ## Acceptance before production release
