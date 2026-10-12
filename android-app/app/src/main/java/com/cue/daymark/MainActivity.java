@@ -124,6 +124,7 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_BOOKMARKS_KEY = "bookmarked_origins";
     private static final String SEARCH_ENGINE_KEY = "search_engine";
     private static final String BROWSER_ONLINE_ENABLED_KEY = "online_browsing_enabled";
+    private static final String BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY = "online_browsing_explicit_opt_in_v1";
     private static final String SAFE_BROWSING_ENABLED_KEY = "safe_browsing_enabled";
     private static final String BROWSER_BLOCK_IMAGES_KEY = "block_network_images";
     private static final String BROWSER_DESKTOP_DEFAULT_KEY = "desktop_site_default";
@@ -413,10 +414,19 @@ public final class MainActivity extends Activity {
     }
 
     private boolean readBrowserOnlinePreference() {
-        // Older builds persisted an Offline opt-in switch that is no longer shown.
-        // Migrate those installs so removing the switch cannot leave the browser blocked.
-        browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
-        return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
+        try {
+            boolean savedOnlineChoice = browserPreferences.getBoolean(BROWSER_ONLINE_ENABLED_KEY, false);
+            boolean explicitConsent = browserPreferences.getBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, false);
+            if (!explicitConsent && browserPreferences.contains(BROWSER_ONLINE_ENABLED_KEY)) {
+                // Earlier builds wrote Online as a default. That value is not consent.
+                browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
+            }
+            return BrowserNetworkPolicy.hasExplicitOptIn(savedOnlineChoice, explicitConsent);
+        } catch (ClassCastException invalidPreference) {
+            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY)
+                    .remove(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY).apply();
+            return BrowserNetworkPolicy.DEFAULT_ONLINE_ENABLED;
+        }
     }
 
     private boolean readSafeBrowsingPreference() {
@@ -4199,12 +4209,13 @@ public final class MainActivity extends Activity {
         if (browserNetworkPolicy.isOnlineEnabled() == enabled) return;
         browserNetworkPolicy.setOnlineEnabled(enabled);
         if (enabled) {
-            browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true).apply();
+            browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)
+                    .putBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, true).apply();
             if (browserStatus != null) browserStatus.setText("Online access enabled. No website opens until you tap Go or a site.");
         } else {
-            // Keep this failure closed for the current session, but do not persist a
-            // hidden Offline state that users cannot change from the browser UI.
-            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY).apply();
+            // Offline is the fail-closed default; remove both the Online choice and its consent marker.
+            browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY)
+                    .remove(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY).apply();
             showBrowserHome();
             showBrowserOfflineStatus();
         }
@@ -7745,7 +7756,6 @@ public final class MainActivity extends Activity {
         }
     }
 }
-
 
 
 
