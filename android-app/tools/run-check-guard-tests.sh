@@ -2,7 +2,7 @@
 # Regression test for issue #196: source guards must fail when required wiring is absent.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-ACTIVITY="$ROOT/app/src/main/java/com/cue/daymark/MainActivity.java"
+ACTIVITY="$ROOT/app/src/main/java/com/abrar/daymark/MainActivity.java"
 BACKUP=$(mktemp)
 cp "$ACTIVITY" "$BACKUP"
 restore() { cp "$BACKUP" "$ACTIVITY"; rm -f "$BACKUP"; }
