@@ -149,3 +149,14 @@ Work by: Vibe
 Model: GLM (glm-5-latest-short)
 Tooling: GitHub MCP tools
 Timestamp (UTC): 2026-10-09T20:20:35.332Z
+
+
+## Historical handoff notice — 2026-10-13
+
+This document records the 2026-10-09 v1.0.5 pre-release handoff snapshot. Since then, v1.0.5 has been published; statements above such as “candidate” and “latest known public release v1.0.4” are historical, not current instructions. For live source, release, open-PR, and device-gate status, see [CURRENT_STATUS_2026-10-13.md](docs/CURRENT_STATUS_2026-10-13.md). The owner-approved v1.0 identity reset is an upcoming target tracked by #285/#283, not a shipped build.
+
+---
+Work by: Cue
+Model: not disclosed by runtime
+Tooling: GitHub connector CLI and local documentation review
+Timestamp (UTC): 2026-10-13T13:20:53Z

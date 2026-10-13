@@ -100,3 +100,14 @@ Work by: Grok
 Model: Grok 4.5 (xAI)
 Tooling: web research + Daymark product knowledge
 Timestamp (UTC): 2026-10-11T18:10:00Z
+
+
+## Current-source status update — 2026-10-13
+
+This is an addendum, not a rewrite of the 2026-10-11 competitor snapshot. Since that snapshot, current `main` has basic local HTTPS-origin bookmarks, a filterable tab switcher (#284), and a dedicated Browser Settings owner for browser preferences. Private/session tabs, full typed-history search, tab groups, and browser-selection-to-task capture remain gaps; device acceptance for #221/#222/#160 is still open. Natural-language quick add is **not on current `main`**: PR #267 remains open, so do not count it as shipped or list it as a protected current-main feature until it is merged.
+
+---
+Work by: Cue
+Model: not disclosed by runtime
+Tooling: GitHub connector CLI and local source review
+Timestamp (UTC): 2026-10-13T13:20:53Z

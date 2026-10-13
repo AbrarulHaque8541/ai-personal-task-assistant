@@ -20,7 +20,7 @@ Previous releases remain available on the [full releases page](https://github.co
 - Local task capture, edit, completion, delete/undo, notes, due date/time, priority, subtasks, attachments, templates
 - Task reminders: in-app dialog plus best-effort OS notifications, daily/weekly/monthly repeat rules, custom notification sound — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md) for the honest limits
 - Encrypted portable backup / restore
-- HTTPS-only in-app browser: starts Offline; first remote navigation requires an explicit disclosure and opt-in. Search engines, AI site shortcuts, tabs, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
+- HTTPS-only in-app browser: starts Offline; first remote navigation requires an explicit disclosure and opt-in. Search engines, AI site shortcuts, tabs, HTTPS-origin bookmarks, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
 - Optional in-app update check against signed GitHub Releases (sideload flavor)
 
 ## Agents & contributors
@@ -30,6 +30,7 @@ Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)**
 - Production signing secrets are already in GitHub Actions — **do not ask the owner for keystore files**.
 - Publish only by tagging `vX.Y.Z` on `main` so `.github/workflows/android-production-release.yml` runs.
 - Verify live Releases, Issues, and PRs instead of trusting outdated “candidate” sentences in old audit notes.
+- For the verified source/release distinction, active blockers, and approved-but-unmerged identity target as of 2026-10-13, see the [repository status snapshot](docs/CURRENT_STATUS_2026-10-13.md).
 
 ## Build and test
 

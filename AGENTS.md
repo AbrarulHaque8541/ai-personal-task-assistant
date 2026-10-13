@@ -14,6 +14,7 @@ Short on purpose. Hard limits are few; everywhere else, use your full capability
 4. **Secrets are already in GitHub Actions:** `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Never ask the owner for keystore files or passwords. Never print them. Never put write tokens in the APK.
 5. **Signer pin:** `UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256` = `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`
 6. **Usual ship path:** branch → PR → CI → `main` → tag `v` + `versionName` → `android-production-release.yml` → signed APK/AAB + `daymark-updater-v1` notes. If you can drive that path yourself, do it — do not invent extra gates.
+7. **Active-work handoff:** Before repository work, read the latest handoff in [docs/CURRENT_STATUS_2026-10-13.md](docs/CURRENT_STATUS_2026-10-13.md). It distinguishes shipped/current-main facts from approved-but-unmerged plans and records exact PR heads, CI failures, and gates. Treat it as dated evidence: re-check live `main`, Releases, issues, PR heads, and checks before acting.
 
 ## 1. Work style — capable, not blocked
 
@@ -21,6 +22,7 @@ Short on purpose. Hard limits are few; everywhere else, use your full capability
 - Use the tools and access you already have (GitHub, CI, code, research). If you can open a PR, merge when appropriate, tag, or fix CI yourself, **do that** instead of waiting for a human to click for you.
 - Rules below protect package identity, signing, and user data. They are not meant to slow a capable agent down.
 - Verify claims against **live** `main` / Releases / CI. Write what is true now — not an upside-down timeline.
+- **Technology choices:** Prefer currently maintained, stable Android/platform APIs and libraries. Weigh privacy, security, compatibility (including supported API levels), and lifecycle/support quality. Upgrade a dependency or API only for a concrete benefit—not novelty alone—and document the trade-offs and verification.
 
 ## 2. MANDATORY AGENT IDENTITY — EVERY REPO ACTION
 

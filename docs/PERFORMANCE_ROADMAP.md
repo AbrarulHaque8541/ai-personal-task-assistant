@@ -1,38 +1,42 @@
 # Daymark performance roadmap
 
-First dedicated performance track (2026-10-10). Goal: keep Tasks + embedded browser responsive as features grow.
+First dedicated performance track began 2026-10-10. Status last source-checked against live `main` `efbc1cce87dc118ffdf959a14ce75199a8f860c4` on 2026-10-13. Goal: keep Tasks + embedded browser responsive as features grow, without claiming unmeasured gains.
 
 ## Principles
 - Measure before claiming wins (Systrace / Macrobenchmark / simple wall-clock).
 - Prefer Android System WebView knobs that do not weaken HTTPS / privacy policy.
-- Avoid UI thrash: no full Activity rebuild for small state changes.
+- Avoid UI thrash; skip unnecessary work, but do not equate a render gate with row-level diffing.
 - Cache aggressively where safe; never skip security checks for speed.
 
-## Shipped in this branch
-1. **WebView HTTP cache** — `WebSettings.LOAD_DEFAULT` so repeat navigations reuse disk cache.
-2. **Automatic images** — `setLoadsImagesAutomatically(true)` (still gated by network policy).
-3. **Hardware layer deferred** — not enabled by default. It can increase GPU memory pressure or expose device/WebView-specific rendering issues; enable only after representative-device measurements show a repeatable improvement.
+## Present in current main source
+1. **WebView HTTP cache** — `WebSettings.LOAD_DEFAULT` allows normal cache behavior.
+2. **Automatic images** — `setLoadsImagesAutomatically(true)` remains gated by network policy.
+3. **Hardware layer + offscreen pre-raster** — configured on the Daymark WebView. This is source state only; GPU memory pressure, blank viewport, and device-specific rendering still need physical-device testing.
+4. **Pause/resume lifecycle** — WebView timers pause while not visible and resume with the session.
+5. **Task list render gate** — skips rebuilding for identical list state; updates still rebuild rather than diff individual rows.
+6. **Task search debounce** — a 150 ms debounce is present before task-list filtering/render.
+7. **Network-image preference** — user-controlled and persisted; this is a data-saving option, not an ad/tracker blocker.
 
 ## Validation status
-- HTTP cache mode and automatic image loading are source-configured; no measured speedup is claimed.
-- Hardware-layer forcing was removed until a repeatable before/after benchmark and rendering/memory checks are available.
-- CI/build success is not a substitute for physical-device FPS, memory, or blank-viewport verification.
+- Main Android CI passed on the reviewed SHA: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/38399676414.
+- Source configuration and CI do not establish physical-device FPS, memory, thermal behavior, blank-WebView recovery, or visual correctness. No device performance measurements are recorded here.
+- Keep #221 (blank viewport), #222 (browser UX/device acceptance), and #160 (device matrix) open until real-device evidence is recorded.
 
-## Next multi-purpose work packages (implement as focused PRs, not spam)
-| ID | Area | Work |
-|----|------|------|
-| P01 | Browser | Pause/resume timers; avoid work while WebView not visible |
-| P02 | Browser | Cap concurrent `evaluateJavascript` / extension inject cost |
-| P03 | Browser | Optional image block toggle already exists — document hot path |
-| P04 | Browser | Download path: prefer DownloadManager; no main-thread IO |
-| P05 | Tasks | Incremental task list update (diff) instead of full rebuild |
-| P06 | Tasks | Debounce search/filter typing |
-| P07 | Tasks | Lazy-build off-screen sections |
-| P08 | Startup | Defer non-critical UI (templates, suggestion ranking) |
-| P09 | Storage | Profile encrypt/decrypt path; avoid double-decode |
-| P10 | Memory | Bound WebView tab count (policy already exists) — enforce aggressively |
-| P11 | Main thread | Audit `MainActivity` for heavy work on UI thread |
-| P12 | Scroll | Recycler-style recycling if task list grows large |
+## Remaining work packages
+| ID | Area | Work | Status |
+|----|------|------|--------|
+| P01 | Browser | Pause/resume timers; avoid work while WebView is not visible | Source present; device measurement pending |
+| P02 | Browser | Cap concurrent `evaluateJavascript` / extension-injection cost | Open |
+| P03 | Browser | Document image-blocking hot path | Source option present; no network-performance claim |
+| P04 | Browser | Download path: prefer DownloadManager; avoid main-thread I/O | Review/measurement pending |
+| P05 | Tasks | Incremental row diff instead of full rebuild on changed content | Open; render gate only skips identical state |
+| P06 | Tasks | Debounce search/filter typing | Source present (150 ms); device measurement pending |
+| P07 | Tasks | Lazy-build off-screen sections | Open |
+| P08 | Startup | Defer non-critical UI (templates, suggestion ranking) | Open |
+| P09 | Storage | Profile encrypt/decrypt path; avoid double-decode | Open |
+| P10 | Memory | Enforce a bounded WebView tab count | Policy exists; profile real-device memory |
+| P11 | Main thread | Audit `MainActivity` for heavy work on UI thread | Open |
+| P12 | Scroll | Recycler-style recycling if task list grows large | Open; measure before adding complexity |
 
 ## Explicit non-goals
 - Shipping **hundreds of empty GitHub issues/PRs** (noise, CI load, agent confusion).
@@ -40,10 +44,17 @@ First dedicated performance track (2026-10-10). Goal: keep Tasks + embedded brow
 - Claiming device FPS without measurement.
 
 ## How to extend
-One PR per package above, with: before/after note, guard updates if needed, CI green.
+One focused PR per package, with before/after evidence, necessary source-guard updates, and green CI. Preserve issue and release gates; do not merge or publish on the basis of this roadmap.
 
 ---
+Original roadmap authorship:
 Work by: ChatGPT
 Model: GPT-6
 Tooling: GitHub MCP tools
 Timestamp (UTC): 2026-10-10T15:15:04Z
+
+Current-source refresh:
+Work by: Cue
+Model: not disclosed by runtime
+Tooling: GitHub connector CLI and local source review
+Timestamp (UTC): 2026-10-13T13:20:53Z
