@@ -52,6 +52,10 @@ jobs:
               tail -n 60 /tmp/guard.log
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            tail -n 40 /tmp/guard.log | head -c 700 | tr '\n' '|' > /tmp/guard-msg.txt
+            echo "::error::GUARDFAIL $(cat /tmp/guard-msg.txt)"
+            tail -n 40 /tmp/guard.log | tail -c 700 | tr '\n' '|' > /tmp/guard-msg2.txt
+            echo "::error::GUARDFAIL2 $(cat /tmp/guard-msg2.txt)"
           fi
           exit "$status"
 
