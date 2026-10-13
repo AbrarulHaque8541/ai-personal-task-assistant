@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1]).resolve()
-activity_path = root / "app/src/main/java/com/cue/daymark/MainActivity.java"
+activity_path = root / "app/src/main/java/com/abrar/daymark/MainActivity.java"
 source = activity_path.read_text(encoding="utf-8")
 
 start = source.find("@Override public void onPageStarted(String url)")

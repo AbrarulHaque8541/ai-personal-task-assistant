@@ -14,8 +14,8 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-parser = (root / "app/src/main/java/com/cue/daymark/ExtensionPackageParser.java").read_text(encoding="utf-8")
-store = (root / "app/src/main/java/com/cue/daymark/ExtensionStore.java").read_text(encoding="utf-8")
+parser = (root / "app/src/main/java/com/abrar/daymark/ExtensionPackageParser.java").read_text(encoding="utf-8")
+store = (root / "app/src/main/java/com/abrar/daymark/ExtensionStore.java").read_text(encoding="utf-8")
 smoke = (root / "tools/ExtensionPackageParserSmoke.java").read_text(encoding="utf-8")
 
 archive = parser.split("static BrowserExtension parseWebExtensionArchive", 1)[1].split(
