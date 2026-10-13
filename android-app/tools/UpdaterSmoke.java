@@ -1,7 +1,7 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
-import com.cue.daymark.updater.UpdaterCore;
-import com.cue.daymark.updater.UpdaterRecoveryStore;
+import com.abrar.daymark.updater.UpdaterCore;
+import com.abrar.daymark.updater.UpdaterRecoveryStore;
 
 import java.io.File;
 import java.io.FileOutputStream;

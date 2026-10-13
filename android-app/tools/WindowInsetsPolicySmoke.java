@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only checks for the window-insets (soft keyboard) policy. */
 public final class WindowInsetsPolicySmoke {
