@@ -101,6 +101,9 @@ build = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
 deps = build.split("dependencies {", 1)[1].split("}", 1)[0]
 assert "implementation(" not in deps and "api(" not in deps and "runtimeOnly(" not in deps, "unexpected app runtime dependency"
 activity = (main / "java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+render_suggestions = re.search(r"private void renderSuggestions\(LocalDate today\)\s*\{(.*?)\n    \}", activity, re.S)
+assert render_suggestions and re.match(r"\s*if \(suggestionList == null\) return;", render_suggestions.group(1)), \
+    "the suggestions renderer must tolerate its optional view being absent"
 sideload_network = (root / "app/src/githubSideload/java/com/cue/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
 play_network = (root / "app/src/play/java/com/cue/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
 assert "UpdaterNetworkAccess.isWifiConnected(getApplicationContext())" in activity, \

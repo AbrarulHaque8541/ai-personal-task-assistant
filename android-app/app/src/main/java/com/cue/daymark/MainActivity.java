@@ -4666,6 +4666,7 @@ public final class MainActivity extends Activity {
     }
 
     private void renderSuggestions(LocalDate today) {
+        if (suggestionList == null) return;
         suggestionList.removeAllViews();
         if (storageLoading) {
             TextView loading = text("Checking saved tasks…", 12, palette.muted, Typeface.NORMAL);
