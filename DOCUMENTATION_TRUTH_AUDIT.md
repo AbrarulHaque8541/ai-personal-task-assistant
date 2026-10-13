@@ -33,7 +33,7 @@ At the audit snapshot, the repository tracked two different debug APKs; neither 
 
 They are distinct binaries, not duplicate byte-for-byte copies. The second artifact's metadata records source commit `aac189a5b6fe177fd4fbe480232ff81390f3e139`; it is historical and device-untested. Local Gradle output in the audit workspace also contained Git-ignored debug APKs and unsigned release APKs under `android-app/app/build/outputs`; these were generated build output, not tracked release assets. No temporary `.tmp`/`.temp` files were found. At the audit snapshot no generated build output or APK was added, removed, or published by that change.
 
-The published [v1.0.0 release](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.0) still has **zero attached assets**; its old release notes link to a mutable `raw/main` artifact that is no longer a valid download source. Separately, the published [v1.0.4 release](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4) now has APK and AAB assets. The root README points to v1.0.4; v1.0.5 remains an unpublished source candidate until the exact-tag production workflow passes.
+The published [v1.0.0 release](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.0.0) still has **zero attached assets**; its old release notes link to a mutable `raw/main` artifact that is no longer a valid download source. Separately, the published [v1.0.4 release](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.0.4) now has APK and AAB assets. The root README points to v1.0.4; v1.0.5 remains an unpublished source candidate until the exact-tag production workflow passes.
 
 ## Checks reproduced at the audited main SHA
 
@@ -45,6 +45,6 @@ The published [v1.0.0 release](https://github.com/AbrarulHaque8541/ai-personal-t
 | `sh tools/run-attachment-tests.sh` (`android-app/`) | **PASS** — 35 assertions. |
 | `sh tools/run-portable-backup-tests.sh` (`android-app/`) | **PASS** — 307 assertions. |
 | `./gradlew --offline --no-daemon --console=plain :app:processGithubSideloadDebugMainManifest :app:processPlayDebugMainManifest` (`android-app/`) | **PASS** — `BUILD SUCCESSFUL`; merged Play debug has `INTERNET`, and sideload debug has `INTERNET` plus `ACCESS_NETWORK_STATE`. |
-| GitHub Actions Android CI for `66476cb49a6caa9a43b65db39912ee397b6e6857` | **PASS** — host regression checks and debug-variant build/verification ([run](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37445697952)). This is CI evidence, not device testing. |
+| GitHub Actions Android CI for `66476cb49a6caa9a43b65db39912ee397b6e6857` | **PASS** — host regression checks and debug-variant build/verification ([run](https://github.com/AbrarulHaque8541/daymark/actions/runs/37445697952)). This is CI evidence, not device testing. |
 
 The local audit did not assemble an APK, install an APK, test a device/emulator, test Android API 26 runtime behavior, or exercise live network/update or real Android document-provider/Keystore behavior. `adb` was unavailable. The `main` SHA and GitHub release/PR state can change after this snapshot.
