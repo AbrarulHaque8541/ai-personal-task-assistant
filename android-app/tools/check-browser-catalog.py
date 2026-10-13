@@ -2,10 +2,10 @@
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-addr = (root / "app/src/main/java/com/cue/daymark/BrowserAddress.java").read_text(encoding="utf-8")
-ai = (root / "app/src/main/java/com/cue/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
-activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
-network = (root / "app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
+addr = (root / "app/src/main/java/com/abrar/daymark/BrowserAddress.java").read_text(encoding="utf-8")
+ai = (root / "app/src/main/java/com/abrar/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
+activity = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
+network = (root / "app/src/main/java/com/abrar/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
 providers = (root / "BROWSER_SEARCH_PROVIDERS.md").read_text(encoding="utf-8")
 
 for engine in ("DUCKDUCKGO", "GOOGLE", "BING", "BRAVE", "STARTPAGE", "KAGI", "YOU", "YANDEX"):

@@ -10,7 +10,7 @@ import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
-writer = (root / "app/src/main/java/com/cue/daymark/PortableExportWriter.java").read_text(encoding="utf-8")
+writer = (root / "app/src/main/java/com/abrar/daymark/PortableExportWriter.java").read_text(encoding="utf-8")
 smoke = (root / "tools/PortableExportWriterSmoke.java").read_text(encoding="utf-8")
 
 assert 'INCOMPLETE_MARKER = ".daymark-incomplete-"' in writer, \

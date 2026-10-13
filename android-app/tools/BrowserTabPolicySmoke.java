@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only regression tests for bounded browser tab state. */
 public final class BrowserTabPolicySmoke {

@@ -11,8 +11,8 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVITY = (ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text()
-POLICY = (ROOT / "app/src/main/java/com/cue/daymark/WindowInsetsPolicy.java").read_text()
+ACTIVITY = (ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text()
+POLICY = (ROOT / "app/src/main/java/com/abrar/daymark/WindowInsetsPolicy.java").read_text()
 checks = 0
 
 

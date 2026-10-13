@@ -31,8 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-device-test\.[0-9]+$ ]]; then
-            echo "Expected a vMAJOR.MINOR.PATCH-device-test.N tag; got $GITHUB_REF_NAME" >&2
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?-device-test\.[0-9]+$ ]]; then
+            echo "Expected a vMAJOR.MINOR[-PATCH]-device-test.N tag; got $GITHUB_REF_NAME" >&2
             exit 1
           fi
           tag_ref="refs/tags/$GITHUB_REF_NAME"
@@ -106,7 +106,7 @@ jobs:
           version_code="$(apkanalyzer manifest version-code "$apk_path")"
           min_sdk="$(apkanalyzer manifest min-sdk "$apk_path")"
           target_sdk="$(apkanalyzer manifest target-sdk "$apk_path")"
-          [[ "$application_id" == "com.cue.daymark" ]]
+          [[ "$application_id" == "com.abrar.daymark" ]]
           [[ "$version_name" == "$EXPECTED_VERSION" ]]
           [[ "$min_sdk" == "26" ]]
           [[ "$target_sdk" == "35" ]]

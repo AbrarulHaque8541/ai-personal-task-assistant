@@ -9,7 +9,7 @@ This audit began against main `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. PR #18
 - Latest published GitHub release: [v1.0.4](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4), with APK/AAB assets.
 - Source candidate: `versionName = 1.0.5`, `versionCode = 6`; v1.0.5 was not published at audit time.
 - Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37942559451) passed on the checked main SHA, including host checks, signing-secret validation, signed APK/AAB build, and APK signer match. This is not a physical-device test and does not itself publish a GitHub Release.
-- Package ID: `com.cue.daymark`. Production certificate pin: `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
+- Package ID: `legacy application ID`. Production certificate pin: `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
 - No open PRs or open issues were returned by the GitHub repository searches at the start of this audit; recheck live state before release.
 - Android project is native Java with platform APIs and System WebView; the root HTML/CSS/JS project is a separate web prototype, not the Android app UI.
 

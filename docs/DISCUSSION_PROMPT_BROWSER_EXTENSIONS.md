@@ -6,7 +6,7 @@ Copy/paste to ChatGPT / Claude / Gemini / etc.
 
 ## Context
 
-We build **Daymark**, a privacy-first Android app (`com.cue.daymark`).  
+We build **Daymark**, a privacy-first Android app (`com.abrar.daymark`).  
 The in-app browser is **Android System WebView**, not a Chromium embed (not Kiwi-sized).
 
 Security policy forbids:

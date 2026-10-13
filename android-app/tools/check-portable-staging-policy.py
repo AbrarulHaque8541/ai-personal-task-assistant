@@ -10,7 +10,7 @@ import re
 import sys
 
 root = pathlib.Path(sys.argv[1])
-manager = (root / "app/src/main/java/com/cue/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
+manager = (root / "app/src/main/java/com/abrar/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
 
 constructor = manager.split("PortableBackupManager(Context context, RestoreCheckpoint checkpoint) {", 1)[1]
 constructor = constructor.split("\n    }", 1)[0]

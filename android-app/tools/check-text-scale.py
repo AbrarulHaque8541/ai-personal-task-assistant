@@ -12,8 +12,8 @@ instead of failing.
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVITY = (ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text()
-POLICY = (ROOT / "app/src/main/java/com/cue/daymark/TextScalePolicy.java").read_text()
+ACTIVITY = (ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text()
+POLICY = (ROOT / "app/src/main/java/com/abrar/daymark/TextScalePolicy.java").read_text()
 checks = 0
 
 

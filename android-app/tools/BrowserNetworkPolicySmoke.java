@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only regression checks for the browser's user-controlled network mode. */
 public final class BrowserNetworkPolicySmoke {

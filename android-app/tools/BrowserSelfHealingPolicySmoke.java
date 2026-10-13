@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Host smoke tests for the bounded, HTTPS-only browser recovery policy. */
 public final class BrowserSelfHealingPolicySmoke {

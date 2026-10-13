@@ -9,7 +9,7 @@ Review current `main`, this document, `AGENTS.md`, `PROJECT_PLAN.md`, and the pr
 ## Current verified source/release snapshot
 
 - Repository: `AbrarulHaque8541/ai-personal-task-assistant`
-- App/package: Daymark / `com.cue.daymark`
+- App/package: Daymark / `legacy application ID`
 - Last observed main SHA: `88f3fd395babe273085fc48c3607c30c3f3e4e53`
 - Candidate version: `1.0.5`, `versionCode 6`
 - Latest known public release: `v1.0.4`; do not call v1.0.5 released until the exact tag's production workflow completes and the release assets are verified.
