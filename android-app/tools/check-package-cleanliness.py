@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail if the checked-out repository still contains the retired Android package/path."""
+"""Fail if the checked-out repository still contains any retired Android namespace/package fragment or source path."""
 from pathlib import Path
 import sys
 
@@ -9,20 +9,23 @@ repo = Path(sys.argv[1]).resolve()
 old_segment = "".join(chr(code) for code in (99, 117, 101))
 old_package = ".".join(("com", old_segment, "daymark"))
 old_path = old_package.replace(".", "/")
+# Also reject the old namespace prefix and the dotted segment on their own.
+# Construct them at runtime so this guard does not preserve the forbidden text.
+forbidden_fragments = (".".join(("com", old_segment)), "." + old_segment)
 ignored = {".git", ".gradle", "build", "node_modules", "__pycache__"}
 matches = []
 for path in repo.rglob("*"):
     if not path.is_file() or any(part in ignored for part in path.relative_to(repo).parts):
         continue
     rel = path.relative_to(repo).as_posix()
-    if old_path in rel:
+    if old_path in rel or any(fragment in rel for fragment in forbidden_fragments):
         matches.append(rel)
         continue
     try:
         content = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         continue
-    if old_package in content or old_path in content:
+    if old_package in content or old_path in content or any(fragment in content for fragment in forbidden_fragments):
         matches.append(rel)
 if matches:
     print("FAIL: retired package identity/path remains in checked-out repository:")
@@ -60,4 +63,4 @@ for source_root in source_roots:
             print(f"FAIL package identity: {java_file.relative_to(repo)} expected package {expected_package}")
             raise SystemExit(1)
 
-print("PASS package cleanliness: no retired package identifier/path; Gradle identity and Java package paths are consistent")
+print("PASS package cleanliness: no retired namespace fragment/path; Gradle identity and Java package paths are consistent")
