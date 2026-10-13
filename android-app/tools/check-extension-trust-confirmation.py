@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+activity = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
 
 import_flow = activity.split("private void importExtensionFromUri", 1)[1].split(
     "private void confirmAndInstallExtension", 1
