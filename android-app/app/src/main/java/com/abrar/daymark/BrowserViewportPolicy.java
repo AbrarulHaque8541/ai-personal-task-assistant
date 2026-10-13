@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /**
  * Pure policy for the embedded browser's viewport, zoom, and pop-up handling.
