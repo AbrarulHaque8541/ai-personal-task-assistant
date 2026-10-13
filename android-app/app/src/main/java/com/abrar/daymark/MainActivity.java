@@ -1082,7 +1082,7 @@ public final class MainActivity extends Activity {
             navTasksIcon.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.NORMAL : Typeface.BOLD));
             navTasksLabel.setTextColor(inWeb ? palette.muted : palette.accent);
             navTasksLabel.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.NORMAL : Typeface.BOLD));
-            navTasksTab.setBackground(inWeb ? null : shape(palette.accentSoft, 12, palette.accentSoft));
+            navTasksTab.setBackground(inWeb ? null : shape(palette.accentSoft, 16, palette.accentSoft));
             navTasksTab.setContentDescription(inWeb
                     ? "Tasks page. Switch to tasks and dashboard."
                     : "Tasks page, selected.");
@@ -1094,7 +1094,7 @@ public final class MainActivity extends Activity {
             navWebIcon.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.BOLD : Typeface.NORMAL));
             navWebLabel.setTextColor(inWeb ? palette.accent : palette.muted);
             navWebLabel.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.BOLD : Typeface.NORMAL));
-            navWebTab.setBackground(inWeb ? shape(palette.accentSoft, 12, palette.accentSoft) : null);
+            navWebTab.setBackground(inWeb ? shape(palette.accentSoft, 16, palette.accentSoft) : null);
             navWebTab.setContentDescription(inWeb
                     ? "Web browser page, selected."
                     : "Web browser page. Switch to web browser and search.");
@@ -1119,7 +1119,7 @@ public final class MainActivity extends Activity {
         LinearLayout mark = new LinearLayout(this);
         mark.setGravity(Gravity.CENTER);
         TextView markText = text("d", 20, Color.WHITE, Typeface.BOLD);
-        mark.setBackground(shape(palette.accent, 14, palette.accent));
+        mark.setBackground(shape(palette.accent, 22, palette.accent));
         mark.addView(markText);
         LinearLayout.LayoutParams markParams = new LinearLayout.LayoutParams(dp(38), dp(38));
         bar.addView(mark, markParams);
@@ -1183,7 +1183,7 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(13), dp(11), dp(13), dp(11));
-        card.setBackground(shape(palette.accentSoft, 12, palette.accentSoft));
+        card.setBackground(shape(palette.accentSoft, 16, palette.accentSoft));
 
         TextView shield = text("●", 11, palette.accent, Typeface.BOLD);
         shield.setGravity(Gravity.CENTER);
@@ -1212,7 +1212,7 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(12), dp(9), dp(12), dp(9));
-        card.setBackground(shape(palette.surface, 14, palette.line));
+        card.setBackground(shape(palette.surface, 20, palette.line));
         card.setElevation(dp(1));
 
         LinearLayout modes = new LinearLayout(this);
@@ -1240,7 +1240,7 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setMinHeight(dp(52));
         quickCaptureInput.setTextColor(palette.text);
         quickCaptureInput.setHintTextColor(palette.muted);
-        quickCaptureInput.setBackground(shape(palette.background, 10, palette.line));
+        quickCaptureInput.setBackground(shape(palette.background, 14, palette.line));
         quickCaptureInput.setText(webMode ? "" : taskDraft);
         if (!webMode && taskDraft != null && !taskDraft.isEmpty()) {
             quickCaptureInput.setSelection(Math.min(taskDraft.length(), 2048));
@@ -1370,7 +1370,7 @@ public final class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
         bar.setPadding(dp(8), dp(6), dp(8), dp(4));
-        bar.setBackground(shape(palette.surface, 18, palette.line));
+        bar.setBackground(shape(palette.surface, 22, palette.line));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -1384,7 +1384,7 @@ public final class MainActivity extends Activity {
         browserAddressInput.setPadding(dp(12), 0, dp(8), 0);
         browserAddressInput.setTextColor(palette.text);
         browserAddressInput.setHintTextColor(palette.muted);
-        browserAddressInput.setBackground(shape(palette.surfaceAlt, 16, palette.line));
+        browserAddressInput.setBackground(shape(palette.surfaceAlt, 20, palette.line));
         browserAddressInput.setContentDescription("Browser address and search field");
         top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
@@ -1402,7 +1402,7 @@ public final class MainActivity extends Activity {
         browserProviderPickerButton.setMinHeight(dp(34));
         browserProviderPickerButton.setMinimumHeight(dp(34));
         browserProviderPickerButton.setPadding(dp(6), 0, dp(6), 0);
-        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
+        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 18, palette.line));
         browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
         browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
         LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(
@@ -1536,7 +1536,7 @@ public final class MainActivity extends Activity {
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
             button.setPadding(dp(10), 0, dp(10), 0);
-            button.setBackground(shape(palette.surfaceAlt, 18, palette.surfaceAlt));
+            button.setBackground(shape(palette.surfaceAlt, 22, palette.line));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
             params.setMargins(0, 0, dp(4), 0);
@@ -1549,7 +1549,7 @@ public final class MainActivity extends Activity {
         browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
         browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
         browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
-        browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
+        browserPrivacyButton.setBackground(shape(palette.surface, 18, palette.line));
         browserPrivacyButton.setContentDescription("Browser privacy: browsing is ready for explicit user-initiated navigation; each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. Daymark's browser network policy controls Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         browserPrivacyDisclosure = disclosureText;
@@ -1648,7 +1648,7 @@ public final class MainActivity extends Activity {
         filter.setPadding(dp(12), 0, dp(12), 0);
         filter.setTextColor(palette.text);
         filter.setHintTextColor(palette.muted);
-        filter.setBackground(shape(palette.surfaceAlt, 14, palette.line));
+        filter.setBackground(shape(palette.surfaceAlt, 18, palette.line));
         root.addView(filter, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
@@ -1665,7 +1665,7 @@ public final class MainActivity extends Activity {
             tab.setMinHeight(dp(36));
             tab.setMinimumHeight(dp(36));
             tab.setPadding(dp(8), 0, dp(8), 0);
-            tab.setBackground(shape(palette.surfaceAlt, 16, palette.surfaceAlt));
+            tab.setBackground(shape(palette.surfaceAlt, 20, palette.line));
             tab.setOnClickListener(view -> {
                 selectedCategory[0] = category;
                 renderSearchProviderRows(rowsHost[0], filter.getText().toString(), selectedCategory[0], dialogRef[0]);
@@ -1724,7 +1724,7 @@ public final class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(12), 0, dp(12), 0);
             row.setMinHeight(dp(44));
-            row.setBackground(shape(palette.surface, 10, palette.surface));
+            row.setBackground(shape(palette.surface, 14, palette.line));
             row.setContentDescription("Select " + engine.label + (engine == searchEngine ? ", currently selected" : ""));
             row.setOnClickListener(view -> {
                 selectSearchEngine(engine);
@@ -1756,7 +1756,7 @@ public final class MainActivity extends Activity {
         button.setMinimumHeight(dp(34));
         button.setTextSize(11 * textScale);
         button.setPadding(dp(9), 0, dp(9), 0);
-        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
+        button.setBackground(shape(palette.surfaceAlt, 22, palette.line));
         button.setContentDescription("Search the current query with " + engine.label);
         button.setOnClickListener(view -> {
             if (!webMode) return;
@@ -1800,7 +1800,7 @@ public final class MainActivity extends Activity {
         button.setMinimumHeight(dp(34));
         button.setTextSize(11 * textScale);
         button.setPadding(dp(9), 0, dp(9), 0);
-        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
+        button.setBackground(shape(palette.surfaceAlt, 22, palette.line));
         button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
@@ -2676,7 +2676,7 @@ public final class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.VERTICAL);
             row.setPadding(dp(10), dp(9), dp(10), dp(9));
-            row.setBackground(shape(palette.surface, 10, palette.line));
+            row.setBackground(shape(palette.surface, 14, palette.line));
 
             CheckBox enabled = new CheckBox(this);
             enabled.setText(ext.name + (ext.builtIn ? " · built-in" : " · user pack"));
@@ -3857,7 +3857,7 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(15), dp(14), dp(15), dp(14));
-        card.setBackground(shape(palette.suggestionSurface, 15, palette.line));
+        card.setBackground(shape(palette.suggestionSurface, 20, palette.line));
         card.setElevation(dp(1));
 
         TextView label = text("✳  DEMO SUGGESTION", 10, palette.accent, Typeface.BOLD);
@@ -3922,14 +3922,14 @@ public final class MainActivity extends Activity {
         searchInput.setPadding(dp(12), 0, dp(12), 0);
         searchInput.setTextColor(palette.text);
         searchInput.setHintTextColor(palette.muted);
-        searchInput.setBackground(shape(palette.surface, 10, palette.line));
+        searchInput.setBackground(shape(palette.surface, 14, palette.line));
         searchRow.addView(searchInput, new LinearLayout.LayoutParams(0, dp(48), 1f));
         searchClear = text("Clear", 12, palette.accent, Typeface.BOLD);
         searchClear.setGravity(Gravity.CENTER);
         searchClear.setPadding(dp(11), 0, dp(5), 0);
         searchClear.setMinimumWidth(dp(64));
         searchClear.setFocusable(true);
-        searchClear.setBackground(shape(palette.accentSoft, 8, palette.accentSoft));
+        searchClear.setBackground(shape(palette.accentSoft, 12, palette.accentSoft));
         searchClear.setContentDescription("Clear task search");
         searchClear.setOnClickListener(view -> {
             if (searchDebounceRunnable != null) {
@@ -3971,7 +3971,7 @@ public final class MainActivity extends Activity {
         empty.setGravity(Gravity.CENTER);
         empty.setOrientation(LinearLayout.VERTICAL);
         empty.setPadding(dp(20), dp(25), dp(20), dp(25));
-        empty.setBackground(shape(palette.surface, 13, palette.line));
+        empty.setBackground(shape(palette.surface, 18, palette.line));
         emptyTitle = text("A clear start", 15, palette.text, Typeface.BOLD);
         emptyCopy = text("Capture your first task above. Small steps count.", 12, palette.muted, Typeface.NORMAL);
         emptyCopy.setGravity(Gravity.CENTER);
@@ -3996,7 +3996,7 @@ public final class MainActivity extends Activity {
         undoBar = new LinearLayout(this);
         undoBar.setGravity(Gravity.CENTER_VERTICAL);
         undoBar.setPadding(dp(14), dp(5), dp(10), dp(5));
-        undoBar.setBackground(shape(palette.surfaceAlt, 12, palette.line));
+        undoBar.setBackground(shape(palette.surfaceAlt, 16, palette.line));
         undoBar.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         undoMessage = text("Task deleted", 12, palette.text, Typeface.NORMAL);
         undoBar.addView(undoMessage, new LinearLayout.LayoutParams(0, dp(48), 1f));
@@ -4778,10 +4778,10 @@ public final class MainActivity extends Activity {
             LinearLayout item = new LinearLayout(this);
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.setPadding(dp(10), dp(9), dp(10), dp(9));
-            item.setBackground(shape(palette.surface, 10, palette.line));
+            item.setBackground(shape(palette.surface, 14, palette.line));
             TextView number = text(String.valueOf(index + 1), 11, palette.accent, Typeface.BOLD);
             number.setGravity(Gravity.CENTER);
-            number.setBackground(shape(palette.accentSoft, 8, palette.accentSoft));
+            number.setBackground(shape(palette.accentSoft, 12, palette.accentSoft));
             item.addView(number, new LinearLayout.LayoutParams(dp(27), dp(27)));
             LinearLayout copy = new LinearLayout(this);
             copy.setOrientation(LinearLayout.VERTICAL);
@@ -4810,7 +4810,7 @@ public final class MainActivity extends Activity {
         });
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(6), dp(7), dp(6), dp(7));
-        row.setBackground(shape(palette.surface, 14, palette.line));
+        row.setBackground(shape(palette.surface, 20, palette.line));
         row.setElevation(dp(1));
         row.setContentDescription("Task: " + task.title
                 + ". Swipe right to toggle completion; swipe left for task actions.");
@@ -5292,7 +5292,7 @@ public final class MainActivity extends Activity {
             LinearLayout item = new LinearLayout(this);
             item.setOrientation(LinearLayout.VERTICAL);
             item.setPadding(dp(9), dp(7), dp(9), dp(7));
-            item.setBackground(shape(palette.surface, 9, palette.line));
+            item.setBackground(shape(palette.surface, 14, palette.line));
             boolean present = attachmentStore.exists(attachment.id);
             String detail = attachment.displayName + "\n" + formatFileSize(attachment.sizeBytes)
                     + " · " + attachment.mimeType + (present ? " · stored" : " · file unavailable");
@@ -5645,7 +5645,7 @@ public final class MainActivity extends Activity {
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(9), dp(7), dp(5), dp(7));
-            row.setBackground(shape(palette.background, 10, palette.line));
+            row.setBackground(shape(palette.background, 14, palette.line));
             LinearLayout copy = new LinearLayout(this);
             copy.setOrientation(LinearLayout.VERTICAL);
             copy.addView(text(template.title, 14, palette.text, Typeface.BOLD));
@@ -7073,7 +7073,7 @@ public final class MainActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(12), dp(10), dp(12), dp(10));
-        row.setBackground(shape(palette.surface, 12, palette.line));
+        row.setBackground(shape(palette.surface, 16, palette.line));
         row.setClickable(true);
         row.setFocusable(true);
         row.setContentDescription(title + ". " + subtitle);
@@ -7716,7 +7716,7 @@ public final class MainActivity extends Activity {
         button.setTextColor(palette.dark ? palette.background : Color.WHITE);
         button.setMinHeight(dp(50));
         button.setMinimumHeight(dp(50));
-        button.setBackground(shape(palette.accent, 13, palette.accent));
+        button.setBackground(shape(palette.accent, 22, palette.accent));
         return button;
     }
 
@@ -7729,7 +7729,7 @@ public final class MainActivity extends Activity {
         button.setMinHeight(dp(48));
         button.setMinimumHeight(dp(48));
         button.setPadding(dp(8), 0, dp(8), 0);
-        button.setBackground(shape(palette.accentSoft, 18, palette.line));
+        button.setBackground(shape(palette.accentSoft, 22, palette.line));
         return button;
     }
 
@@ -7806,31 +7806,31 @@ public final class MainActivity extends Activity {
         private Palette(boolean dark, boolean highContrast) {
             this.dark = dark;
             if (dark) {
-                background = Color.rgb(18, 24, 21);
-                surface = Color.rgb(27, 36, 31);
-                surfaceAlt = Color.rgb(36, 51, 42);
-                suggestionSurface = Color.rgb(29, 43, 34);
-                text = highContrast ? Color.WHITE : Color.rgb(237, 243, 238);
-                muted = highContrast ? Color.rgb(225, 233, 227) : Color.rgb(164, 178, 167);
-                line = highContrast ? Color.rgb(136, 153, 141) : Color.rgb(54, 68, 59);
-                accent = highContrast ? Color.rgb(190, 235, 199) : Color.rgb(155, 197, 164);
-                accentSoft = highContrast ? Color.rgb(31, 58, 39) : Color.rgb(37, 57, 43);
-                warning = highContrast ? Color.rgb(255, 214, 147) : Color.rgb(229, 188, 126);
-                danger = highContrast ? Color.rgb(255, 177, 164) : Color.rgb(233, 153, 143);
-                dangerSoft = highContrast ? Color.rgb(71, 33, 29) : Color.rgb(62, 39, 37);
+                background = Color.rgb(14, 18, 22);
+                surface = Color.rgb(22, 28, 34);
+                surfaceAlt = Color.rgb(30, 38, 46);
+                suggestionSurface = Color.rgb(26, 33, 40);
+                text = highContrast ? Color.WHITE : Color.rgb(232, 238, 242);
+                muted = highContrast ? Color.rgb(206, 216, 222) : Color.rgb(148, 161, 172);
+                line = highContrast ? Color.rgb(122, 138, 148) : Color.rgb(48, 58, 68);
+                accent = highContrast ? Color.rgb(168, 232, 212) : Color.rgb(122, 204, 178);
+                accentSoft = highContrast ? Color.rgb(26, 56, 48) : Color.rgb(32, 52, 47);
+                warning = highContrast ? Color.rgb(255, 216, 152) : Color.rgb(235, 190, 122);
+                danger = highContrast ? Color.rgb(255, 176, 168) : Color.rgb(238, 150, 142);
+                dangerSoft = highContrast ? Color.rgb(74, 34, 32) : Color.rgb(58, 38, 38);
             } else {
-                background = Color.rgb(246, 247, 244);
+                background = Color.rgb(242, 245, 247);
                 surface = Color.WHITE;
-                surfaceAlt = Color.rgb(239, 244, 238);
-                suggestionSurface = Color.rgb(239, 245, 238);
-                text = highContrast ? Color.BLACK : Color.rgb(32, 41, 35);
-                muted = highContrast ? Color.rgb(48, 55, 50) : Color.rgb(91, 104, 94);
-                line = highContrast ? Color.rgb(101, 112, 103) : Color.rgb(226, 233, 226);
-                accent = highContrast ? Color.rgb(17, 64, 39) : Color.rgb(49, 91, 70);
-                accentSoft = highContrast ? Color.rgb(224, 239, 225) : Color.rgb(232, 241, 232);
-                warning = highContrast ? Color.rgb(109, 62, 12) : Color.rgb(151, 84, 53);
-                danger = highContrast ? Color.rgb(129, 35, 26) : Color.rgb(167, 71, 71);
-                dangerSoft = highContrast ? Color.rgb(255, 232, 227) : Color.rgb(251, 239, 236);
+                surfaceAlt = Color.rgb(235, 240, 243);
+                suggestionSurface = Color.rgb(238, 243, 243);
+                text = highContrast ? Color.BLACK : Color.rgb(28, 35, 42);
+                muted = highContrast ? Color.rgb(46, 54, 60) : Color.rgb(82, 95, 105);
+                line = highContrast ? Color.rgb(100, 112, 120) : Color.rgb(219, 226, 232);
+                accent = highContrast ? Color.rgb(13, 84, 73) : Color.rgb(22, 112, 95);
+                accentSoft = highContrast ? Color.rgb(219, 240, 235) : Color.rgb(226, 240, 236);
+                warning = highContrast ? Color.rgb(120, 70, 15) : Color.rgb(148, 88, 30);
+                danger = highContrast ? Color.rgb(140, 38, 30) : Color.rgb(168, 62, 56);
+                dangerSoft = highContrast ? Color.rgb(255, 231, 228) : Color.rgb(251, 238, 237);
             }
         }
 
