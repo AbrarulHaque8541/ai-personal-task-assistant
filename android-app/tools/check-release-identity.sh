@@ -33,14 +33,14 @@ name="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' "$GRADLE" | head -1)"
 require_literal "$UPDATER" 'ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580' 'UpdaterPublisherConfig must pin production signer SHA-256'
 
 # Provision the exact compile platform on all build workflows and assert the package target.
-require_literal "$DEVICE_TEST" 'platforms;android-36, build-tools;35.0.0' 'device-test workflow must provision API 36'
+require_literal "$DEVICE_TEST" 'platforms;android-36 build-tools;35.0.0' 'device-test workflow must provision API 36'
 require_literal "$DEVICE_TEST" '^v[0-9]+\.[0-9]+(\.[0-9]+)?-device-test\.[0-9]+$' 'device-test workflow must accept versioned device-test tags'
 require_literal "$DEVICE_TEST" '[[ "$target_sdk" == "36" ]]' 'device-test APK must assert target SDK 36'
-require_literal "$PRODUCTION" 'platforms;android-36, build-tools;35.0.0' 'production workflow must provision API 36'
+require_literal "$PRODUCTION" 'platforms;android-36 build-tools;35.0.0' 'production workflow must provision API 36'
 require_literal "$PRODUCTION" '[[ "$tag" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]' 'production workflow must accept the exact v1.0 release tag format'
 require_literal "$PRODUCTION" '[[ "$target_sdk_version" == "36" ]]' 'production APK must assert target SDK 36'
 require_literal "$PRODUCTION" '[[ "$GITHUB_REF_NAME" == "v${version_name}" ]]' 'production tag must match the Gradle versionName'
-require_literal "$RELEASE_ASSETS" 'platforms;android-36, build-tools;35.0.0' 'release-assets workflow must provision API 36'
+require_literal "$RELEASE_ASSETS" 'platforms;android-36 build-tools;35.0.0' 'release-assets workflow must provision API 36'
 require_literal "$RELEASE_ASSETS" '[[ "$target_sdk" == "36" ]]' 'release asset APK must assert target SDK 36'
 
 echo "PASS release identity/API 36: applicationId=com.abrar.daymark versionName=$name versionCode=$code signer pin and all release workflow gates verified"
