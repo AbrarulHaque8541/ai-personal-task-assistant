@@ -49,6 +49,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -2213,31 +2214,79 @@ public final class MainActivity extends Activity {
         browserTabButton.setContentDescription("Open tabs. " + browserTabs.size() + " tab(s) open.");
     }
 
-    private void showBrowserTabsDialog() {
-        List<String> labels = new ArrayList<>();
-        labels.add("+ New tab");
+    private String browserTabLabel(DaymarkWebView tab) {
+        String title = tab.getTitle();
+        String url = tab.getUrl();
+        String label = title == null || title.trim().isEmpty() ? url : title.trim();
+        if (label == null || label.trim().isEmpty()) label = "New tab";
+        if (tab == browserWebView) label = "● " + label;
+        return label;
+    }
+
+    private void refreshBrowserTabDialogList(String filter, ArrayAdapter<String> adapter,
+            List<Integer> matchedIndices) {
+        adapter.setNotifyOnChange(false);
+        adapter.clear();
+        matchedIndices.clear();
+        adapter.add("+ New tab");
+        String needle = filter == null ? "" : filter.trim().toLowerCase(Locale.ROOT);
         for (int i = 0; i < browserTabs.size(); i++) {
             DaymarkWebView tab = browserTabs.get(i);
-            String title = tab.getTitle();
-            String url = tab.getUrl();
-            String label = title == null || title.trim().isEmpty() ? url : title.trim();
-            if (label == null || label.trim().isEmpty()) label = "New tab";
-            if (tab == browserWebView) label = "● " + label;
-            labels.add(label);
+            String label = browserTabLabel(tab);
+            String url = tab.getUrl() == null ? "" : tab.getUrl();
+            if (needle.isEmpty()
+                    || label.toLowerCase(Locale.ROOT).contains(needle)
+                    || url.toLowerCase(Locale.ROOT).contains(needle)) {
+                matchedIndices.add(i);
+                adapter.add(label);
+            }
         }
-        new AlertDialog.Builder(this)
+        adapter.notifyDataSetChanged();
+    }
+
+    private void showBrowserTabsDialog() {
+        final List<Integer> matchedIndices = new ArrayList<>();
+        final ArrayAdapter<String> adapter =
+                new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
+        refreshBrowserTabDialogList("", adapter, matchedIndices);
+        int pad = dp(16);
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(pad, pad / 2, pad, 0);
+        EditText filterInput = new EditText(this);
+        filterInput.setHint("Filter tabs by title or address");
+        filterInput.setSingleLine(true);
+        filterInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable s) {
+                refreshBrowserTabDialogList(s.toString(), adapter, matchedIndices);
+            }
+        });
+        container.addView(filterInput);
+        ListView tabList = new ListView(this);
+        tabList.setAdapter(adapter);
+        tabList.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        container.addView(tabList);
+        final AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Browser tabs")
-                .setItems(labels.toArray(new String[0]), (dialog, which) -> {
-                    if (which == 0) {
-                        requestNewBrowserTab();
-                        return;
-                    }
-                    int index = which - 1;
-                    if (index >= 0 && index < browserTabs.size()) switchBrowserTab(browserTabs.get(index));
-                })
-                .setNeutralButton("Close current tab", (dialog, which) -> closeCurrentBrowserTab())
+                .setView(container)
+                .setNeutralButton("Close current tab", (dialogInterface, which) -> closeCurrentBrowserTab())
                 .setNegativeButton("Done", null)
-                .show();
+                .create();
+        tabList.setOnItemClickListener((parent, view, position, id) -> {
+            dialog.dismiss();
+            if (position == 0) {
+                requestNewBrowserTab();
+                return;
+            }
+            int listPosition = position - 1;
+            if (listPosition < 0 || listPosition >= matchedIndices.size()) return;
+            int index = matchedIndices.get(listPosition);
+            if (index >= 0 && index < browserTabs.size()) switchBrowserTab(browserTabs.get(index));
+        });
+        dialog.show();
     }
 
     private void requestNewBrowserTab() {
@@ -7835,6 +7884,7 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 
 
 
