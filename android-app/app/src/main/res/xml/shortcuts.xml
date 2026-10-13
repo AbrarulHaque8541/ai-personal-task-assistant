@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_task"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_new_task_short"
+        android:shortcutLongLabel="@string/shortcut_new_task_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled_message">
+        <intent
+            android:action="com.cue.daymark.action.SHORTCUT_NEW_TASK"
+            android:targetPackage="com.cue.daymark"
+            android:targetClass="com.cue.daymark.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="task_details"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_task_details_short"
+        android:shortcutLongLabel="@string/shortcut_task_details_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled_message">
+        <intent
+            android:action="com.cue.daymark.action.SHORTCUT_TASK_DETAILS"
+            android:targetPackage="com.cue.daymark"
+            android:targetClass="com.cue.daymark.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_browser"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_open_browser_short"
+        android:shortcutLongLabel="@string/shortcut_open_browser_long"
+        android:shortcutDisabledMessage="@string/shortcut_disabled_message">
+        <intent
+            android:action="com.cue.daymark.action.SHORTCUT_OPEN_BROWSER"
+            android:targetPackage="com.cue.daymark"
+            android:targetClass="com.cue.daymark.MainActivity" />
+    </shortcut>
+</shortcuts>
