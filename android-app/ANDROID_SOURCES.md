@@ -15,7 +15,7 @@ Historical toolchain/build entries below describe their recorded dates and featu
 
 ## Build compatibility
 
-- [Android Gradle Plugin 8.8 release notes](https://developer.android.com/build/releases/agp-8-8-0-release-notes): AGP 8.8 supports at most API 35 and requires Gradle 8.10.2, Build Tools 35.0.0, and JDK 17. The project pins AGP 8.8.2, Gradle Wrapper 8.10.2, compile/target SDK 35, and Java 17 source compatibility. The installed host JDK is 21.
+- [Android Gradle Plugin 8.8 release notes](https://developer.android.com/build/releases/agp-8-8-0-release-notes): AGP 8.8 supports at most API 35, so the base revision's AGP 8.8.2 was not an officially supported pairing with compile/target SDK 36. [Android 16 SDK setup](https://developer.android.com/about/versions/16/setup-sdk) recommends AGP 8.9.0-rc01 or higher. This migration pins AGP 8.12.2 and Gradle Wrapper 8.13; [AGP 8.12 release notes](https://developer.android.com/build/releases/agp-8-12-0-release-notes) list API 36 support, Gradle 8.13, Build Tools 35.0.0, and JDK 17. Java source compatibility remains 17; the installed host JDK is 21. This toolchain update does not establish Android 16 runtime/device acceptance.
 
 ## Android permission boundaries
 
