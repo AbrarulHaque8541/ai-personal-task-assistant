@@ -10,38 +10,38 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/host-stubs/org/json/JSONObject.java" \
   "$ROOT/tools/host-stubs/org/json/JSONArray.java" \
   "$ROOT/tools/host-stubs/org/json/JsonWriter.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/AttachmentRef.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/AttachmentLogic.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/ActivityCallbackGate.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/Task.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskLogic.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskListRenderGate.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskDuePresets.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplate.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskTemplateLogic.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotSchema.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/Subtask.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserExtension.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserAddress.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserHistory.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserLogPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserNetworkPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserMediaPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserTabPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserSettingsPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserViewportPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserSelfHealingPolicy.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/BrowserDiagnostics.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/ExtensionPackageParser.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/CosmeticFilterToCss.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterCore.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterRecoveryStore.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/PendingSaveTransaction.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/SafApkSaver.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/StrictJsonParser.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubReleaseClient.java" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/GitHubApkDownloader.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/AttachmentRef.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/AttachmentLogic.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/ActivityCallbackGate.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/Task.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskLogic.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskListRenderGate.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskDuePresets.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskTemplate.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskTemplateLogic.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskSnapshotSchema.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/TaskSnapshotCodec.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/Subtask.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserExtension.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserAddress.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserHistory.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserLogPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserNetworkPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserMediaPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserTabPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserSettingsPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserViewportPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserSelfHealingPolicy.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/BrowserDiagnostics.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/ExtensionPackageParser.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/CosmeticFilterToCss.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/UpdaterCore.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/UpdaterRecoveryStore.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/PendingSaveTransaction.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/SafApkSaver.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/StrictJsonParser.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/GitHubReleaseClient.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/GitHubApkDownloader.java" \
   "$ROOT/tools/TaskLogicSmoke.java" \
   "$ROOT/tools/TaskListRenderGateSmoke.java" \
   "$ROOT/tools/TaskSnapshotCodecSmoke.java" \
@@ -60,21 +60,21 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/BrowserDiagnosticsSmoke.java" \
   "$ROOT/tools/ExtensionPackageParserSmoke.java" \
   "$ROOT/tools/CosmeticFilterToCssSmoke.java"
-java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskLogicSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskListRenderGateSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.TaskSnapshotCodecSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserExtensionSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.ActivityCallbackGateSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.UpdaterSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.GitHubTransportSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserAddressSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserLogPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserNetworkPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserMediaPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserTabPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSettingsPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserViewportPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserSelfHealingPolicySmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.BrowserDiagnosticsSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.ExtensionPackageParserSmoke
-java -ea -cp "$BUILD_DIR" com.cue.daymark.CosmeticFilterToCssSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.TaskLogicSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.TaskListRenderGateSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.TaskSnapshotCodecSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserExtensionSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.ActivityCallbackGateSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.UpdaterSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.updater.GitHubTransportSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserAddressSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserLogPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserNetworkPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserMediaPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserTabPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserSettingsPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserViewportPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserSelfHealingPolicySmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserDiagnosticsSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.ExtensionPackageParserSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.CosmeticFilterToCssSmoke
