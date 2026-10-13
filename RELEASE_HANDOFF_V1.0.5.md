@@ -2,14 +2,16 @@
 
 Last reconciled: 2026-10-09. This is a review index, not a claim that all release checks are complete.
 
+> **Archived pre-release snapshot.** At the 2026-10-13 review, v1.0.5 is published/latest. Current `main` uses `com.abrar.daymark`, version `1.0`/code `7`, and API 36; that source line is not published and is a separate install without automatic task-data migration. The dated sections below retain their original historical findings. For current blockers, PRs, release evidence, and device status, use [the status index](docs/AGENT_STATUS.md) and re-check live GitHub.
+
 ## Mission for the receiving agent
 
 Review current `main`, this document, `AGENTS.md`, `PROJECT_PLAN.md`, and the pre-release audit before making changes. Preserve working features and the production signing identity. Treat merged PRs as the source of truth; do not copy code from closed, unmerged draft PRs. Create focused PRs with regression coverage for verified gaps. The owner controls the production tag/release step.
 
-## Current verified source/release snapshot
+## Historical source/release snapshot (2026-10-09)
 
 - Repository: `AbrarulHaque8541/ai-personal-task-assistant`
-- App/package: Daymark / `legacy application ID`
+- App/package: Daymark / the historical v1.0.5 application identity (separate from current `main`)
 - Last observed main SHA: `88f3fd395babe273085fc48c3607c30c3f3e4e53`
 - Candidate version: `1.0.5`, `versionCode 6`
 - Latest known public release: `v1.0.4`; do not call v1.0.5 released until the exact tag's production workflow completes and the release assets are verified.
@@ -118,14 +120,14 @@ This section supersedes older PR/CI state in earlier sections above. Reconcile l
 - Main push workflow run 436 on merge commit `2440f6baaba13cdf8da216d78bff0d6f2038d089` was still in progress at the time this section was written. Check the live run before claiming main CI is green.
 - These workflows compile/test and produce a device-test APK artifact; they do **not** establish physical-device acceptance. OEM DownloadManager routing, TalkBack, large text, actual WebView certificate details, long-page latency/memory, same-signer upgrade, SAF providers, and API 26/API 36 runtime remain NOT TESTED unless #160 records evidence.
 
-### Remaining release gates
+### Remaining release gates at the 2026-10-09 handoff (historical)
 
-- [#187](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/187) remains OPEN. Google Play's official policy states ordinary new app submissions and app updates must target Android 16 / API 36 or higher from 2026-08-31: https://support.google.com/googleplay/android-developer/answer/11926878?hl=en-IN. The current project still sets `compileSdk = 35` / `targetSdk = 35` and the device-test workflow asserts target SDK 35. Coordinate the API 36 migration with AGP/Gradle compatibility and test edge-to-edge, predictive Back, and IME behavior; do not claim Play-ready before that work.
+- At handoff time, [#187](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/187) was an open API 36 tracker. The source then used `compileSdk = 35` / `targetSdk = 35` and the device-test workflow asserted 35. Those facts were superseded by source/toolchain PRs [#261](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/261), [#280](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/280), and release-workflow PR [#290](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/290); current API 36 runtime/device acceptance remains separate. Google's current [target API policy](https://developer.android.com/google/play/requirements/target-sdk) applies to ordinary Play submissions from 2026-08-31, subject to the documented exceptions.
 - [#160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160) remains the source of truth for device/emulator acceptance. Mark unrun cases NOT TESTED.
 - [#147](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/147) remains open for recurrence and actual reminder-delivery lifecycle. Stored/in-app reminder state is not proof of Android notification delivery.
 - [#150](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/150) remains a future GeckoView/WebExtension-engine proposal, not a v1.0.5 promise.
 - [#135](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/135) remains an open browser/provider backlog; compare each item with current main before coding.
-- Source candidate remains `versionName 1.0.5` / `versionCode 6`. Do not create a tag or claim v1.0.5 published until the owner-authorized exact-tag workflow completes and verified APK/AAB assets exist.
+- At the 2026-10-09 17:48Z snapshot, `versionName 1.0.5` / `versionCode 6` was still a candidate and the exact-tag workflow had not yet completed. v1.0.5 was published later that day after its production workflow and asset checks; this pre-publication warning is historical. Keep the exact-tag workflow and verified-assets gate for future releases.
 
 ---
 Work by: ChatGPT
@@ -151,12 +153,23 @@ Tooling: GitHub MCP tools
 Timestamp (UTC): 2026-10-09T20:20:35.332Z
 
 
-## Historical handoff notice — 2026-10-13
+## Historical handoff notice — 2026-10-13T13:20Z
 
-This document records the 2026-10-09 v1.0.5 pre-release handoff snapshot. Since then, v1.0.5 has been published; statements above such as “candidate” and “latest known public release v1.0.4” are historical, not current instructions. For live source, release, open-PR, and device-gate status, see [CURRENT_STATUS_2026-10-13.md](docs/CURRENT_STATUS_2026-10-13.md). The owner-approved v1.0 identity reset is an upcoming target tracked by #285/#283, not a shipped build.
+This note records the state at 13:20Z, before identity-migration PR [#286](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/286) merged. Its “upcoming target” wording is historical and is superseded by the current-source note below. For live source, release, open-PR, and device-gate status, use [the status index](docs/AGENT_STATUS.md).
 
 ---
 Work by: Cue
 Model: not disclosed by runtime
 Tooling: GitHub connector CLI and local documentation review
 Timestamp (UTC): 2026-10-13T13:20:53Z
+
+
+## Current source correction — 2026-10-13
+
+After the earlier 13:20Z note, PR [#286](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/286) merged the owner-approved identity change. At the reviewed `main` SHA `43fbe7670ad19ff2809f916f1b7dace4bc5ceb04`, Gradle source is `com.abrar.daymark`, version `1.0`/code `7`, target API 36. The latest published release remains v1.0.5 (API 35); the current source is not published, installs separately, and does not automatically migrate task data. Issues #221, #222, #257, and #160 remained open; no physical-device acceptance is claimed. Use [the status index](docs/AGENT_STATUS.md) for the live PR/issue/check snapshot.
+
+---
+Work by: Cue
+Model: not disclosed by runtime
+Tooling: GitHub connector CLI, git, local documentation review
+Timestamp (UTC): 2026-10-13T14:42:14Z

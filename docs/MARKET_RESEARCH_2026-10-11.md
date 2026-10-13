@@ -3,6 +3,8 @@
 Scope: personal **encrypted offline tasks** + **in-app research browser**. Not team SaaS, not Play-first growth hacks.
 Sources: 2025–2026 roundups (Tasks.org, Super Productivity, TickTick, Todoist, Trayzero privacy list, Brave/Firefox/DDG/Samsung/Edge/WebLibre/Bare, secure notes).
 
+> The competitive and Daymark-gap tables below are the **2026-10-11 research snapshot**. Current implementation status is reconciled in the dated addendum at the end; do not read the old “missing” labels as current without that cross-check.
+
 ## 1. Competitive map
 
 ### A. Cloud task giants
@@ -104,10 +106,16 @@ Timestamp (UTC): 2026-10-11T18:10:00Z
 
 ## Current-source status update — 2026-10-13
 
-This is an addendum, not a rewrite of the 2026-10-11 competitor snapshot. Since that snapshot, current `main` has basic local HTTPS-origin bookmarks, a filterable tab switcher (#284), and a dedicated Browser Settings owner for browser preferences. Private/session tabs, full typed-history search, tab groups, and browser-selection-to-task capture remain gaps; device acceptance for #221/#222/#160 is still open. Natural-language quick add is **not on current `main`**: PR #267 remains open, so do not count it as shipped or list it as a protected current-main feature until it is merged.
+This is an addendum, not a rewrite of the 2026-10-11 competitor snapshot. It was checked against current `main` `43fbe7670ad19ff2809f916f1b7dace4bc5ceb04` on 2026-10-13.
+
+- Natural-language quick add is now on `main` via merged PR [#292](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/292). The single-line parser supports documented date/time, priority, and `#tag` tokens; the smoke test passed 16 assertions. Tags are captured through this path, not a general tag-management or tag-filter UI. See [`NL_QUICK_ADD.md`](NL_QUICK_ADD.md).
+- HTTPS-origin bookmarks and a filterable tab switcher are present in source; browser preferences have a dedicated Browser Settings surface. Bookmarks do not imply private/session tabs or full searchable URL history.
+- Private/session tabs, full typed-history search, tab groups, browser-selection-to-task capture, share-in, and a home-screen widget remain gaps/proposals. The Oct 11 “missing” labels for quick add and bookmarks are historical, not current-source claims.
+- Privacy-safe WebView visual-state/lifecycle log breadcrumbs are present via merged PR [#291](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/291); they are not a user-facing diagnostics/export screen and do not prove that a page visibly renders.
+- Issues [#221](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/221), [#222](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/222), [#160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160), and [#257](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/257) were still open at review time. Browser, release, and Android 16 device acceptance remain **NOT TESTED / NOT COMPLETE**; check the live status index before using these issue labels.
 
 ---
 Work by: Cue
 Model: not disclosed by runtime
 Tooling: GitHub connector CLI and local source review
-Timestamp (UTC): 2026-10-13T13:20:53Z
+Timestamp (UTC): 2026-10-13T14:42:14Z

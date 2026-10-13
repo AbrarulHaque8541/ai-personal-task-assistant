@@ -1,6 +1,6 @@
 # Daymark performance roadmap
 
-First dedicated performance track began 2026-10-10. Status last source-checked against live `main` `efbc1cce87dc118ffdf959a14ce75199a8f860c4` on 2026-10-13. Goal: keep Tasks + embedded browser responsive as features grow, without claiming unmeasured gains.
+First dedicated performance track began 2026-10-10. Source last checked against live `main` `43fbe7670ad19ff2809f916f1b7dace4bc5ceb04` on 2026-10-13. Goal: keep Tasks + embedded browser responsive as features grow, without claiming unmeasured gains.
 
 ## Principles
 - Measure before claiming wins (Systrace / Macrobenchmark / simple wall-clock).
@@ -18,7 +18,7 @@ First dedicated performance track began 2026-10-10. Status last source-checked a
 7. **Network-image preference** — user-controlled and persisted; this is a data-saving option, not an ad/tracker blocker.
 
 ## Validation status
-- Main Android CI passed on the reviewed SHA: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/38399676414.
+- Current-main build check passed on the reviewed SHA: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/38412156622.
 - Source configuration and CI do not establish physical-device FPS, memory, thermal behavior, blank-WebView recovery, or visual correctness. No device performance measurements are recorded here.
 - Keep #221 (blank viewport), #222 (browser UX/device acceptance), and #160 (device matrix) open until real-device evidence is recorded.
 
@@ -57,4 +57,4 @@ Current-source refresh:
 Work by: Cue
 Model: not disclosed by runtime
 Tooling: GitHub connector CLI and local source review
-Timestamp (UTC): 2026-10-13T13:20:53Z
+Timestamp (UTC): 2026-10-13T14:42:14Z
