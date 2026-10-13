@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 import android.app.Notification;
 import android.app.NotificationManager;

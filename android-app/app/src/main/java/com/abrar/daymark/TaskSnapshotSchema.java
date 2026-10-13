@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Strict scalar-type checks for the encrypted task snapshot schema. */
 final class TaskSnapshotSchema {

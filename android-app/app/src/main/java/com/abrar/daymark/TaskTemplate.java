@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** A reusable, task-shaped draft stored with the encrypted local task snapshot. */
 final class TaskTemplate {
