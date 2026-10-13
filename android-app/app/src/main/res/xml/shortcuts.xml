@@ -10,7 +10,7 @@
         <intent
             android:action="com.abrar.daymark.action.SHORTCUT_NEW_TASK"
             android:targetPackage="com.abrar.daymark"
-            android:targetClass="com.cue.daymark.MainActivity" />
+            android:targetClass="com.abrar.daymark.MainActivity" />
     </shortcut>
     <shortcut
         android:shortcutId="task_details"
@@ -22,7 +22,7 @@
         <intent
             android:action="com.abrar.daymark.action.SHORTCUT_TASK_DETAILS"
             android:targetPackage="com.abrar.daymark"
-            android:targetClass="com.cue.daymark.MainActivity" />
+            android:targetClass="com.abrar.daymark.MainActivity" />
     </shortcut>
     <shortcut
         android:shortcutId="open_browser"
@@ -34,6 +34,6 @@
         <intent
             android:action="com.abrar.daymark.action.SHORTCUT_OPEN_BROWSER"
             android:targetPackage="com.abrar.daymark"
-            android:targetClass="com.cue.daymark.MainActivity" />
+            android:targetClass="com.abrar.daymark.MainActivity" />
     </shortcut>
 </shortcuts>

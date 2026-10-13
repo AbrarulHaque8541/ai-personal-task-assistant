@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.cue.daymark"
+    namespace = "com.abrar.daymark"
     compileSdk = 36
 
     flavorDimensions += "distribution"
@@ -23,8 +23,8 @@ android {
         applicationId = "com.abrar.daymark"
         minSdk = 26
         targetSdk = 36
-        testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
-        // Owner-approved fresh app identity; legacy com.cue.daymark installs remain separate.
+        testInstrumentationRunner = "com.abrar.daymark.DaymarkPlatformInstrumentation"
+        // Owner-approved fresh app identity; legacy com.abrar.daymark installs remain separate.
         // Keep versionCode monotonic even though the displayed version restarts.
         versionCode = 7
         versionName = "1.0"

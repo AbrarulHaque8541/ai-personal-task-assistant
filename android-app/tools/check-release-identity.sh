@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GRADLE="$ROOT/app/build.gradle.kts"
-UPDATER="$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java"
+UPDATER="$ROOT/app/src/main/java/com/abrar/daymark/updater/UpdaterPublisherConfig.java"
 
 grep -q 'applicationId = "com.abrar.daymark"' "$GRADLE" || {
   echo "FAIL: applicationId must be com.abrar.daymark after the approved identity reset" >&2

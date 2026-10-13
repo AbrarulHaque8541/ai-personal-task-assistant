@@ -5,7 +5,7 @@ import sys
 
 root = Path(sys.argv[1])
 workflow = (root.parent / ".github/workflows/android-production-release.yml").read_text(encoding="utf-8")
-client = (root / "app/src/main/java/com/cue/daymark/updater/GitHubReleaseClient.java").read_text(encoding="utf-8")
+client = (root / "app/src/main/java/com/abrar/daymark/updater/GitHubReleaseClient.java").read_text(encoding="utf-8")
 for marker in (
     'echo "<!-- daymark-updater-v1"',
     '"applicationId":"com.abrar.daymark"',

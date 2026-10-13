@@ -9,7 +9,7 @@ android = "{http://schemas.android.com/apk/res/android}"
 manifest_path = root / "app/src/main/AndroidManifest.xml"
 shortcuts_path = root / "app/src/main/res/xml/shortcuts.xml"
 strings_path = root / "app/src/main/res/values/strings.xml"
-activity_path = root / "app/src/main/java/com/cue/daymark/MainActivity.java"
+activity_path = root / "app/src/main/java/com/abrar/daymark/MainActivity.java"
 
 manifest = ET.parse(manifest_path).getroot()
 application = manifest.find("application")
@@ -48,7 +48,7 @@ for shortcut in shortcuts:
     assert intent is not None, f"{shortcut_id} must have a launch intent"
     assert intent.get(android + "action") == action, f"{shortcut_id} action mismatch"
     assert intent.get(android + "targetPackage") == "com.abrar.daymark", "shortcut package identity changed"
-    assert intent.get(android + "targetClass") == "com.cue.daymark.MainActivity", "shortcut must route to MainActivity"
+    assert intent.get(android + "targetClass") == "com.abrar.daymark.MainActivity", "shortcut must route to MainActivity"
 
 activity = activity_path.read_text(encoding="utf-8")
 for marker in (
