@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /**
  * Bounds automatic browser recovery so a stalled or crashed page cannot create a reload loop.

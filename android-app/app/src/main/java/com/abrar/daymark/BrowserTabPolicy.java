@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Small deterministic rules for the embedded browser's in-memory tab strip. */
 final class BrowserTabPolicy {

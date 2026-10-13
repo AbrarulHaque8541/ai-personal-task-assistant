@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Local browser security preferences, independent of Daymark's page-load network mode. */
 final class BrowserSettingsPolicy {

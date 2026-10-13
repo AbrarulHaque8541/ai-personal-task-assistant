@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Local, user-controlled network mode for the embedded browser. */
 final class BrowserNetworkPolicy {

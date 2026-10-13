@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Validation for user-initiated media downloads discovered inside WebView pages. */
 final class BrowserMediaPolicy {
