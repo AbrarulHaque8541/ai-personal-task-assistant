@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only checks for the app-choice x system-font-scale policy. */
 public final class TextScalePolicySmoke {

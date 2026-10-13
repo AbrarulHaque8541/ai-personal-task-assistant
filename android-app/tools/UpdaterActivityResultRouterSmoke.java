@@ -1,4 +1,4 @@
-package com.cue.daymark.updater;
+package com.abrar.daymark.updater;
 
 public final class UpdaterActivityResultRouterSmoke {
     private UpdaterActivityResultRouterSmoke() {
