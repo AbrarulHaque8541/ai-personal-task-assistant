@@ -11,7 +11,7 @@ import re
 import sys
 
 root = pathlib.Path(sys.argv[1])
-main = root / "app/src/main/java/com/cue/daymark"
+main = root / "app/src/main/java/com/abrar/daymark"
 activity = (main / "MainActivity.java").read_text(encoding="utf-8")
 router = (main / "updater/UpdaterActivityResultRouter.java").read_text(encoding="utf-8")
 

@@ -15,7 +15,7 @@ assert application.get(ANDROID_NS + "fullBackupContent") == "@xml/full_backup_co
     "legacy backup rules must be referenced"
 )
 
-store_source = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
+store_source = (ROOT / "app/src/main/java/com/abrar/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
 assert 'new File(context.getFilesDir(), "tasks.enc")' in store_source, (
     "update backup exclusions if the task store path changes"
 )
