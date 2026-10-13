@@ -14,6 +14,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/abrar/daymark/AttachmentLogic.java" \
   "$ROOT/app/src/main/java/com/abrar/daymark/ActivityCallbackGate.java" \
   "$ROOT/app/src/main/java/com/abrar/daymark/Task.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/NaturalLanguageTaskParse.java" \
   "$ROOT/app/src/main/java/com/abrar/daymark/TaskLogic.java" \
   "$ROOT/app/src/main/java/com/abrar/daymark/TaskListRenderGate.java" \
   "$ROOT/app/src/main/java/com/abrar/daymark/TaskDuePresets.java" \
@@ -43,6 +44,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/app/src/main/java/com/abrar/daymark/updater/GitHubReleaseClient.java" \
   "$ROOT/app/src/main/java/com/abrar/daymark/updater/GitHubApkDownloader.java" \
   "$ROOT/tools/TaskLogicSmoke.java" \
+  "$ROOT/tools/NaturalLanguageTaskParseSmoke.java" \
   "$ROOT/tools/TaskListRenderGateSmoke.java" \
   "$ROOT/tools/TaskSnapshotCodecSmoke.java" \
   "$ROOT/tools/BrowserExtensionSmoke.java" \
@@ -61,6 +63,7 @@ javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
   "$ROOT/tools/ExtensionPackageParserSmoke.java" \
   "$ROOT/tools/CosmeticFilterToCssSmoke.java"
 java -ea -cp "$BUILD_DIR" com.abrar.daymark.TaskLogicSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.NaturalLanguageTaskParseSmoke
 java -ea -cp "$BUILD_DIR" com.abrar.daymark.TaskListRenderGateSmoke
 java -ea -cp "$BUILD_DIR" com.abrar.daymark.TaskSnapshotCodecSmoke
 java -ea -cp "$BUILD_DIR" com.abrar.daymark.BrowserExtensionSmoke
