@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /**
  * Pure state contract for the task/Web mode toggle across Activity recreation.

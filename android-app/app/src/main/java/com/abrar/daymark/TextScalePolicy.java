@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /**
  * Pure policy combining the app's own text-size choice with the device font scale.

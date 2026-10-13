@@ -1,4 +1,4 @@
-package com.cue.daymark.updater;
+package com.abrar.daymark.updater;
 
 /** Pure request/result classification shared by the updater callback and host regression tests. */
 public final class UpdaterActivityResultRouter {

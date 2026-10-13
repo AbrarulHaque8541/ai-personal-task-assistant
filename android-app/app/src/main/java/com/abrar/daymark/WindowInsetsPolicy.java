@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /**
  * Pure policy for how the Activity consumes window insets.
