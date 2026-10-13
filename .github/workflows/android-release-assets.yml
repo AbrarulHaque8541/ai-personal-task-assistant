@@ -36,6 +36,11 @@ jobs:
           cache: gradle
           cache-dependency-path: android-app/**/*.gradle*
 
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
       - name: Validate required release secrets
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         shell: bash
