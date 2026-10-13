@@ -9,9 +9,9 @@
 ## Apply
 CI / local: `python3 android-app/tools/apply-home-browser-redesign.py android-app`
 
-## Not in this slice (follow-ups)
+## Not in this slice (follow-ups; status checked 2026-10-13)
 - Full glassmorphism system palette
-- Bookmarks / tags / NL add
+- Bookmarks / dedicated tag-filter chips (task tags themselves are now implemented) / NL add
 - Bottom nav Templates tab removal (guarded)
 - Device visual QA by owner
 
