@@ -24,8 +24,8 @@ assert any(task["dueDate"] is None for task in fixture["tasks"]), "fixture shoul
 assert any(task["completed"] for task in fixture["tasks"]), "fixture should cover completed tasks"
 assert any(not task["completed"] for task in fixture["tasks"]), "fixture should cover open tasks"
 
-store = (root / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
-codec = (root / "app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
+store = (root / "app/src/main/java/com/abrar/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
+codec = (root / "app/src/main/java/com/abrar/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
 assert "TaskSnapshotCodec.decode(" in store, "the encrypted store delegates snapshot decoding to the shared codec"
 assert "TaskSnapshotSchema.isSupportedVersion(version)" in codec, "decoder must reject unsupported schema versions"
 assert "TaskSnapshotSchema.isVersionTwo(version)" in codec and "TaskSnapshotSchema.isVersionThree(version)" in codec, \
@@ -39,10 +39,10 @@ assert 'requiredString(object, "title")' in codec, "legacy scalar decoding must 
 assert "if (!TaskLogic.isValidTaskList(result))" in codec, "imported snapshots must pass shared task-list validation"
 
 gradle = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
-assert 'testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"' in gradle
+assert 'testInstrumentationRunner = "com.abrar.daymark.DaymarkPlatformInstrumentation"' in gradle
 assert not any(token in gradle for token in ("testImplementation(", "androidTestImplementation(", "androidTestApi(", "androidTestRuntimeOnly(")), "platform tests must not add dependencies"
 
-tests = (root / "app/src/androidTest/java/com/cue/daymark/DaymarkPlatformInstrumentation.java").read_text(encoding="utf-8")
+tests = (root / "app/src/androidTest/java/com/abrar/daymark/DaymarkPlatformInstrumentation.java").read_text(encoding="utf-8")
 for marker in (
     "extends Instrumentation",
     "importLegacySnapshotRoundTripAndRollback()",

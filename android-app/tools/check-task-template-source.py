@@ -3,10 +3,10 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
-store = (root / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
-codec = (root / "app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
-template_logic = (root / "app/src/main/java/com/cue/daymark/TaskTemplateLogic.java").read_text(encoding="utf-8")
+activity = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
+store = (root / "app/src/main/java/com/abrar/daymark/EncryptedTaskStore.java").read_text(encoding="utf-8")
+codec = (root / "app/src/main/java/com/abrar/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
+template_logic = (root / "app/src/main/java/com/abrar/daymark/TaskTemplateLogic.java").read_text(encoding="utf-8")
 checks = 0
 
 def check(condition: bool, message: str) -> None:
