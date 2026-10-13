@@ -40,24 +40,9 @@ jobs:
 
       - name: Run Android host regression checks
         run: |
-          set +e
-          sh ./tools/check-v1-source.sh > /tmp/guard.log 2>&1
-          status=$?
-          sh ./tools/run-storage-recovery-tests.sh >> /tmp/guard.log 2>&1 || status=$?
-          sh ./tools/run-updater-picker-routing-tests.sh >> /tmp/guard.log 2>&1 || status=$?
-          if [ "$status" -ne 0 ]; then
-            {
-              echo "## Guard failure output"
-              echo '```'
-              tail -n 60 /tmp/guard.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            tail -n 40 /tmp/guard.log | head -c 700 | tr '\n' '|' > /tmp/guard-msg.txt
-            echo "::error::GUARDFAIL $(cat /tmp/guard-msg.txt)"
-            tail -n 40 /tmp/guard.log | tail -c 700 | tr '\n' '|' > /tmp/guard-msg2.txt
-            echo "::error::GUARDFAIL2 $(cat /tmp/guard-msg2.txt)"
-          fi
-          exit "$status"
+          sh ./tools/check-v1-source.sh
+          sh ./tools/run-storage-recovery-tests.sh
+          sh ./tools/run-updater-picker-routing-tests.sh
 
       - name: Build and verify debug variants
         if: github.event_name == 'pull_request'
