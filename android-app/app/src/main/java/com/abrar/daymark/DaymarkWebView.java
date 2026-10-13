@@ -154,12 +154,17 @@ final class DaymarkWebView extends WebView {
                 Log.i("DaymarkWebView", "page finished origin=" + BrowserLogPolicy.redactedOrigin(url));
                 listener.onPageFinished(url);
                 // Diagnostic only: distinguish completed navigation from content ready for a draw.
-                view.postVisualStateCallback(SystemClock.uptimeMillis(), requestId ->
-                        Log.i("DaymarkWebView", "visual state ready origin="
-                                + BrowserLogPolicy.redactedOrigin(url)
-                                + " attached=" + (view.getParent() != null)
-                                + " visible=" + (view.getVisibility() == View.VISIBLE)
-                                + " size=" + view.getWidth() + "x" + view.getHeight()));
+                view.postVisualStateCallback(SystemClock.uptimeMillis(),
+                        new WebView.VisualStateCallback() {
+                            @Override
+                            public void onComplete(long requestId) {
+                                Log.i("DaymarkWebView", "visual state ready origin="
+                                        + BrowserLogPolicy.redactedOrigin(url)
+                                        + " attached=" + (view.getParent() != null)
+                                        + " visible=" + (view.getVisibility() == View.VISIBLE)
+                                        + " size=" + view.getWidth() + "x" + view.getHeight());
+                            }
+                        });
                 // Local Daymark packs only (CSS/userscript-style). No chrome.* APIs, no request interception.
                 if (extensionRuntime != null && networkPolicy.allowsRemoteLoads()) {
                     extensionRuntime.onPageFinished(view, url);
