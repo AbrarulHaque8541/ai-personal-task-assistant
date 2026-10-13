@@ -1,5 +1,5 @@
---- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
-+++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+--- a/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
 @@ -758,3 +758,4 @@
          addPrivacyCard(content);
 -        addSuggestionCard(content);
