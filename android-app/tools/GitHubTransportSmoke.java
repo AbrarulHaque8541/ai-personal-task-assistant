@@ -617,7 +617,7 @@ public final class GitHubTransportSmoke {
     }
 
     private static String assetUrl() {
-        return "https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.2.3/Daymark-v1.2.3.apk";
+        return "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.2.3/Daymark-v1.2.3.apk";
     }
 
     private static String quote(String value) {

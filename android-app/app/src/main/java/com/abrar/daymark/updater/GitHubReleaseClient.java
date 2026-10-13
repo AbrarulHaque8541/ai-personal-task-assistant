@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 /** Reads only the public latest-release endpoint for the fixed Daymark GitHub repository. */
 public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
     public static final String RELEASES_ENDPOINT =
-            "https://api.github.com/repos/AbrarulHaque8541/ai-personal-task-assistant/releases/latest";
+            "https://api.github.com/repos/AbrarulHaque8541/daymark/releases/latest";
     private static final int CONNECT_TIMEOUT_MILLIS = 10_000;
     private static final int READ_TIMEOUT_MILLIS = 15_000;
     private static final int MAX_RESPONSE_BYTES = 1_000_000;

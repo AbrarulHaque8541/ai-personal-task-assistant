@@ -1,3 +1,5 @@
+> **ARCHIVED — PRE_RELEASE_AUDIT_2026-10-09.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (the retired pre-v1.0 application ID, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, targetSdk 36, and the repository is now `AbrarulHaque8541/daymark`. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note added 2026-10-13.)*
+
 # Daymark pre-release audit — 2026-10-09
 
 ## Scope and honesty
@@ -6,9 +8,9 @@ This audit began against main `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`. PR #18
 
 ## Verified baseline
 
-- Latest published GitHub release: [v1.0.4](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4), with APK/AAB assets.
+- Latest published GitHub release: [v1.0.4](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.0.4), with APK/AAB assets.
 - Source candidate: `versionName = 1.0.5`, `versionCode = 6`; v1.0.5 was not published at audit time.
-- Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37942559451) passed on the checked main SHA, including host checks, signing-secret validation, signed APK/AAB build, and APK signer match. This is not a physical-device test and does not itself publish a GitHub Release.
+- Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/daymark/actions/runs/37942559451) passed on the checked main SHA, including host checks, signing-secret validation, signed APK/AAB build, and APK signer match. This is not a physical-device test and does not itself publish a GitHub Release.
 - Package ID: `legacy application ID`. Production certificate pin: `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
 - No open PRs or open issues were returned by the GitHub repository searches at the start of this audit; recheck live state before release.
 - Android project is native Java with platform APIs and System WebView; the root HTML/CSS/JS project is a separate web prototype, not the Android app UI.
