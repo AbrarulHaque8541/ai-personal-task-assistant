@@ -46,6 +46,11 @@ jobs:
           cache: gradle
           cache-dependency-path: android-app/**/*.gradle*
 
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36, build-tools;35.0.0'
+
       - name: Validate signing secrets
         shell: bash
         env:
@@ -113,6 +118,8 @@ jobs:
           echo "Package ID:       $package_id"
           echo "Version Name:     $version_name"
           echo "Version Code:     $version_code"
+          target_sdk_version="$(awk -F"'" '/^targetSdkVersion:/ {print $2; exit}' <<< "$badging")"
+          echo "Target SDK:       $target_sdk_version"
           echo "Expected Name:    $expected_name"
           echo "Expected Code:    $expected_code"
           [[ "$package_id" == "com.abrar.daymark" ]]
@@ -120,6 +127,7 @@ jobs:
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
           [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
+          [[ "$target_sdk_version" == "36" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
           apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
           actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
           if [[ -z "$actual_signer" ]]; then
