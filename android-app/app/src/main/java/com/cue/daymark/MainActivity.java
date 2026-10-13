@@ -100,6 +100,7 @@ public final class MainActivity extends Activity {
     private static final String ACTION_SHORTCUT_NEW_TASK = "com.cue.daymark.action.SHORTCUT_NEW_TASK";
     private static final String ACTION_SHORTCUT_TASK_DETAILS = "com.cue.daymark.action.SHORTCUT_TASK_DETAILS";
     private static final String ACTION_SHORTCUT_OPEN_BROWSER = "com.cue.daymark.action.SHORTCUT_OPEN_BROWSER";
+    private String pendingLauncherShortcutAction;
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_EXPORT_EXTENSION = 7813;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
@@ -388,20 +389,57 @@ public final class MainActivity extends Activity {
     private void handleShortcutIntent(Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
+        if (!isDaymarkShortcutAction(action)) return;
+        intent.setAction(null);
+        if ((ACTION_SHORTCUT_NEW_TASK.equals(action) || ACTION_SHORTCUT_TASK_DETAILS.equals(action))
+                && !canEdit()) {
+            // Encrypted storage loads asynchronously. Defer task actions until its result is known,
+            // instead of opening a disabled composer/editor during cold start.
+            pendingLauncherShortcutAction = action;
+            return;
+        }
+        dispatchLauncherShortcut(action);
+    }
+
+    private boolean isDaymarkShortcutAction(String action) {
+        return ACTION_SHORTCUT_NEW_TASK.equals(action)
+                || ACTION_SHORTCUT_TASK_DETAILS.equals(action)
+                || ACTION_SHORTCUT_OPEN_BROWSER.equals(action);
+    }
+
+    private void dispatchPendingLauncherShortcut() {
+        String action = pendingLauncherShortcutAction;
+        if (action == null) return;
+        pendingLauncherShortcutAction = null;
+        if (!canEdit()) {
+            showToast("Saved tasks are unavailable. Task shortcuts are paused to protect your data.");
+            return;
+        }
+        dispatchLauncherShortcut(action);
+    }
+
+    private void dispatchLauncherShortcut(String action) {
         if (ACTION_SHORTCUT_NEW_TASK.equals(action)) {
             setWebMode(false);
             if (quickCaptureInput != null) {
                 quickCaptureInput.requestFocus();
-                quickCaptureInput.post(quickCaptureInput::requestFocus);
+                quickCaptureInput.post(() -> {
+                    quickCaptureInput.requestFocus();
+                    android.view.inputmethod.InputMethodManager inputMethodManager =
+                            (android.view.inputmethod.InputMethodManager)
+                                    getSystemService(INPUT_METHOD_SERVICE);
+                    if (inputMethodManager != null) {
+                        inputMethodManager.showSoftInput(quickCaptureInput,
+                                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+                    }
+                });
             }
             showToast("Ready for a new task. Review it before adding.");
-            intent.setAction(null);
             return;
         }
         if (ACTION_SHORTCUT_TASK_DETAILS.equals(action)) {
             setWebMode(false);
             showTaskEditor(null);
-            intent.setAction(null);
             return;
         }
         if (ACTION_SHORTCUT_OPEN_BROWSER.equals(action)) {
@@ -411,7 +449,6 @@ public final class MainActivity extends Activity {
                         ? "Browser ready. Tap a site or enter a search; nothing opened automatically."
                         : "Browser ready in Offline mode. Enable Online before opening a site.");
             }
-            intent.setAction(null);
         }
     }
 
@@ -4019,6 +4056,7 @@ public final class MainActivity extends Activity {
                     pendingPortableImportNeedsRepick = true;
                 }
                 render();
+                dispatchPendingLauncherShortcut();
                 checkDueReminders();
                 if (pendingPortableImportNeedsRepick) {
                     pendingPortableImportNeedsRepick = false;
