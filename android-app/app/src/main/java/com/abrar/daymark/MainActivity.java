@@ -4602,52 +4602,10 @@ public final class MainActivity extends Activity {
     }
 
     private SmartTaskDraft parseSmartTaskDraft(String raw) {
-        String title = raw.trim();
-        String lower = title.toLowerCase(Locale.ROOT);
-        String dueDate = null;
-        LocalDate today = LocalDate.now();
-        if (lower.matches(".*\\b(today)\\b.*")) {
-            dueDate = today.toString();
-            title = title.replaceAll("(?i)\\b(today)\\b", "").trim();
-        } else if (lower.matches(".*\\b(tomorrow)\\b.*")) {
-            dueDate = today.plusDays(1).toString();
-            title = title.replaceAll("(?i)\\b(tomorrow)\\b", "").trim();
-        } else if (lower.matches(".*\\b(next week)\\b.*")) {
-            dueDate = today.plusWeeks(1).toString();
-            title = title.replaceAll("(?i)\\b(next week)\\b", "").trim();
-        }
-        if (dueDate == null) {
-            String[] weekdays = { "monday", "tuesday", "wednesday", "thursday",
-                    "friday", "saturday", "sunday" };
-            for (int index = 0; index < weekdays.length; index++) {
-                if (lower.matches(".*\\b(next " + weekdays[index] + "|" + weekdays[index] + ")\\b.*")) {
-                    boolean followingWeek = lower.matches(".*\\bnext " + weekdays[index] + "\\b.*");
-                    LocalDate target = today;
-                    do {
-                        target = target.plusDays(1);
-                    } while (target.getDayOfWeek() != java.time.DayOfWeek.of(index + 1));
-                    if (followingWeek) target = target.plusWeeks(1);
-                    dueDate = target.toString();
-                    title = title.replaceAll("(?i)\\b(next )?" + weekdays[index] + "\\b", "").trim();
-                    break;
-                }
-            }
-        }
-        String priority = "medium";
-        if (lower.matches(".*\\b(high|urgent|important)\\b.*")) {
-            priority = "high";
-            title = title.replaceAll("(?i)\\b(high|urgent|important)\\b", "").trim();
-        } else if (lower.matches(".*\\b(low)\\b.*")) {
-            priority = "low";
-            title = title.replaceAll("(?i)\\blow\\b", "").trim();
-        }
-        List<String> tags = new ArrayList<>();
-        java.util.regex.Matcher tagMatcher = java.util.regex.Pattern
-                .compile("(?:^|\\s)#([A-Za-z0-9][A-Za-z0-9_-]{0,23})").matcher(title);
-        while (tagMatcher.find()) tags.add(tagMatcher.group(1).toLowerCase(Locale.ROOT));
-        title = title.replaceAll("(?i)(?:^|\\s)#[A-Za-z0-9][A-Za-z0-9_-]{0,23}", " ");
-        title = title.replaceAll("\\s{2,}", " ").replaceAll("^[,.:;\\-]+|[,.:;\\-]+$", "").trim();
-        return new SmartTaskDraft(title, dueDate, priority, tags);
+        NaturalLanguageTaskParse.Result parsed =
+                NaturalLanguageTaskParse.parse(raw, LocalDate.now());
+        return new SmartTaskDraft(parsed.title, parsed.dueDate, parsed.dueTime,
+                parsed.priority, parsed.tags);
     }
 
     private String dueLabelForDate(String date) {
@@ -4661,11 +4619,13 @@ public final class MainActivity extends Activity {
     private static final class SmartTaskDraft {
         final String title;
         final String dueDate;
+        final String dueTime;
         final String priority;
         final List<String> tags;
-        SmartTaskDraft(String title, String dueDate, String priority, List<String> tags) {
+        SmartTaskDraft(String title, String dueDate, String dueTime, String priority, List<String> tags) {
             this.title = title;
             this.dueDate = dueDate;
+            this.dueTime = dueTime;
             this.priority = priority;
             this.tags = tags;
         }
@@ -4780,7 +4740,7 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-            tasks.add(TaskLogic.create(title, draft.dueDate, draft.priority, "", null, null, null, null, draft.tags));
+            tasks.add(TaskLogic.create(title, draft.dueDate, draft.priority, "", draft.dueTime, null, null, null, draft.tags));
             quickCaptureInput.setText("");
             quickCaptureInput.setError(null);
             captureFeedback.setText("Task added" + (draft.dueDate == null ? "" : " with " + dueLabelForDate(draft.dueDate)) + " and " + draft.priority + " priority. Tap Edit for more options.");
