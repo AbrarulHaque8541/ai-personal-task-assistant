@@ -1,3 +1,5 @@
+> **ARCHIVED — AUDIT_STATUS_2026-10-09.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (application ID `com.cue.daymark`, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, targetSdk 36, and the repository is now `AbrarulHaque8541/daymark`. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note added 2026-10-13.)*
+
 # Daymark repository audit — 2026-10-09
 
 ## Current verified baseline
@@ -5,9 +7,9 @@
 This report supersedes the older audit snapshot below. It reflects a live GitHub repository check and CI metadata review, not a physical-device acceptance claim.
 
 - Current main at audit start: `4a0a9e3c558f2f6ccd84742f48d2becb1a1be4e3`.
-- Latest published GitHub Release: [v1.0.4](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4), with APK and AAB assets.
+- Latest published GitHub Release: [v1.0.4](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.0.4), with APK and AAB assets.
 - Source candidate: v1.0.5 / versionCode 6. The exact `v1.0.5` tag had not been created; therefore v1.0.5 was not published.
-- Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37942559451) passed. It validated protected signing secrets, restored the keystore, built signed candidate APK/AAB artifacts, and verified the APK certificate against the pinned publisher certificate.
+- Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/daymark/actions/runs/37942559451) passed. It validated protected signing secrets, restored the keystore, built signed candidate APK/AAB artifacts, and verified the APK certificate against the pinned publisher certificate.
 - Package ID remains `legacy application ID`; pinned production signer SHA-256 remains `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
 - Android Gradle target is API 35. API 36 migration/edge-to-edge/predictive-Back qualification is still needed before claiming Google Play submission readiness.
 - The repository searches returned no open PRs or issues at the start of the follow-up audit. Recheck live state before release.
@@ -47,10 +49,10 @@ Scope note: this report reflects a live GitHub source/metadata/CI audit, not a c
 - Created issue #161 for explicit, unavoidable trust confirmation before imported JS is persisted/enabled, with match-rule and extension-injection regression tests.
 
 ## CI evidence
-- Main Android CI run: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37876293459 — success on its checked SHA before PR #157 merge.
-- PR #157 Android CI: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37876253840 — success; host regression tests passed after the `@run-at` fix.
-- PR #157 device-test artifact workflow: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37876253772 — success for build/manifest/APK metadata validation only. It does not install or test on a physical device/emulator.
-- PR #157 first attempt exposed the actual @run-at assertion failure: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37876193975.
+- Main Android CI run: https://github.com/AbrarulHaque8541/daymark/actions/runs/37876293459 — success on its checked SHA before PR #157 merge.
+- PR #157 Android CI: https://github.com/AbrarulHaque8541/daymark/actions/runs/37876253840 — success; host regression tests passed after the `@run-at` fix.
+- PR #157 device-test artifact workflow: https://github.com/AbrarulHaque8541/daymark/actions/runs/37876253772 — success for build/manifest/APK metadata validation only. It does not install or test on a physical device/emulator.
+- PR #157 first attempt exposed the actual @run-at assertion failure: https://github.com/AbrarulHaque8541/daymark/actions/runs/37876193975.
 
 ## Release blocker — not changed
 - The latest published stable release remains v1.0.2 (`Daymark-v1.0.2.apk`). Stable v1.0.3 does not exist in Releases yet.

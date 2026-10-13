@@ -1,3 +1,5 @@
+> **ARCHIVED — RELEASE_HANDOFF_V1.0.5.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (application ID `com.cue.daymark`, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, targetSdk 36, and the repository is now `AbrarulHaque8541/daymark`. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note added 2026-10-13.)*
+
 # Daymark v1.0.5 — Cross-Agent Engineering Handoff
 
 Last reconciled: 2026-10-09. This is a review index, not a claim that all release checks are complete.
@@ -10,12 +12,12 @@ Review current `main`, this document, `AGENTS.md`, `PROJECT_PLAN.md`, and the pr
 
 ## Historical source/release snapshot (2026-10-09)
 
-- Repository: `AbrarulHaque8541/ai-personal-task-assistant`
+- Repository: `AbrarulHaque8541/daymark`
 - App/package: Daymark / the historical v1.0.5 application identity (separate from current `main`)
 - Last observed main SHA: `88f3fd395babe273085fc48c3607c30c3f3e4e53`
 - Candidate version: `1.0.5`, `versionCode 6`
 - Latest known public release: `v1.0.4`; do not call v1.0.5 released until the exact tag's production workflow completes and the release assets are verified.
-- Main Android CI run #353 passed at the previous source snapshot: https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37948750662. The newest main commit observed is documentation-only PR #189; the PR-triggered workflow lookup did not return a run for that main commit.
+- Main Android CI run #353 passed at the previous source snapshot: https://github.com/AbrarulHaque8541/daymark/actions/runs/37948750662. The newest main commit observed is documentation-only PR #189; the PR-triggered workflow lookup did not return a run for that main commit.
 - Successful CI means automated/build validation, not a physical-device install/test.
 - Package ID and pinned production signer are release invariants. Never ask the user to uninstall as a normal update path.
 
@@ -23,16 +25,16 @@ Review current `main`, this document, `AGENTS.md`, `PROJECT_PLAN.md`, and the pr
 
 | PR | Merged work | Review notes |
 |---|---|---|
-| [#103](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/103) | Production signing/release gate work | Preserve same-signer verification and monotonic versioning. |
-| [#177](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/177) | Browser control layout, tab/history behavior, HTTPS navigation policy, fullscreen video and user-triggered direct HTTPS media download | Direct media only when the page exposes a direct HTTPS URL; not a universal video downloader. |
-| [#180](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/180) | Online-by-default browser policy with explicit user-initiated navigation, migration of legacy hidden Offline preference, browser docs | Verify existing-install migration and error recovery on device. |
-| [#181](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/181) | Updater release-note metadata contract for future production releases; extension import trust-review confirmation; grouped More/settings UI and short transitions; opt-in network-image blocking; truthful browser labels | Image blocking is not full ad/tracker blocking. v1.0.4's empty release body is historical; test the new release's metadata contract. |
-| [#182](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/182) | Local text-only Reader Mode with bounded user-triggered extraction, selectable text and Copy; separate full-screen live-page action | Heuristic extraction; dynamic/non-article pages may be poor. |
-| [#183](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/183) | Release and agent baseline docs refresh | Documentation only. |
-| [#184](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/184) | Reader Mode font size (14–28sp), Sans/Serif and Light/Sepia/Dark themes | Device contrast, TalkBack, small-screen and scaling checks remain. |
-| [#185](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/185) | Final pre-release agent/project/audit docs refresh | Documentation only. |
+| [#103](https://github.com/AbrarulHaque8541/daymark/pull/103) | Production signing/release gate work | Preserve same-signer verification and monotonic versioning. |
+| [#177](https://github.com/AbrarulHaque8541/daymark/pull/177) | Browser control layout, tab/history behavior, HTTPS navigation policy, fullscreen video and user-triggered direct HTTPS media download | Direct media only when the page exposes a direct HTTPS URL; not a universal video downloader. |
+| [#180](https://github.com/AbrarulHaque8541/daymark/pull/180) | Online-by-default browser policy with explicit user-initiated navigation, migration of legacy hidden Offline preference, browser docs | Verify existing-install migration and error recovery on device. |
+| [#181](https://github.com/AbrarulHaque8541/daymark/pull/181) | Updater release-note metadata contract for future production releases; extension import trust-review confirmation; grouped More/settings UI and short transitions; opt-in network-image blocking; truthful browser labels | Image blocking is not full ad/tracker blocking. v1.0.4's empty release body is historical; test the new release's metadata contract. |
+| [#182](https://github.com/AbrarulHaque8541/daymark/pull/182) | Local text-only Reader Mode with bounded user-triggered extraction, selectable text and Copy; separate full-screen live-page action | Heuristic extraction; dynamic/non-article pages may be poor. |
+| [#183](https://github.com/AbrarulHaque8541/daymark/pull/183) | Release and agent baseline docs refresh | Documentation only. |
+| [#184](https://github.com/AbrarulHaque8541/daymark/pull/184) | Reader Mode font size (14–28sp), Sans/Serif and Light/Sepia/Dark themes | Device contrast, TalkBack, small-screen and scaling checks remain. |
+| [#185](https://github.com/AbrarulHaque8541/daymark/pull/185) | Final pre-release agent/project/audit docs refresh | Documentation only. |
 
-**Do not treat PRs [#178](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/178) and [#179](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/179) as merged source:** both are closed and not merged. Use the merged #177 and current main instead.
+**Do not treat PRs [#178](https://github.com/AbrarulHaque8541/daymark/pull/178) and [#179](https://github.com/AbrarulHaque8541/daymark/pull/179) as merged source:** both are closed and not merged. Use the merged #177 and current main instead.
 
 ## Release-blocking acceptance checklist
 
@@ -62,24 +64,24 @@ Record each as PASS / FAIL / NOT TESTED with device model, Android API, build va
 
 ## Additional findings from the deeper audit
 
-- [#190](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/190) — bound decompressed bytes across all extension archive entries.
-- [#191](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/191) — reject invalid numeric HTTPS ports consistently.
-- [#192](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/192) — disclose/resolve the mismatch between imported extension `runAt` and page-finished injection.
-- [#193](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/193) — collision-safe WebExtension IDs and pack replacement semantics.
-- [#194](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/194) — reject malformed WebExtension match scopes instead of broadening them to all HTTPS sites.
-- [#196](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/196) — make source guards fail CI when critical MainActivity wiring is missing, rather than printing a non-failing PENDING status.
-- [#199](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/199) — apply Safe Browsing preference consistently to all open WebView tabs.
-- [#200](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/200) — clear per-tab history and SSL exception state across all open tabs.
+- [#190](https://github.com/AbrarulHaque8541/daymark/issues/190) — bound decompressed bytes across all extension archive entries.
+- [#191](https://github.com/AbrarulHaque8541/daymark/issues/191) — reject invalid numeric HTTPS ports consistently.
+- [#192](https://github.com/AbrarulHaque8541/daymark/issues/192) — disclose/resolve the mismatch between imported extension `runAt` and page-finished injection.
+- [#193](https://github.com/AbrarulHaque8541/daymark/issues/193) — collision-safe WebExtension IDs and pack replacement semantics.
+- [#194](https://github.com/AbrarulHaque8541/daymark/issues/194) — reject malformed WebExtension match scopes instead of broadening them to all HTTPS sites.
+- [#196](https://github.com/AbrarulHaque8541/daymark/issues/196) — make source guards fail CI when critical MainActivity wiring is missing, rather than printing a non-failing PENDING status.
+- [#199](https://github.com/AbrarulHaque8541/daymark/issues/199) — apply Safe Browsing preference consistently to all open WebView tabs.
+- [#200](https://github.com/AbrarulHaque8541/daymark/issues/200) — clear per-tab history and SSL exception state across all open tabs.
 
 ## Related issues and proposals
 
-- [#186 — Cross-agent handoff, merged work and release blockers](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/186)
-- [#187 — API 36 / Play target readiness](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/187)
-- [#160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160), [#137](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/137), [#35](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/35) — device/runtime acceptance history; reconcile state and avoid duplicate test matrices.
-- [#147](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/147) — recurrence/reminder lifecycle.
-- [#150](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/150) — optional GeckoView/WebExtension engine.
-- [#161](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/161) — imported extension execution/trust boundaries.
-- [#133](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/133) and [#135](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/135) — AI provider and browser UX backlog. Compare each acceptance item with current main before reopening or implementing.
+- [#186 — Cross-agent handoff, merged work and release blockers](https://github.com/AbrarulHaque8541/daymark/issues/186)
+- [#187 — API 36 / Play target readiness](https://github.com/AbrarulHaque8541/daymark/issues/187)
+- [#160](https://github.com/AbrarulHaque8541/daymark/issues/160), [#137](https://github.com/AbrarulHaque8541/daymark/issues/137), [#35](https://github.com/AbrarulHaque8541/daymark/issues/35) — device/runtime acceptance history; reconcile state and avoid duplicate test matrices.
+- [#147](https://github.com/AbrarulHaque8541/daymark/issues/147) — recurrence/reminder lifecycle.
+- [#150](https://github.com/AbrarulHaque8541/daymark/issues/150) — optional GeckoView/WebExtension engine.
+- [#161](https://github.com/AbrarulHaque8541/daymark/issues/161) — imported extension execution/trust boundaries.
+- [#133](https://github.com/AbrarulHaque8541/daymark/issues/133) and [#135](https://github.com/AbrarulHaque8541/daymark/issues/135) — AI provider and browser UX backlog. Compare each acceptance item with current main before reopening or implementing.
 
 ## Rules for new work
 
@@ -103,14 +105,14 @@ This section supersedes older PR/CI state in earlier sections above. Reconcile l
 
 ### Newly merged current-main work
 
-- PR [#195](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/195) merged: refreshed handoff and agent instructions.
-- PR [#197](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/197) merged: HTTPS numeric ports 0 and above 65535 are rejected; valid custom ports remain accepted. Its initial CI failures were from accidental unrelated source corruption on an earlier branch; the corrected final head passed both Android CI and device-test build workflows.
-- PR [#198](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/198) merged: source wiring guards now fail non-zero instead of silently reporting PENDING; a meta-test removes each marker from a temporary source copy to prove fail-closed behavior.
-- PR [#201](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/201) merged: Safe Browsing preference and clear-site-data cleanup are applied consistently across open tabs, with partial failure disclosed.
-- PR [#203](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/203) and PR [#210](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/210) merged: extension archive decompression budgets, effective run-time disclosure, collision-resistant IDs, fail-closed scopes, and safe idempotent re-import settings.
-- PR [#216](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/216) merged at `250a133ed89d872b4e6b1d916bd9d46085750474`: honest HTTPS Site information panel.
-- PR [#217](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/217) merged at `e2b7e12ef4639ca3849106bc563713d5fdd51166`: Reader Mode caps each retained text node, counts separators, and visits at most 10,000 DOM nodes within the 60,000-character output budget.
-- PR [#218](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/218) merged at `2440f6baaba13cdf8da216d78bff0d6f2038d089`: in-app DownloadManager list with queued/running/paused/completed/failed states, manual refresh, explicit empty/error states, user-tap file opening, and confirmation-gated HTTPS retry. Stale PR #212 was closed as superseded, not merged.
+- PR [#195](https://github.com/AbrarulHaque8541/daymark/pull/195) merged: refreshed handoff and agent instructions.
+- PR [#197](https://github.com/AbrarulHaque8541/daymark/pull/197) merged: HTTPS numeric ports 0 and above 65535 are rejected; valid custom ports remain accepted. Its initial CI failures were from accidental unrelated source corruption on an earlier branch; the corrected final head passed both Android CI and device-test build workflows.
+- PR [#198](https://github.com/AbrarulHaque8541/daymark/pull/198) merged: source wiring guards now fail non-zero instead of silently reporting PENDING; a meta-test removes each marker from a temporary source copy to prove fail-closed behavior.
+- PR [#201](https://github.com/AbrarulHaque8541/daymark/pull/201) merged: Safe Browsing preference and clear-site-data cleanup are applied consistently across open tabs, with partial failure disclosed.
+- PR [#203](https://github.com/AbrarulHaque8541/daymark/pull/203) and PR [#210](https://github.com/AbrarulHaque8541/daymark/pull/210) merged: extension archive decompression budgets, effective run-time disclosure, collision-resistant IDs, fail-closed scopes, and safe idempotent re-import settings.
+- PR [#216](https://github.com/AbrarulHaque8541/daymark/pull/216) merged at `250a133ed89d872b4e6b1d916bd9d46085750474`: honest HTTPS Site information panel.
+- PR [#217](https://github.com/AbrarulHaque8541/daymark/pull/217) merged at `e2b7e12ef4639ca3849106bc563713d5fdd51166`: Reader Mode caps each retained text node, counts separators, and visits at most 10,000 DOM nodes within the 60,000-character output budget.
+- PR [#218](https://github.com/AbrarulHaque8541/daymark/pull/218) merged at `2440f6baaba13cdf8da216d78bff0d6f2038d089`: in-app DownloadManager list with queued/running/paused/completed/failed states, manual refresh, explicit empty/error states, user-tap file opening, and confirmation-gated HTTPS retry. Stale PR #212 was closed as superseded, not merged.
 
 ### Latest checks and CI interpretation
 
@@ -122,11 +124,11 @@ This section supersedes older PR/CI state in earlier sections above. Reconcile l
 
 ### Remaining release gates at the 2026-10-09 handoff (historical)
 
-- At handoff time, [#187](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/187) was an open API 36 tracker. The source then used `compileSdk = 35` / `targetSdk = 35` and the device-test workflow asserted 35. Those facts were superseded by source/toolchain PRs [#261](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/261), [#280](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/280), and release-workflow PR [#290](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/290); current API 36 runtime/device acceptance remains separate. Google's current [target API policy](https://developer.android.com/google/play/requirements/target-sdk) applies to ordinary Play submissions from 2026-08-31, subject to the documented exceptions.
-- [#160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160) remains the source of truth for device/emulator acceptance. Mark unrun cases NOT TESTED.
-- [#147](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/147) remains open for recurrence and actual reminder-delivery lifecycle. Stored/in-app reminder state is not proof of Android notification delivery.
-- [#150](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/150) remains a future GeckoView/WebExtension-engine proposal, not a v1.0.5 promise.
-- [#135](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/135) remains an open browser/provider backlog; compare each item with current main before coding.
+- At handoff time, [#187](https://github.com/AbrarulHaque8541/daymark/issues/187) was an open API 36 tracker. The source then used `compileSdk = 35` / `targetSdk = 35` and the device-test workflow asserted 35. Those facts were superseded by source/toolchain PRs [#261](https://github.com/AbrarulHaque8541/daymark/pull/261), [#280](https://github.com/AbrarulHaque8541/daymark/pull/280), and release-workflow PR [#290](https://github.com/AbrarulHaque8541/daymark/pull/290); current API 36 runtime/device acceptance remains separate. Google's current [target API policy](https://developer.android.com/google/play/requirements/target-sdk) applies to ordinary Play submissions from 2026-08-31, subject to the documented exceptions.
+- [#160](https://github.com/AbrarulHaque8541/daymark/issues/160) remains the source of truth for device/emulator acceptance. Mark unrun cases NOT TESTED.
+- [#147](https://github.com/AbrarulHaque8541/daymark/issues/147) remains open for recurrence and actual reminder-delivery lifecycle. Stored/in-app reminder state is not proof of Android notification delivery.
+- [#150](https://github.com/AbrarulHaque8541/daymark/issues/150) remains a future GeckoView/WebExtension-engine proposal, not a v1.0.5 promise.
+- [#135](https://github.com/AbrarulHaque8541/daymark/issues/135) remains an open browser/provider backlog; compare each item with current main before coding.
 - At the 2026-10-09 17:48Z snapshot, `versionName 1.0.5` / `versionCode 6` was still a candidate and the exact-tag workflow had not yet completed. v1.0.5 was published later that day after its production workflow and asset checks; this pre-publication warning is historical. Keep the exact-tag workflow and verified-assets gate for future releases.
 
 ---
@@ -155,7 +157,7 @@ Timestamp (UTC): 2026-10-09T20:20:35.332Z
 
 ## Historical handoff notice — 2026-10-13T13:20Z
 
-This note records the state at 13:20Z, before identity-migration PR [#286](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/286) merged. Its “upcoming target” wording is historical and is superseded by the current-source note below. For live source, release, open-PR, and device-gate status, use [the status index](docs/AGENT_STATUS.md).
+This note records the state at 13:20Z, before identity-migration PR [#286](https://github.com/AbrarulHaque8541/daymark/pull/286) merged. Its “upcoming target” wording is historical and is superseded by the current-source note below. For live source, release, open-PR, and device-gate status, use [the status index](docs/AGENT_STATUS.md).
 
 ---
 Work by: Cue
@@ -166,7 +168,7 @@ Timestamp (UTC): 2026-10-13T13:20:53Z
 
 ## Current source correction — 2026-10-13
 
-After the earlier 13:20Z note, PR [#286](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/286) merged the owner-approved identity change. At the reviewed `main` SHA `43fbe7670ad19ff2809f916f1b7dace4bc5ceb04`, Gradle source is `com.abrar.daymark`, version `1.0`/code `7`, target API 36. The latest published release remains v1.0.5 (API 35); the current source is not published, installs separately, and does not automatically migrate task data. Issues #221, #222, #257, and #160 remained open; no physical-device acceptance is claimed. Use [the status index](docs/AGENT_STATUS.md) for the live PR/issue/check snapshot.
+After the earlier 13:20Z note, PR [#286](https://github.com/AbrarulHaque8541/daymark/pull/286) merged the owner-approved identity change. At the reviewed `main` SHA `43fbe7670ad19ff2809f916f1b7dace4bc5ceb04`, Gradle source is `com.abrar.daymark`, version `1.0`/code `7`, target API 36. The latest published release remains v1.0.5 (API 35); the current source is not published, installs separately, and does not automatically migrate task data. Issues #221, #222, #257, and #160 remained open; no physical-device acceptance is claimed. Use [the status index](docs/AGENT_STATUS.md) for the live PR/issue/check snapshot.
 
 ---
 Work by: Cue
