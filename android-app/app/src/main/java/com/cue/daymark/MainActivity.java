@@ -2148,10 +2148,10 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshBrowserTabDialogList(String filter, ArrayAdapter<String> adapter,
-            List<DaymarkWebView> matchedTabs) {
+            List<Integer> matchedIndices) {
         adapter.setNotifyOnChange(false);
         adapter.clear();
-        matchedTabs.clear();
+        matchedIndices.clear();
         adapter.add("+ New tab");
         String needle = filter == null ? "" : filter.trim().toLowerCase(Locale.ROOT);
         for (int i = 0; i < browserTabs.size(); i++) {
@@ -2161,7 +2161,7 @@ public final class MainActivity extends Activity {
             if (needle.isEmpty()
                     || label.toLowerCase(Locale.ROOT).contains(needle)
                     || url.toLowerCase(Locale.ROOT).contains(needle)) {
-                matchedTabs.add(tab);
+                matchedIndices.add(i);
                 adapter.add(label);
             }
         }
@@ -2169,10 +2169,10 @@ public final class MainActivity extends Activity {
     }
 
     private void showBrowserTabsDialog() {
-        final List<DaymarkWebView> matchedTabs = new ArrayList<>();
+        final List<Integer> matchedIndices = new ArrayList<>();
         final ArrayAdapter<String> adapter =
                 new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>());
-        refreshBrowserTabDialogList("", adapter, matchedTabs);
+        refreshBrowserTabDialogList("", adapter, matchedIndices);
         int pad = dp(16);
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -2184,7 +2184,7 @@ public final class MainActivity extends Activity {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
             @Override public void afterTextChanged(Editable s) {
-                refreshBrowserTabDialogList(s.toString(), adapter, matchedTabs);
+                refreshBrowserTabDialogList(s.toString(), adapter, matchedIndices);
             }
         });
         container.addView(filterInput);
@@ -2205,8 +2205,10 @@ public final class MainActivity extends Activity {
                 requestNewBrowserTab();
                 return;
             }
-            int index = position - 1;
-            if (index >= 0 && index < matchedTabs.size()) switchBrowserTab(matchedTabs.get(index));
+            int listPosition = position - 1;
+            if (listPosition < 0 || listPosition >= matchedIndices.size()) return;
+            int index = matchedIndices.get(listPosition);
+            if (index >= 0 && index < browserTabs.size()) switchBrowserTab(browserTabs.get(index));
         });
         dialog.show();
     }
