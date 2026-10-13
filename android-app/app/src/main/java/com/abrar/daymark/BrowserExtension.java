@@ -1,0 +1,229 @@
+package com.abrar.daymark;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+
+/** Local Daymark extension pack (userscript/CSS). Not a Chrome Web Store add-on. */
+final class BrowserExtension {
+    static final int MAX_ENABLED_PER_PAGE = 8;
+    static final int MAX_CSS_CHARS = 120_000;
+    static final int MAX_JS_CHARS = 80_000;
+
+    final String id;
+    final String name;
+    final String version;
+    final String description;
+    final boolean enabled;
+    final boolean builtIn;
+    final List<String> matches;
+    final List<String> excludes;
+    final String css;
+    final String js;
+    final String runAt;
+    /** Human-readable import warnings (unsupported grants, etc.). */
+    final String warnings;
+    /** Normalized hosts where this pack is paused (host or any subdomain). */
+    final List<String> disabledSites;
+
+    BrowserExtension(String id, String name, String version, String description,
+                     boolean enabled, boolean builtIn, List<String> matches,
+                     String css, String js, String runAt) {
+        this(id, name, version, description, enabled, builtIn, matches,
+                Collections.<String>emptyList(), css, js, runAt, "");
+    }
+
+    BrowserExtension(String id, String name, String version, String description,
+                     boolean enabled, boolean builtIn, List<String> matches, List<String> excludes,
+                     String css, String js, String runAt, String warnings) {
+        this(id, name, version, description, enabled, builtIn, matches, excludes,
+                css, js, runAt, warnings, Collections.<String>emptyList());
+    }
+
+    BrowserExtension(String id, String name, String version, String description,
+                     boolean enabled, boolean builtIn, List<String> matches, List<String> excludes,
+                     String css, String js, String runAt, String warnings, List<String> disabledSites) {
+        this.id = id == null ? "" : id.trim();
+        this.name = name == null ? "Extension" : name.trim();
+        this.version = version == null ? "0" : version.trim();
+        this.description = description == null ? "" : description.trim();
+        this.enabled = enabled;
+        this.builtIn = builtIn;
+        this.matches = matches == null
+                ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(new ArrayList<String>(matches));
+        this.excludes = excludes == null
+                ? Collections.<String>emptyList()
+                : Collections.unmodifiableList(new ArrayList<String>(excludes));
+        String c = css == null ? "" : css;
+        String j = js == null ? "" : js;
+        if (c.length() > MAX_CSS_CHARS) c = c.substring(0, MAX_CSS_CHARS);
+        if (j.length() > MAX_JS_CHARS) j = j.substring(0, MAX_JS_CHARS);
+        this.css = c;
+        this.js = j;
+        String at = runAt == null ? "document_end" : runAt.trim().toLowerCase(Locale.ROOT);
+        this.runAt = "document_start".equals(at) ? "document_start" : "document_end";
+        this.warnings = warnings == null ? "" : warnings.trim();
+        List<String> sites = new ArrayList<>();
+        if (disabledSites != null) {
+            for (String site : disabledSites) {
+                String host = normalizeSiteHost(site);
+                if (host != null && !sites.contains(host)) sites.add(host);
+            }
+        }
+        this.disabledSites = Collections.unmodifiableList(sites);
+    }
+
+    boolean matchesUrl(String url) {
+        if (url == null || url.isEmpty() || matches.isEmpty()) return false;
+        if (!BrowserAddress.isAllowedWebUrl(url)) return false;
+        if (isSiteDisabled(url)) return false;
+        for (String pattern : excludes) {
+            if (MatchRules.matches(pattern, url)) return false;
+        }
+        for (String pattern : matches) {
+            if (MatchRules.matches(pattern, url)) return true;
+        }
+        return false;
+    }
+
+    boolean isSiteDisabled(String url) {
+        if (disabledSites.isEmpty() || url == null) return false;
+        String host;
+        try {
+            host = new java.net.URI(url).getHost();
+        } catch (Exception exception) {
+            return false;
+        }
+        if (host == null) return false;
+        host = host.toLowerCase(Locale.ROOT);
+        for (String site : disabledSites) {
+            if (host.equals(site) || host.endsWith("." + site)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Normalizes a user-entered site to a lowercase host for the disabled-sites list.
+     * Accepts a bare host ("example.com") or a full HTTPS URL ("https://example.com/page").
+     * Returns null for anything that is not a safe HTTPS host (cleartext, file, credentials,
+     * empty host, or free-form text).
+     */
+    static String normalizeSiteHost(String input) {
+        if (input == null) return null;
+        String value = input.trim().toLowerCase(Locale.ROOT);
+        if (value.endsWith(".")) value = value.substring(0, value.length() - 1);
+        if (value.isEmpty()) return null;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isWhitespace(c) || Character.isISOControl(c)
+                    || c == '/' || c == '\\' || c == '@' || c == ':' || c == '?' || c == '#') {
+                // A full URL is allowed below only when it parses as a safe HTTPS URL;
+                // bare hosts must not contain any of these characters.
+                if (value.contains("://")) break;
+                return null;
+            }
+        }
+        if (value.contains("://")) {
+            try {
+                java.net.URI uri = new java.net.URI(value);
+                if (!"https".equalsIgnoreCase(uri.getScheme())) return null;
+                if (uri.getRawUserInfo() != null) return null;
+                String host = uri.getHost();
+                if (host == null || host.isEmpty()) return null;
+                host = host.toLowerCase(Locale.ROOT);
+                if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
+                return isPlausibleHost(host) ? host : null;
+            } catch (Exception exception) {
+                return null;
+            }
+        }
+        return isPlausibleHost(value) ? value : null;
+    }
+
+    private static boolean isPlausibleHost(String host) {
+        if (host.isEmpty() || host.length() > 253) return false;
+        if (host.startsWith(".") || host.endsWith(".") || host.contains("..")) return false;
+        boolean hasDot = false;
+        for (int i = 0; i < host.length(); i++) {
+            char c = host.charAt(i);
+            if (c == '.') {
+                hasDot = true;
+            } else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+                // allowed hostname characters
+            } else {
+                return false;
+            }
+        }
+        return hasDot;
+    }
+
+    BrowserExtension withEnabled(boolean value) {
+        return new BrowserExtension(id, name, version, description, value, builtIn,
+                matches, excludes, css, js, runAt, warnings, disabledSites);
+    }
+
+    BrowserExtension withDisabledSites(List<String> sites) {
+        return new BrowserExtension(id, name, version, description, enabled, builtIn,
+                matches, excludes, css, js, runAt, warnings, sites);
+    }
+
+    static final class MatchRules {
+        private MatchRules() { }
+
+        static boolean matches(String pattern, String url) {
+            if (pattern == null || url == null) return false;
+            String p = pattern.trim();
+            if (p.isEmpty()) return false;
+            if ("<all_urls>".equals(p) || "*://*/*".equals(p)) {
+                return BrowserAddress.isAllowedWebUrl(url);
+            }
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+                String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+                String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+                if (p.startsWith("https://") && !"https".equals(scheme)) return false;
+                if (p.startsWith("*://")) {
+                    String rest = p.substring(4);
+                    int slash = rest.indexOf('/');
+                    String hostPat = slash < 0 ? rest : rest.substring(0, slash);
+                    String pathPat = slash < 0 ? "/*" : rest.substring(slash);
+                    return hostMatches(hostPat, host) && pathMatches(pathPat, path);
+                }
+                if (p.startsWith("https://")) {
+                    String rest = p.substring("https://".length());
+                    int slash = rest.indexOf('/');
+                    String hostPat = slash < 0 ? rest : rest.substring(0, slash);
+                    String pathPat = slash < 0 ? "/*" : rest.substring(slash);
+                    return hostMatches(hostPat, host) && pathMatches(pathPat, path);
+                }
+                return false;
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+
+        private static boolean hostMatches(String pattern, String host) {
+            if (pattern == null || host == null) return false;
+            String p = pattern.toLowerCase(Locale.ROOT);
+            if ("*".equals(p)) return true;
+            if (p.startsWith("*.")) {
+                String suffix = p.substring(1);
+                return host.endsWith(suffix) || host.equals(p.substring(2));
+            }
+            return host.equals(p);
+        }
+
+        private static boolean pathMatches(String pattern, String path) {
+            if (pattern == null) return false;
+            if ("/*".equals(pattern) || "*".equals(pattern)) return true;
+            if (pattern.endsWith("*")) {
+                String prefix = pattern.substring(0, pattern.length() - 1);
+                return path.startsWith(prefix);
+            }
+            return path.equals(pattern);
+        }
+    }
+}
