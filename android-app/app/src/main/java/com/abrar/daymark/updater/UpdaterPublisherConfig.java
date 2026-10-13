@@ -1,10 +1,10 @@
-package com.cue.daymark.updater;
+package com.abrar.daymark.updater;
 
-import com.cue.daymark.BuildConfig;
+import com.abrar.daymark.BuildConfig;
 
 /**
  * The owner-approved com.abrar.daymark identity is a fresh install, not an in-place
- * update of legacy com.cue.daymark. Keep the same pinned production signer for integrity.
+ * update of legacy com.abrar.daymark. Keep the same pinned production signer for integrity.
  */
 public final class UpdaterPublisherConfig {
     public static final boolean UPDATER_ENABLED = true;
