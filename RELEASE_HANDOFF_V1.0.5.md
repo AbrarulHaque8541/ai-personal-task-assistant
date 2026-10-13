@@ -1,4 +1,4 @@
-> **ARCHIVED — RELEASE_HANDOFF_V1.0.5.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (the retired pre-v1.0 application ID, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, targetSdk 36, and the repository is now `AbrarulHaque8541/daymark`. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note added 2026-10-13.)*
+> **ARCHIVED — RELEASE_HANDOFF_V1.0.5.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (the retired pre-v1.0 application ID, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, and targetSdk 36, while the actual repository slug remains `AbrarulHaque8541/ai-personal-task-assistant`. PR #295 prepared future `AbrarulHaque8541/daymark` links; the owner has not applied the separate rename. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note reconciled 2026-10-13.)*
 
 # Daymark v1.0.5 — Cross-Agent Engineering Handoff
 
@@ -12,7 +12,7 @@ Review current `main`, this document, `AGENTS.md`, `PROJECT_PLAN.md`, and the pr
 
 ## Historical source/release snapshot (2026-10-09)
 
-- Repository: `AbrarulHaque8541/daymark`
+- Repository slug at the time of this handoff: `AbrarulHaque8541/ai-personal-task-assistant`. The later `AbrarulHaque8541/daymark` path was prepared as a rename target, not an already-applied change.
 - App/package: Daymark / the historical v1.0.5 application identity (separate from current `main`)
 - Last observed main SHA: `88f3fd395babe273085fc48c3607c30c3f3e4e53`
 - Candidate version: `1.0.5`, `versionCode 6`

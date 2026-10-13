@@ -1,9 +1,9 @@
 # Task home vs Browser — settings ownership + competitor gaps
 
-Date: 2026-10-11 snapshot. Honest audit against live main + external product research; task-tag status refreshed 2026-10-13.
+Date: 2026-10-11 snapshot. Honest audit against live main + external product research; source-status corrections refreshed 2026-10-13.
 Audience: owner + agents. Not a release claim.
 
-**Current-source correction (2026-10-13):** Task tags are available in the editor, visible task summary, and search. A dedicated tag-filter-chip UI is not present. Read this correction for current status; the rest of the dated audit remains a point-in-time snapshot.
+**Current-source correction (2026-10-13):** Task tags are available in the editor, visible task summary, and search; a dedicated tag-filter-chip UI is not present. Natural-language quick add (supported dates/times, priorities, and `#tags`) later merged in [PR #292](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/292). Current browser source also has searchable/filterable tabs and local HTTPS-origin bookmarks; Browser Settings owns the default search engine, site history/data, bookmarks, extensions, image loading, Safe Browsing, and desktop-site preference. These later features supersede matching 2026-10-11 gaps below. The settings-ownership section and ordered work are historical proposals, not today's backlog; consult [`../PROJECT_PLAN.md`](../PROJECT_PLAN.md) and live issues [#221](https://github.com/AbrarulHaque8541/daymark/issues/221) / [#222](https://github.com/AbrarulHaque8541/daymark/issues/222) before proposing work. Quick-add formats are listed in [`NL_QUICK_ADD.md`](NL_QUICK_ADD.md).
 
 ## 1. What improved recently (main)
 
@@ -30,13 +30,13 @@ Audience: owner + agents. Not a release claim.
 
 No FPS/device benchmarks. Do not claim "200x".
 
-## 2. Settings ownership (current vs desired)
+## 2. Settings ownership (2026-10-11 snapshot; later source supersedes it)
 
 ### Desired rule
 - **Task page More** → only task + app-shell data (theme, text size, backup, reminders defaults, filters help).
 - **Browser ⋮ / Browser settings** → only browser (safe browsing, images, desktop default, download folder UX, extensions, history clear, engine defaults).
 
-### Current (mixed)
+### Current on the 2026-10-11 snapshot (historical)
 `showSettingsDialog` (global More) includes:
 - PERSONALIZE: appearance, text size, high contrast ✓ (app-shell)
 - DATA: accessibility, permissions, encrypted backup ✓
@@ -47,7 +47,7 @@ No FPS/device benchmarks. Do not claim "200x".
 - Safe Browsing toggle
 - Missing many browser-standard controls (see §3)
 
-**Gap:** browser settings incomplete; task More still points into browser extensions.
+**Gap at that snapshot; superseded by the 2026-10-13 source correction above.**
 
 ### Fix direction (implement in code PRs, not this doc alone)
 1. Task More: remove "Browser & extensions" row; keep updater + backup + appearance.
@@ -61,21 +61,21 @@ References used for *why multiple browsers exist*: Chrome, Firefox, Brave, Samsu
 | Capability | Daymark | Gap |
 |------------|---------|-----|
 | Multi-engine search switch | Yes | — |
-| Tabs | Yes | Tab groups / tab search missing |
+| Tabs | Yes — filterable/searchable | Tab groups are not claimed here |
 | Find in page / Reader / Desktop | Yes | — |
 | Downloads UI | Partial | Queue + retry + open folder polish |
 | History | Site history | Full typed history + search |
-| Bookmarks / favorites | No | **High gap** |
+| Bookmarks / favorites | Local HTTPS-origin bookmarks | Full-page saving and sync are separate, unclaimed capabilities |
 | Private / secret tab | No | Optional session-only tab |
 | Ad/tracker block | No (WebView limit) | Cosmetic userscripts only; not Brave Shields |
 | Real extensions | Page-local / userscript | Not Firefox-class add-ons |
 | Bottom chrome | Improved #248 | Good direction |
-| Default search engine setting | Partial | Persist default in browser settings |
+| Default search engine setting | Yes | — |
 | Password manager | No (by design) | Keep out unless owner asks |
 | Sync account | No (by design) | Keep out |
 | Collections / research save | No | **Research→task** is better fit |
 | Full-screen / media | Partial | OK |
-| Clear data per site | Partial | Surface in browser settings |
+| Clear data per site | App-wide clear-site-data action | Per-site deletion is not claimed; see the current Android README for scope |
 
 ## 4. Task app gaps vs Tasks.org / offline managers
 
@@ -85,7 +85,7 @@ References used for *why multiple browsers exist*: Chrome, Firefox, Brave, Samsu
 | Due + time + priority + notes + subtasks | Yes | — |
 | Reminders + repeat | Implemented in source; notifications are best-effort | Device proof open |
 | Tags / labels | Yes — editor, task summary, and search | Dedicated filter chips missing |
-| Natural-language quick add | No | High leverage |
+| Natural-language quick add | Implemented in source after this snapshot (PR #292) | Device UX acceptance remains separate |
 | Global search (title+notes) | Filter search | Notes depth |
 | Templates | Yes | — |
 | Attachments | Yes | — |
@@ -95,19 +95,19 @@ References used for *why multiple browsers exist*: Chrome, Firefox, Brave, Samsu
 | Calendar view | No | Optional |
 | Drag reorder | No | Nice-to-have |
 
-## 5. Ordered work (after owner picks)
+## 5. Historical suggestions (2026-10-11; not today's execution queue)
 
 **A — Separation + browser settings completeness**
 - Split More menus strictly.
-- Expand browser settings dialog to match §3 must-haves (bookmarks can be P1).
+- Reassess only currently documented settings gaps; origin bookmarks and default-search controls are already present in current source.
 
 **B — Task home density**
-- Dedicated tag-filter chips, NL quick-add, global search depth.
+- Dedicated tag-filter chips and global search depth.
 - Merge perf branch (hardware WebView + list gate + search debounce).
 
 **C — Research loop**
 - Browser selection → Add as task.
-- Bookmarks or "saved pages" local encrypted.
+- Optional saved-page/research capture is a separate proposal, not a missing origin-bookmark feature; confirm owner scope first.
 
 ## 6. Non-goals (keep)
 - Cloud sync / accounts

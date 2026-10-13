@@ -6,7 +6,7 @@ Daymark keeps task records on this Android device; task use needs no account or 
 
 The first screen asks **“What do you want to get done?”** and shows an everyday example. Type a task in your own words, then tap **Add task** or use the keyboard's Done action. A title is required and can be up to 160 characters.
 
-Quick add sets **no due date** and **medium priority**; the screen tells you this before you add the task. To choose a date or priority first, tap **Add with a date or priority**. Your typed text is carried into the editor and can be changed before saving. Choose a due date if useful, choose Low / Medium / High priority, then tap Add task. Cancel or Android Back closes the editor without adding anything.
+Quick add locally recognizes supported date/time, priority, and `#tag` tokens; unknown words remain in the title. With no recognized tokens, it defaults to **no due date** and **medium priority**. For examples and supported formats, see [`Natural-language quick add`](../docs/NL_QUICK_ADD.md). To choose values manually, tap **Add with a date or priority**. Your text is carried into the editor and can be changed before saving. Cancel or Android Back closes the editor without adding anything.
 
 ## Work with tasks
 
@@ -36,7 +36,9 @@ Tap **More** to change appearance (follow the device, light, or dark), app text 
 
 Tasks are encrypted with AES-GCM and stored in this app's private files using Android Keystore. They are not synced or included in automatic Android backup. A separate, user-triggered portable encrypted backup is available; it uses a generated recovery key that you must keep separately, not a passphrase. Clearing app data or uninstalling Daymark can permanently remove local data and keys. If storage cannot be unlocked or a save fails, the app shows an unavailable/unsaved state and pauses edits; this reduces the chance that a failure is mistaken for an empty list or a successful save, but it is not a zero-data-loss guarantee. Browser history is separate from task storage, local but not encrypted. Web features are available, but browser networking starts Offline. A first requested page displays a disclosure and requires explicit **Enable Online**; later navigations still require a separate tap. Older implicit Online preferences without the explicit-consent marker return to Offline.
 
-Compatible extension packs and userscripts can inject page-local CSS/JavaScript into matching HTTPS pages. Imported code is reviewed before storage and requires a deliberate **Trust & add** action; scripts can read/change matching page content and may send page-visible data externally. This is not a full Chrome/Firefox extension engine.\n\nThis version has no voice capture or speech provider, no AI/live LLM or AssistantProvider routing, no cloud fallback, no GGUF/model download or inference, no language/voice/plugin pack, no Termux/CLI bridge, and no autonomous OTA/background update. Telegram is not connected; a hosted bot would require a backend and token and is outside the offline app. No optional content is bundled or downloaded.
+Compatible extension packs and userscripts can inject page-local CSS/JavaScript into matching HTTPS pages. Imported code is reviewed before storage and requires a deliberate **Trust & add** action; scripts can read/change matching page content and may send page-visible data externally. This is not a full Chrome/Firefox extension engine.
+
+This version has no voice capture or speech provider, no AI/live LLM or AssistantProvider routing, no cloud fallback, no GGUF/model download or inference, no language/voice/plugin pack, no Termux/CLI bridge, and no autonomous OTA/background update. Telegram is not connected; a hosted bot would require a backend and token and is outside the offline app. No optional content is bundled or downloaded.
 
 ## Deferred optional services
 
