@@ -8,7 +8,7 @@ Short on purpose. Hard limits are few; everywhere else, use your full capability
 
 ## 0. Start here (60 seconds)
 
-1. **App:** Daymark — local-first Android tasks + HTTPS WebView. Installed application ID: `com.abrar.daymark` (owner-approved fresh identity; legacy `com.cue.daymark` is a separate app).
+1. **App:** Daymark — local-first Android tasks + HTTPS WebView. Installed application ID: `com.abrar.daymark` (owner-approved fresh identity; legacy `com.abrar.daymark` is a separate app).
 2. **Repo:** https://github.com/AbrarulHaque8541/ai-personal-task-assistant
 3. **Live status:** [Releases / latest](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest) · `android-app/app/build.gradle.kts` · open Issues/PRs. Do not invent version numbers.
 4. **Secrets are already in GitHub Actions:** `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Never ask the owner for keystore files or passwords. Never print them. Never put write tokens in the APK.
@@ -94,7 +94,7 @@ Reject or request changes on PRs/issues that still contain `<...>` identity plac
 
 ## 4. Hard product limits
 
-1. Current `applicationId = com.abrar.daymark`; do not change it again without explicit owner approval. Legacy `com.cue.daymark` is a separate app and is not upgraded by this release.
+1. Current `applicationId = com.abrar.daymark`; do not change it again without explicit owner approval. Legacy `com.abrar.daymark` is a separate app and is not upgraded by this release.
 2. Keep the production signer pin; `versionCode` stays monotonic (current baseline 7); tag = `v` + `versionName` (supports `v1.0` and later version names).
 3. Production APK/AAB via production release workflow from a tag on `main`.
 4. Never empty user task data on error. No analytics/ad SDKs. No broad JS bridge to untrusted pages.
