@@ -18,6 +18,8 @@ import android.webkit.WebResourceError;
 import android.webkit.DownloadListener;
 import android.graphics.Bitmap;
 import android.os.Build;
+import android.os.SystemClock;
+import android.util.Log;
 
 /** A narrow wrapper around Android System WebView; no native bridge or request interception is used. */
 final class DaymarkWebView extends WebView {
@@ -133,6 +135,7 @@ final class DaymarkWebView extends WebView {
 
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                Log.i("DaymarkWebView", "page started origin=" + BrowserLogPolicy.redactedOrigin(url));
                 if (!networkPolicy.allowsRemoteLoads()) {
                     listener.onOfflineNavigationBlocked();
                     return;
@@ -141,8 +144,22 @@ final class DaymarkWebView extends WebView {
             }
 
             @Override
+            public void onPageCommitVisible(WebView view, String url) {
+                Log.i("DaymarkWebView", "page commit visible origin="
+                        + BrowserLogPolicy.redactedOrigin(url));
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
+                Log.i("DaymarkWebView", "page finished origin=" + BrowserLogPolicy.redactedOrigin(url));
                 listener.onPageFinished(url);
+                // Diagnostic only: distinguish completed navigation from content ready for a draw.
+                view.postVisualStateCallback(SystemClock.uptimeMillis(), requestId ->
+                        Log.i("DaymarkWebView", "visual state ready origin="
+                                + BrowserLogPolicy.redactedOrigin(url)
+                                + " attached=" + (view.getParent() != null)
+                                + " visible=" + (view.getVisibility() == View.VISIBLE)
+                                + " size=" + view.getWidth() + "x" + view.getHeight()));
                 // Local Daymark packs only (CSS/userscript-style). No chrome.* APIs, no request interception.
                 if (extensionRuntime != null && networkPolicy.allowsRemoteLoads()) {
                     extensionRuntime.onPageFinished(view, url);
