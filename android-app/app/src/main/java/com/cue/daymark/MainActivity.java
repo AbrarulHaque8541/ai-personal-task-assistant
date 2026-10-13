@@ -97,6 +97,9 @@ import com.cue.daymark.updater.UpdaterRecoveryStore;
 // Browser workspace + task workspace share one Activity but never share visible controls.
 public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
+    private static final String ACTION_SHORTCUT_NEW_TASK = "com.cue.daymark.action.SHORTCUT_NEW_TASK";
+    private static final String ACTION_SHORTCUT_TASK_DETAILS = "com.cue.daymark.action.SHORTCUT_TASK_DETAILS";
+    private static final String ACTION_SHORTCUT_OPEN_BROWSER = "com.cue.daymark.action.SHORTCUT_OPEN_BROWSER";
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_EXPORT_EXTENSION = 7813;
     private static final int REQUEST_PORTABLE_EXPORT = 7342;
@@ -368,12 +371,48 @@ public final class MainActivity extends Activity {
         buildInterface();
         loadEncryptedTasks();
         handleShareInIntent(getIntent());
+        handleShortcutIntent(getIntent());
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        setIntent(intent);
         handleShareInIntent(intent);
+        handleShortcutIntent(intent);
+    }
+
+    // Android launcher app shortcuts appear when the user long-presses the Daymark icon.
+    // Actions only navigate to an app surface; they never create a task or open a website
+    // without the user's next explicit action.
+    private void handleShortcutIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if (ACTION_SHORTCUT_NEW_TASK.equals(action)) {
+            setWebMode(false);
+            if (quickCaptureInput != null) {
+                quickCaptureInput.requestFocus();
+                quickCaptureInput.post(quickCaptureInput::requestFocus);
+            }
+            showToast("Ready for a new task. Review it before adding.");
+            intent.setAction(null);
+            return;
+        }
+        if (ACTION_SHORTCUT_TASK_DETAILS.equals(action)) {
+            setWebMode(false);
+            showTaskEditor(null);
+            intent.setAction(null);
+            return;
+        }
+        if (ACTION_SHORTCUT_OPEN_BROWSER.equals(action)) {
+            setWebMode(true);
+            if (browserStatus != null) {
+                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+                        ? "Browser ready. Tap a site or enter a search; nothing opened automatically."
+                        : "Browser ready in Offline mode. Enable Online before opening a site.");
+            }
+            intent.setAction(null);
+        }
     }
 
     // Android Share target: ACTION_SEND plain text becomes the task draft so the
