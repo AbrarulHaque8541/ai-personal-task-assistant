@@ -789,7 +789,7 @@ public final class MainActivity extends Activity {
                     : parsed.warnings;
             String summary = "Name: " + parsed.name + "\nVersion: " + parsed.version +
                     "\nMatches: " + parsed.matches.size() +
-                    "\nCSS: " + parsed.css.length() + " chars · JS: " + parsed.js.length() +
+                    "\nCSS: " + parsed.css.length() + " chars � JS: " + parsed.js.length() +
                     "\n\n" + warning +
                     "\n\nDaymark will keep this pack local and will not provide privileged browser APIs.";
             new AlertDialog.Builder(this)
@@ -1024,10 +1024,10 @@ public final class MainActivity extends Activity {
 
         LinearLayout.LayoutParams tabParams = new LinearLayout.LayoutParams(0, dp(50), 1f);
 
-        navTasksTab = buildNavTab("✓", "Tasks", "View your tasks and dashboard", view -> setWebMode(false));
-        navWebTab = buildNavTab("🌐", "Web", "Open web browser and search", view -> setWebMode(true));
-        navTemplatesTab = buildNavTab("📑", "Templates", "Open task templates", view -> showTaskTemplatesDialog());
-        navSettingsTab = buildNavTab("⚙", "Settings", "Open Daymark settings", view -> showSettingsDialog());
+        navTasksTab = buildNavTab("", "Tasks", "View your tasks and dashboard", view -> setWebMode(false));
+        navWebTab = buildNavTab("<", "Web", "Open web browser and search", view -> setWebMode(true));
+        navTemplatesTab = buildNavTab("=�", "Templates", "Open task templates", view -> showTaskTemplatesDialog());
+        navSettingsTab = buildNavTab("�", "Settings", "Open Daymark settings", view -> showSettingsDialog());
 
         bar.addView(navTasksTab, tabParams);
         bar.addView(navWebTab, tabParams);
@@ -1082,7 +1082,7 @@ public final class MainActivity extends Activity {
             navTasksIcon.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.NORMAL : Typeface.BOLD));
             navTasksLabel.setTextColor(inWeb ? palette.muted : palette.accent);
             navTasksLabel.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.NORMAL : Typeface.BOLD));
-            navTasksTab.setBackground(inWeb ? null : shape(palette.accentSoft, 12, palette.accentSoft));
+            navTasksTab.setBackground(inWeb ? null : shape(palette.accentSoft, 16, palette.accentSoft));
             navTasksTab.setContentDescription(inWeb
                     ? "Tasks page. Switch to tasks and dashboard."
                     : "Tasks page, selected.");
@@ -1094,7 +1094,7 @@ public final class MainActivity extends Activity {
             navWebIcon.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.BOLD : Typeface.NORMAL));
             navWebLabel.setTextColor(inWeb ? palette.accent : palette.muted);
             navWebLabel.setTypeface(Typeface.create("sans-serif", inWeb ? Typeface.BOLD : Typeface.NORMAL));
-            navWebTab.setBackground(inWeb ? shape(palette.accentSoft, 12, palette.accentSoft) : null);
+            navWebTab.setBackground(inWeb ? shape(palette.accentSoft, 16, palette.accentSoft) : null);
             navWebTab.setContentDescription(inWeb
                     ? "Web browser page, selected."
                     : "Web browser page. Switch to web browser and search.");
@@ -1119,7 +1119,7 @@ public final class MainActivity extends Activity {
         LinearLayout mark = new LinearLayout(this);
         mark.setGravity(Gravity.CENTER);
         TextView markText = text("d", 20, Color.WHITE, Typeface.BOLD);
-        mark.setBackground(shape(palette.accent, 14, palette.accent));
+        mark.setBackground(shape(palette.accent, 22, palette.accent));
         mark.addView(markText);
         LinearLayout.LayoutParams markParams = new LinearLayout.LayoutParams(dp(38), dp(38));
         bar.addView(mark, markParams);
@@ -1183,9 +1183,9 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(13), dp(11), dp(13), dp(11));
-        card.setBackground(shape(palette.accentSoft, 12, palette.accentSoft));
+        card.setBackground(shape(palette.accentSoft, 16, palette.accentSoft));
 
-        TextView shield = text("●", 11, palette.accent, Typeface.BOLD);
+        TextView shield = text("�", 11, palette.accent, Typeface.BOLD);
         shield.setGravity(Gravity.CENTER);
         card.addView(shield, new LinearLayout.LayoutParams(dp(22), dp(22)));
 
@@ -1193,10 +1193,10 @@ public final class MainActivity extends Activity {
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setPadding(dp(8), 0, 0, 0);
         copy.addView(text("Tasks are encrypted on this device", 13, palette.text, Typeface.BOLD));
-        copy.addView(text("Web requests only after your tap · no task sync", 12, palette.muted, Typeface.NORMAL));
+        copy.addView(text("Web requests only after your tap � no task sync", 12, palette.muted, Typeface.NORMAL));
         card.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        storageStatus = text("Opening encrypted storage…", 12, palette.muted, Typeface.NORMAL);
+        storageStatus = text("Opening encrypted storage&", 12, palette.muted, Typeface.NORMAL);
         storageStatus.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         storageStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         card.addView(storageStatus);
@@ -1212,7 +1212,7 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(12), dp(9), dp(12), dp(9));
-        card.setBackground(shape(palette.surface, 14, palette.line));
+        card.setBackground(shape(palette.surface, 20, palette.line));
         card.setElevation(dp(1));
 
         LinearLayout modes = new LinearLayout(this);
@@ -1240,7 +1240,7 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setMinHeight(dp(52));
         quickCaptureInput.setTextColor(palette.text);
         quickCaptureInput.setHintTextColor(palette.muted);
-        quickCaptureInput.setBackground(shape(palette.background, 10, palette.line));
+        quickCaptureInput.setBackground(shape(palette.background, 14, palette.line));
         quickCaptureInput.setText(webMode ? "" : taskDraft);
         if (!webMode && taskDraft != null && !taskDraft.isEmpty()) {
             quickCaptureInput.setSelection(Math.min(taskDraft.length(), 2048));
@@ -1370,7 +1370,7 @@ public final class MainActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
         bar.setPadding(dp(8), dp(6), dp(8), dp(4));
-        bar.setBackground(shape(palette.surface, 18, palette.line));
+        bar.setBackground(shape(palette.surface, 22, palette.line));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
@@ -1384,12 +1384,12 @@ public final class MainActivity extends Activity {
         browserAddressInput.setPadding(dp(12), 0, dp(8), 0);
         browserAddressInput.setTextColor(palette.text);
         browserAddressInput.setHintTextColor(palette.muted);
-        browserAddressInput.setBackground(shape(palette.surfaceAlt, 16, palette.line));
+        browserAddressInput.setBackground(shape(palette.surfaceAlt, 20, palette.line));
         browserAddressInput.setContentDescription("Browser address and search field");
         top.addView(browserAddressInput, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         // Hidden 1x1 placeholder: hardware/IME Enter already navigates via the editor
-        // action listener above. Never reuse the composer's webGoButton field here —
+        // action listener above. Never reuse the composer's webGoButton field here 
         // reassigning it orphaned the composer's Go button reference (build order dependent).
         Button browserGoButton = primaryButton("Go");
         browserGoButton.setContentDescription("Open the entered web address or search");
@@ -1397,12 +1397,12 @@ public final class MainActivity extends Activity {
         browserGoButton.setVisibility(View.GONE);
         top.addView(browserGoButton, new LinearLayout.LayoutParams(dp(1), dp(1)));
 
-        browserProviderPickerButton = compactButton(searchEngine.label + " ▾", false);
+        browserProviderPickerButton = compactButton(searchEngine.label + " �", false);
         browserProviderPickerButton.setTextSize(11 * textScale);
         browserProviderPickerButton.setMinHeight(dp(34));
         browserProviderPickerButton.setMinimumHeight(dp(34));
         browserProviderPickerButton.setPadding(dp(6), 0, dp(6), 0);
-        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 14, palette.surfaceAlt));
+        browserProviderPickerButton.setBackground(shape(palette.surfaceAlt, 18, palette.line));
         browserProviderPickerButton.setContentDescription("Choose a web search engine or AI assistant");
         browserProviderPickerButton.setOnClickListener(view -> showSearchProviderPicker());
         LinearLayout.LayoutParams providerParams = new LinearLayout.LayoutParams(
@@ -1470,10 +1470,10 @@ public final class MainActivity extends Activity {
         panel.addView(browserAddressBarView, bottomMargin(dp(5)));
         panel.setPadding(dp(8), dp(0), dp(8), dp(2));
 
-        // Owner feedback (#222): the previous top row (Tasks | ‹ | › | ↻ | + | Site history |
-        // Privacy | ⋮ | Tabs | Media | Expand) cluttered the reading viewport. Back/forward/
+        // Owner feedback (#222): the previous top row (Tasks | 9 | : | � | + | Site history |
+        // Privacy | � | Tabs | Media | Expand) cluttered the reading viewport. Back/forward/
         // reload-stop/new-tab/tabs/more now live in ONE compact bottom control row; secondary
-        // tools (Site history, Media, Browser settings, Privacy details) are in the ⋮ overflow.
+        // tools (Site history, Media, Browser settings, Privacy details) are in the � overflow.
         // The buttons below stay wired so their guarded behavior and descriptions are unchanged.
         HorizontalScrollView toolbarScroll = new HorizontalScrollView(this);
         toolbarScroll.setHorizontalScrollBarEnabled(false);
@@ -1483,17 +1483,17 @@ public final class MainActivity extends Activity {
         Button downloadsShortcut = compactButton("Downloads", false);
         downloadsShortcut.setContentDescription("Open browser Downloads to view download status and progress");
         downloadsShortcut.setOnClickListener(view -> showBrowserDownloadsDialog());
-        browserBackButton = compactButton("‹", false);
+        browserBackButton = compactButton("9", false);
         browserBackButton.setContentDescription("Go back one page");
         browserBackButton.setOnClickListener(view -> {
             if (browserWebView != null && browserWebView.canGoBack()) browserWebView.goBack();
         });
-        browserForwardButton = compactButton("›", false);
+        browserForwardButton = compactButton(":", false);
         browserForwardButton.setContentDescription("Go forward one page");
         browserForwardButton.setOnClickListener(view -> {
             if (browserWebView != null && browserWebView.canGoForward()) browserWebView.goForward();
         });
-        browserReloadButton = compactButton("↻", false);
+        browserReloadButton = compactButton("�", false);
         browserReloadButton.setContentDescription("Reload the current page");
         browserReloadButton.setOnClickListener(view -> {
             if (browserWebView == null) return;
@@ -1514,13 +1514,13 @@ public final class MainActivity extends Activity {
         browserSettingsButton.setContentDescription("Open Browser Settings to change Safe Browsing protection");
         browserSettingsButton.setOnClickListener(view -> showBrowserSettingsDialog());
         browserSettingsButton.setVisibility(View.GONE);
-        browserOverflowButton = compactButton("⋮", false);
+        browserOverflowButton = compactButton("�", false);
         browserOverflowButton.setContentDescription("Open browser actions menu");
         browserOverflowButton.setOnClickListener(this::showBrowserOverflowMenu);
         browserTabButton = compactButton("Tabs (0)", false);
         browserTabButton.setContentDescription("Switch between open browser tabs or create a new tab");
         browserTabButton.setOnClickListener(view -> showBrowserTabsDialog());
-        browserMediaButton = compactButton("Media ↓", false);
+        browserMediaButton = compactButton("Media �", false);
         browserMediaButton.setEnabled(false);
         browserMediaButton.setContentDescription("Find direct downloadable videos and audio on the current page");
         browserMediaButton.setOnClickListener(view -> findMediaOnPage());
@@ -1536,7 +1536,7 @@ public final class MainActivity extends Activity {
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
             button.setPadding(dp(10), 0, dp(10), 0);
-            button.setBackground(shape(palette.surfaceAlt, 18, palette.surfaceAlt));
+            button.setBackground(shape(palette.surfaceAlt, 22, palette.line));
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
             params.setMargins(0, 0, dp(4), 0);
@@ -1546,10 +1546,10 @@ public final class MainActivity extends Activity {
 
         String disclosureText =
                 "Browsing is ready for explicit user-initiated navigation; no page opens until you tap Go or a site. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
-        browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
+        browserPrivacyButton = text("� Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
         browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
         browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
-        browserPrivacyButton.setBackground(shape(palette.surface, 12, palette.surface));
+        browserPrivacyButton.setBackground(shape(palette.surface, 18, palette.line));
         browserPrivacyButton.setContentDescription("Browser privacy: browsing is ready for explicit user-initiated navigation; each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. Daymark's browser network policy controls Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         browserPrivacyDisclosure = disclosureText;
@@ -1619,7 +1619,7 @@ public final class MainActivity extends Activity {
             }
         }
         if (browserProviderPickerButton != null) {
-            browserProviderPickerButton.setText(engine.label + "  ▾");
+            browserProviderPickerButton.setText(engine.label + "  �");
             browserProviderPickerButton.setContentDescription("Search provider: " + engine.label + ". Tap to change provider.");
         }
     }
@@ -1648,7 +1648,7 @@ public final class MainActivity extends Activity {
         filter.setPadding(dp(12), 0, dp(12), 0);
         filter.setTextColor(palette.text);
         filter.setHintTextColor(palette.muted);
-        filter.setBackground(shape(palette.surfaceAlt, 14, palette.line));
+        filter.setBackground(shape(palette.surfaceAlt, 18, palette.line));
         root.addView(filter, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
 
@@ -1665,7 +1665,7 @@ public final class MainActivity extends Activity {
             tab.setMinHeight(dp(36));
             tab.setMinimumHeight(dp(36));
             tab.setPadding(dp(8), 0, dp(8), 0);
-            tab.setBackground(shape(palette.surfaceAlt, 16, palette.surfaceAlt));
+            tab.setBackground(shape(palette.surfaceAlt, 20, palette.line));
             tab.setOnClickListener(view -> {
                 selectedCategory[0] = category;
                 renderSearchProviderRows(rowsHost[0], filter.getText().toString(), selectedCategory[0], dialogRef[0]);
@@ -1719,12 +1719,12 @@ public final class MainActivity extends Activity {
             if ("Web search".equals(category) && ai) continue;
             if ("AI assistants".equals(category) && !ai) continue;
             if (!engine.label.toLowerCase(Locale.ROOT).contains(normalized)) continue;
-            TextView row = text((engine == searchEngine ? "●  " : "○  ") + engine.label,
+            TextView row = text((engine == searchEngine ? "�  " : "�  ") + engine.label,
                     14, engine == searchEngine ? palette.accent : palette.text, Typeface.NORMAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(12), 0, dp(12), 0);
             row.setMinHeight(dp(44));
-            row.setBackground(shape(palette.surface, 10, palette.surface));
+            row.setBackground(shape(palette.surface, 14, palette.line));
             row.setContentDescription("Select " + engine.label + (engine == searchEngine ? ", currently selected" : ""));
             row.setOnClickListener(view -> {
                 selectSearchEngine(engine);
@@ -1756,7 +1756,7 @@ public final class MainActivity extends Activity {
         button.setMinimumHeight(dp(34));
         button.setTextSize(11 * textScale);
         button.setPadding(dp(9), 0, dp(9), 0);
-        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
+        button.setBackground(shape(palette.surfaceAlt, 22, palette.line));
         button.setContentDescription("Search the current query with " + engine.label);
         button.setOnClickListener(view -> {
             if (!webMode) return;
@@ -1800,7 +1800,7 @@ public final class MainActivity extends Activity {
         button.setMinimumHeight(dp(34));
         button.setTextSize(11 * textScale);
         button.setPadding(dp(9), 0, dp(9), 0);
-        button.setBackground(shape(palette.surfaceAlt, 17, palette.surfaceAlt));
+        button.setBackground(shape(palette.surfaceAlt, 22, palette.line));
         button.setContentDescription("Ask " + entry.label + " with the current search, or open its website if no question is entered");
         button.setOnClickListener(view -> {
             if (!webMode) return;
@@ -1936,7 +1936,7 @@ public final class MainActivity extends Activity {
             browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
             browserPreferences.edit().putBoolean(BROWSER_DISCLOSURE_ACK_KEY, true).apply();
         } else {
-            browserStatus.setText("Opening page…");
+            browserStatus.setText("Opening page&");
         }
         lastBrowserAddress = address;
         browserLoadFailed = false;
@@ -2219,7 +2219,7 @@ public final class MainActivity extends Activity {
         String url = tab.getUrl();
         String label = title == null || title.trim().isEmpty() ? url : title.trim();
         if (label == null || label.trim().isEmpty()) label = "New tab";
-        if (tab == browserWebView) label = "● " + label;
+        if (tab == browserWebView) label = "� " + label;
         return label;
     }
 
@@ -2676,10 +2676,10 @@ public final class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.VERTICAL);
             row.setPadding(dp(10), dp(9), dp(10), dp(9));
-            row.setBackground(shape(palette.surface, 10, palette.line));
+            row.setBackground(shape(palette.surface, 14, palette.line));
 
             CheckBox enabled = new CheckBox(this);
-            enabled.setText(ext.name + (ext.builtIn ? " · built-in" : " · user pack"));
+            enabled.setText(ext.name + (ext.builtIn ? " � built-in" : " � user pack"));
             enabled.setTextColor(palette.text);
             enabled.setTextSize(14 * textScale);
             enabled.setChecked(ext.enabled);
@@ -2691,8 +2691,8 @@ public final class MainActivity extends Activity {
             });
             row.addView(enabled);
 
-            String detail = "v" + ext.version + " · " +
-                    (ext.matches.isEmpty() ? "0 match rules · does not run on pages" : ext.matches.size() + " match rule(s)");
+            String detail = "v" + ext.version + " � " +
+                    (ext.matches.isEmpty() ? "0 match rules � does not run on pages" : ext.matches.size() + " match rule(s)");
             if (ext.warnings != null && !ext.warnings.isEmpty()) detail += "\nWarning: " + ext.warnings;
             TextView description = text(
                     (ext.description.isEmpty() ? detail : ext.description + "\n" + detail),
@@ -2768,17 +2768,17 @@ public final class MainActivity extends Activity {
         details.append("ID: ").append(ext.id).append('\n');
         details.append("State: ").append(ext.enabled ? "Enabled" : "Disabled").append('\n');
         details.append("Runs at: ").append("document_start".equals(ext.runAt) ? "document start" : "document end").append('\n');
-        details.append("CSS: ").append(ext.css.length()).append(" chars · JS: ").append(ext.js.length()).append(" chars").append('\n');
+        details.append("CSS: ").append(ext.css.length()).append(" chars � JS: ").append(ext.js.length()).append(" chars").append('\n');
         details.append('\n');
         details.append("Match rules (").append(ext.matches.size()).append("):").append('\n');
-        for (String match : ext.matches) details.append("  · ").append(match).append('\n');
+        for (String match : ext.matches) details.append("  � ").append(match).append('\n');
         if (!ext.excludes.isEmpty()) {
             details.append("Excludes (").append(ext.excludes.size()).append("):").append('\n');
-            for (String exclude : ext.excludes) details.append("  · ").append(exclude).append('\n');
+            for (String exclude : ext.excludes) details.append("  � ").append(exclude).append('\n');
         }
         if (!ext.disabledSites.isEmpty()) {
             details.append("Paused on sites (").append(ext.disabledSites.size()).append("):").append('\n');
-            for (String site : ext.disabledSites) details.append("  · ").append(site).append('\n');
+            for (String site : ext.disabledSites) details.append("  � ").append(site).append('\n');
         }
         details.append('\n');
         details.append("Permissions: none. This extension cannot access tasks, encryption keys, or app-private data. " +
@@ -2796,7 +2796,7 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(content);
         new AlertDialog.Builder(this)
-                .setTitle("Extension details · " + ext.name)
+                .setTitle("Extension details � " + ext.name)
                 .setView(scroll)
                 .setPositiveButton("Done", null)
                 .show();
@@ -2873,7 +2873,7 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(content);
         new AlertDialog.Builder(this)
-                .setTitle("Paused sites · " + ext.name)
+                .setTitle("Paused sites � " + ext.name)
                 .setView(scroll)
                 .setPositiveButton("Done", null)
                 .show();
@@ -2945,7 +2945,7 @@ public final class MainActivity extends Activity {
             previous.setEnabled(numberOfMatches > 0);
             next.setEnabled(numberOfMatches > 0);
             if (!isDoneCounting) {
-                status.setText("Searching…");
+                status.setText("Searching&");
             } else if (numberOfMatches == 0) {
                 status.setText("No matches found.");
             } else {
@@ -2966,7 +2966,7 @@ public final class MainActivity extends Activity {
                     target.clearMatches();
                     status.setText("Type to search this page.");
                 } else {
-                    status.setText("Searching…");
+                    status.setText("Searching&");
                     target.findAllAsync(query);
                 }
             }
@@ -3114,7 +3114,7 @@ public final class MainActivity extends Activity {
                     urls.add(url);
                     mimeTypes.add(mime);
                     statuses.add(status);
-                    labels.add(title + " — " + browserDownloadStatusLabel(status, reason, downloaded, total));
+                    labels.add(title + "  " + browserDownloadStatusLabel(status, reason, downloaded, total));
                 }
             }
         } catch (RuntimeException queryFailed) {
@@ -3159,11 +3159,11 @@ public final class MainActivity extends Activity {
                 }
                 return "Downloading";
             case DownloadManager.STATUS_PAUSED:
-                return "Paused — " + browserDownloadReason(true, reason);
+                return "Paused  " + browserDownloadReason(true, reason);
             case DownloadManager.STATUS_SUCCESSFUL:
-                return "Completed — tap to open";
+                return "Completed  tap to open";
             case DownloadManager.STATUS_FAILED:
-                return "Failed — " + browserDownloadReason(false, reason) + " (tap to retry)";
+                return "Failed  " + browserDownloadReason(false, reason) + " (tap to retry)";
             default:
                 return "Status unavailable";
         }
@@ -3347,7 +3347,7 @@ public final class MainActivity extends Activity {
                 + "var i,e,src,links;"
                 + "links=document.querySelectorAll('video');"
                 + "for(i=0;i<links.length;i++){e=links[i];var videoLabel=e.getAttribute('title')||'';"
-                + "if(e.videoWidth&&e.videoHeight)videoLabel+=(videoLabel?' · ':'')+e.videoWidth+'×'+e.videoHeight;"
+                + "if(e.videoWidth&&e.videoHeight)videoLabel+=(videoLabel?' � ':'')+e.videoWidth+'�'+e.videoHeight;"
                 + "push(e.currentSrc,'video',videoLabel);push(e.src,'video',videoLabel);"
                 + "src=e.querySelectorAll('source');for(var j=0;j<src.length;j++){var sourceLabel=src[j].getAttribute('title')||src[j].type||videoLabel;"
                 + "push(src[j].src,'video',sourceLabel);}}"
@@ -3388,7 +3388,7 @@ public final class MainActivity extends Activity {
                 urls[i] = item.getString(1);
                 String label = item.length() > 2 ? item.optString(2, "") : "";
                 String name = URLUtil.guessFileName(urls[i], null, null);
-                labels[i] = ("video".equals(kind) ? "Video · " : "audio".equals(kind) ? "Audio · " : "Link · ")
+                labels[i] = ("video".equals(kind) ? "Video � " : "audio".equals(kind) ? "Audio � " : "Link � ")
                         + (label == null || label.isEmpty() ? name : label);
             }
         } catch (Exception invalidMediaResult) {
@@ -3516,7 +3516,7 @@ public final class MainActivity extends Activity {
         content.setPadding(dp(16), dp(8), dp(16), dp(16));
 
         TextView note = text(
-                "Text-only view · extracted on this device · original website left unchanged",
+                "Text-only view � extracted on this device � original website left unchanged",
                 12, palette.muted, Typeface.NORMAL);
         note.setLineSpacing(dp(2), 1f);
 
@@ -3528,7 +3528,7 @@ public final class MainActivity extends Activity {
         controls.setOrientation(LinearLayout.HORIZONTAL);
         controls.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button smaller = compactButton("A−", true);
+        Button smaller = compactButton("A", true);
         smaller.setContentDescription("Decrease reader text size");
         Button larger = compactButton("A+", true);
         larger.setContentDescription("Increase reader text size");
@@ -3857,14 +3857,14 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(15), dp(14), dp(15), dp(14));
-        card.setBackground(shape(palette.suggestionSurface, 15, palette.line));
+        card.setBackground(shape(palette.suggestionSurface, 20, palette.line));
         card.setElevation(dp(1));
 
-        TextView label = text("✳  DEMO SUGGESTION", 10, palette.accent, Typeface.BOLD);
+        TextView label = text("3  DEMO SUGGESTION", 10, palette.accent, Typeface.BOLD);
         label.setLetterSpacing(0.10f);
         card.addView(label, bottomMargin(dp(8)));
         card.addView(text("One place to start", 17, palette.text, Typeface.BOLD), bottomMargin(dp(4)));
-        card.addView(text("Deterministic local ranking · not AI", 12, palette.muted, Typeface.NORMAL), bottomMargin(dp(11)));
+        card.addView(text("Deterministic local ranking � not AI", 12, palette.muted, Typeface.NORMAL), bottomMargin(dp(11)));
 
         suggestionList = new LinearLayout(this);
         suggestionList.setOrientation(LinearLayout.VERTICAL);
@@ -3922,14 +3922,14 @@ public final class MainActivity extends Activity {
         searchInput.setPadding(dp(12), 0, dp(12), 0);
         searchInput.setTextColor(palette.text);
         searchInput.setHintTextColor(palette.muted);
-        searchInput.setBackground(shape(palette.surface, 10, palette.line));
+        searchInput.setBackground(shape(palette.surface, 14, palette.line));
         searchRow.addView(searchInput, new LinearLayout.LayoutParams(0, dp(48), 1f));
         searchClear = text("Clear", 12, palette.accent, Typeface.BOLD);
         searchClear.setGravity(Gravity.CENTER);
         searchClear.setPadding(dp(11), 0, dp(5), 0);
         searchClear.setMinimumWidth(dp(64));
         searchClear.setFocusable(true);
-        searchClear.setBackground(shape(palette.accentSoft, 8, palette.accentSoft));
+        searchClear.setBackground(shape(palette.accentSoft, 12, palette.accentSoft));
         searchClear.setContentDescription("Clear task search");
         searchClear.setOnClickListener(view -> {
             if (searchDebounceRunnable != null) {
@@ -3971,7 +3971,7 @@ public final class MainActivity extends Activity {
         empty.setGravity(Gravity.CENTER);
         empty.setOrientation(LinearLayout.VERTICAL);
         empty.setPadding(dp(20), dp(25), dp(20), dp(25));
-        empty.setBackground(shape(palette.surface, 13, palette.line));
+        empty.setBackground(shape(palette.surface, 18, palette.line));
         emptyTitle = text("A clear start", 15, palette.text, Typeface.BOLD);
         emptyCopy = text("Capture your first task above. Small steps count.", 12, palette.muted, Typeface.NORMAL);
         emptyCopy.setGravity(Gravity.CENTER);
@@ -3996,7 +3996,7 @@ public final class MainActivity extends Activity {
         undoBar = new LinearLayout(this);
         undoBar.setGravity(Gravity.CENTER_VERTICAL);
         undoBar.setPadding(dp(14), dp(5), dp(10), dp(5));
-        undoBar.setBackground(shape(palette.surfaceAlt, 12, palette.line));
+        undoBar.setBackground(shape(palette.surfaceAlt, 16, palette.line));
         undoBar.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         undoMessage = text("Task deleted", 12, palette.text, Typeface.NORMAL);
         undoBar.addView(undoMessage, new LinearLayout.LayoutParams(0, dp(48), 1f));
@@ -4045,7 +4045,7 @@ public final class MainActivity extends Activity {
 
     private void loadEncryptedTasks() {
         storageLoading = true;
-        storageStatus.setText("Opening encrypted storage…");
+        storageStatus.setText("Opening encrypted storage&");
         render();
         PortableImportGrantRecovery.Selection restoredSelection = pendingPortableImportSelection();
         storageExecutor.execute(() -> {
@@ -4084,7 +4084,7 @@ public final class MainActivity extends Activity {
                     storageLoadFailed = false;
                     storageSaveFailed = false;
                     storageFailureDetails = null;
-                    storageStatus.setText(attachmentBusy ? "Importing attachment…" : "Encrypted storage ready");
+                    storageStatus.setText(attachmentBusy ? "Importing attachment&" : "Encrypted storage ready");
                     storageStatus.setTextColor(attachmentBusy ? palette.muted : palette.accent);
                 } else {
                     pendingPickedAttachmentUri = null;
@@ -4125,7 +4125,7 @@ public final class MainActivity extends Activity {
     }
 
     private void saveTasksAsync() {
-        saveTasksAsync("Saving encrypted tasks…");
+        saveTasksAsync("Saving encrypted tasks&");
     }
 
     private void saveTasksAsync(String savingStatus) {
@@ -4156,7 +4156,7 @@ public final class MainActivity extends Activity {
                     if (revision == saveRevision) {
                         storageReady = true;
                         storageSaveFailed = false;
-                        storageStatus.setText(attachmentBusy ? "Importing attachment…" : "Encrypted storage ready");
+                        storageStatus.setText(attachmentBusy ? "Importing attachment&" : "Encrypted storage ready");
                         storageStatus.setTextColor(attachmentBusy ? palette.muted : palette.accent);
                     }
                 } else if (revision == saveRevision) {
@@ -4166,7 +4166,7 @@ public final class MainActivity extends Activity {
                     }
                     storageReady = false;
                     storageSaveFailed = true;
-                    storageStatus.setText("Not saved · unsaved changes are shown");
+                    storageStatus.setText("Not saved � unsaved changes are shown");
                     storageStatus.setTextColor(palette.danger);
                     captureFeedback.setText("These changes are not saved and may be lost if you leave. Editing is paused.");
                     hideUndoBar();
@@ -4181,16 +4181,16 @@ public final class MainActivity extends Activity {
         if (failure instanceof EncryptedBlobStore.StorageException) {
             EncryptedBlobStore.Kind kind = ((EncryptedBlobStore.StorageException) failure).kind();
             if (kind == EncryptedBlobStore.Kind.KEY_UNAVAILABLE) {
-                return "Saved tasks unavailable · encryption key unavailable";
+                return "Saved tasks unavailable � encryption key unavailable";
             }
             if (kind == EncryptedBlobStore.Kind.AUTHENTICATION_FAILED) {
-                return "Saved tasks unavailable · authentication failed";
+                return "Saved tasks unavailable � authentication failed";
             }
             if (kind == EncryptedBlobStore.Kind.CORRUPT_DATA) {
-                return "Saved tasks unavailable · file incomplete or unsupported";
+                return "Saved tasks unavailable � file incomplete or unsupported";
             }
         }
-        return "Saved tasks unavailable · storage could not be read";
+        return "Saved tasks unavailable � storage could not be read";
     }
 
     private String storageFailureDetails(Exception failure) {
@@ -4222,8 +4222,8 @@ public final class MainActivity extends Activity {
                 if (today.toString().equals(task.dueDate)) dueToday++;
             }
         }
-        openCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(open));
-        dueTodayCount.setText(storageLoading || storageLoadFailed ? "—" : String.valueOf(dueToday));
+        openCount.setText(storageLoading || storageLoadFailed ? "" : String.valueOf(open));
+        dueTodayCount.setText(storageLoading || storageLoadFailed ? "" : String.valueOf(dueToday));
         addTaskButton.setEnabled(canEdit() && !webMode);
         addTaskButton.setAlpha(canEdit() ? 1f : 0.55f);
         if (addDetailsButton != null) addDetailsButton.setEnabled(canEdit() && !webMode);
@@ -4466,16 +4466,16 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.addView(explanation);
-        // Browser settings owns every browser control (docs/TASK_BROWSER_PAGE_GAPS.md §2):
+        // Browser settings owns every browser control (docs/TASK_BROWSER_PAGE_GAPS.md �2):
         // engine default, site history, extensions, images, and Safe Browsing in one place.
         addSettingsRow(content, "Default search engine",
-                searchEngine.label + " · used for address-bar searches",
+                searchEngine.label + " � used for address-bar searches",
                 () -> showSearchProviderPicker());
         addSettingsRow(content, "Site history",
-                "Saved HTTPS origins · reopen, or clear history and site data",
+                "Saved HTTPS origins � reopen, or clear history and site data",
                 () -> showBrowserHistoryDialog());
         addSettingsRow(content, "Bookmarks",
-                "Saved HTTPS origins · reopen or clear bookmarks",
+                "Saved HTTPS origins � reopen or clear bookmarks",
                 () -> showBrowserBookmarksDialog());
         addSettingsRow(content, "Extensions",
                 "Manage page scripts and matching sites",
@@ -4578,7 +4578,7 @@ public final class MainActivity extends Activity {
             else if (TaskLogic.FILTER_NO_DATE.equals(key)) label = "No date";
             else label = "Completed";
             button.setEnabled(!storageLoading && !storageLoadFailed);
-            button.setText(label + "  " + (storageLoading || storageLoadFailed ? "—" : count));
+            button.setText(label + "  " + (storageLoading || storageLoadFailed ? "" : count));
             boolean selected = key.equals(activeFilter);
             button.setTextColor(selected ? palette.accent : palette.muted);
             button.setBackground(shape(selected ? palette.accentSoft : palette.surface,
@@ -4641,7 +4641,7 @@ public final class MainActivity extends Activity {
             taskList.removeAllViews();
             if (storageLoading) {
                 emptyTitle.setText("Opening saved tasks");
-                emptyCopy.setText("Checking encrypted storage on this device…");
+                emptyCopy.setText("Checking encrypted storage on this device&");
             } else {
                 emptyTitle.setText("Saved tasks unavailable");
                 emptyCopy.setText(storageFailureDetails == null
@@ -4756,7 +4756,7 @@ public final class MainActivity extends Activity {
         if (suggestionList == null) return;
         suggestionList.removeAllViews();
         if (storageLoading) {
-            TextView loading = text("Checking saved tasks…", 12, palette.muted, Typeface.NORMAL);
+            TextView loading = text("Checking saved tasks&", 12, palette.muted, Typeface.NORMAL);
             suggestionList.addView(loading);
             return;
         }
@@ -4778,10 +4778,10 @@ public final class MainActivity extends Activity {
             LinearLayout item = new LinearLayout(this);
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.setPadding(dp(10), dp(9), dp(10), dp(9));
-            item.setBackground(shape(palette.surface, 10, palette.line));
+            item.setBackground(shape(palette.surface, 14, palette.line));
             TextView number = text(String.valueOf(index + 1), 11, palette.accent, Typeface.BOLD);
             number.setGravity(Gravity.CENTER);
-            number.setBackground(shape(palette.accentSoft, 8, palette.accentSoft));
+            number.setBackground(shape(palette.accentSoft, 12, palette.accentSoft));
             item.addView(number, new LinearLayout.LayoutParams(dp(27), dp(27)));
             LinearLayout copy = new LinearLayout(this);
             copy.setOrientation(LinearLayout.VERTICAL);
@@ -4810,7 +4810,7 @@ public final class MainActivity extends Activity {
         });
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(6), dp(7), dp(6), dp(7));
-        row.setBackground(shape(palette.surface, 14, palette.line));
+        row.setBackground(shape(palette.surface, 20, palette.line));
         row.setElevation(dp(1));
         row.setContentDescription("Task: " + task.title
                 + ". Swipe right to toggle completion; swipe left for task actions.");
@@ -4819,8 +4819,8 @@ public final class MainActivity extends Activity {
         checkBox.setButtonTintList(ColorStateList.valueOf(task.completed ? palette.accent : palette.muted));
         checkBox.setChecked(task.completed);
         checkBox.setContentDescription(task.completed
-                ? "Mark “" + task.title + "” as not done"
-                : "Mark “" + task.title + "” as done");
+                ? "Mark " + task.title + " as not done"
+                : "Mark " + task.title + " as done");
         checkBox.setEnabled(canEdit());
         row.addView(checkBox, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
@@ -4837,8 +4837,8 @@ public final class MainActivity extends Activity {
         copy.addView(title, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        String tagSummary = task.tags.isEmpty() ? "" : "  ·  #" + String.join(" #", task.tags);
-        TextView details = text(dueLabel(task) + "  ·  " + task.priority.toUpperCase(Locale.ROOT) + tagSummary,
+        String tagSummary = task.tags.isEmpty() ? "" : "  �  #" + String.join(" #", task.tags);
+        TextView details = text(dueLabel(task) + "  �  " + task.priority.toUpperCase(Locale.ROOT) + tagSummary,
                 11, dueColor(task), Typeface.NORMAL);
         details.setMaxLines(2);
         details.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -4893,7 +4893,7 @@ public final class MainActivity extends Activity {
         copy.addView(chipsScroll, topMargin(dp(3)));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        Button more = compactButton("⋮", false);
+        Button more = compactButton("�", false);
         more.setTextSize(20 * textScale);
         more.setMinWidth(dp(36));
         more.setMinimumWidth(dp(36));
@@ -5041,7 +5041,7 @@ public final class MainActivity extends Activity {
         StringBuilder message = new StringBuilder();
         for (Task task : due) {
             if (message.length() > 0) message.append("\n\n");
-            message.append("• ").append(task.title).append(" — ").append(dueLabel(task));
+            message.append("" ").append(task.title).append("  ").append(dueLabel(task));
         }
         AlertDialog reminderDialog = new AlertDialog.Builder(this)
                 .setTitle(due.size() == 1 ? "Reminder" : "Reminders (" + due.size() + ")")
@@ -5142,10 +5142,10 @@ public final class MainActivity extends Activity {
         LocalDate due = LocalDate.parse(task.dueDate);
         LocalDate today = LocalDate.now();
         String label;
-        if (due.isBefore(today)) label = "Overdue · " + TaskLogic.formatDate(due);
+        if (due.isBefore(today)) label = "Overdue � " + TaskLogic.formatDate(due);
         else if (due.equals(today)) label = "Due today";
         else label = "Due " + TaskLogic.formatDate(due);
-        if (task.dueTime != null) label += " · " + TaskLogic.formatTime(task.dueTime);
+        if (task.dueTime != null) label += " � " + TaskLogic.formatTime(task.dueTime);
         return label;
     }
 
@@ -5250,7 +5250,7 @@ public final class MainActivity extends Activity {
         scroll.setFillViewport(true);
         scroll.addView(content);
         new AlertDialog.Builder(this)
-                .setTitle("Subtasks · " + task.title)
+                .setTitle("Subtasks � " + task.title)
                 .setView(scroll)
                 .setPositiveButton("Done", null)
                 .show();
@@ -5268,7 +5268,7 @@ public final class MainActivity extends Activity {
         content.addView(notes);
         scroll.addView(content);
         new AlertDialog.Builder(this)
-                .setTitle("Note · " + task.title)
+                .setTitle("Note � " + task.title)
                 .setView(scroll)
                 .setPositiveButton("Done", null)
                 .show();
@@ -5281,7 +5281,7 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(8), dp(18), dp(8));
-        TextView limits = text("Up to 5 files per task and 100 files overall · 20 MiB each · 100 MiB total. Files are encrypted here. A limited format allowlist can be sent to another app only after you choose Open; all files remain untrusted, and unknown or active formats cannot be opened by Daymark.",
+        TextView limits = text("Up to 5 files per task and 100 files overall � 20 MiB each � 100 MiB total. Files are encrypted here. A limited format allowlist can be sent to another app only after you choose Open; all files remain untrusted, and unknown or active formats cannot be opened by Daymark.",
                 12, palette.muted, Typeface.NORMAL);
         limits.setLineSpacing(dp(2), 1f);
         content.addView(limits, bottomMargin(dp(9)));
@@ -5292,10 +5292,10 @@ public final class MainActivity extends Activity {
             LinearLayout item = new LinearLayout(this);
             item.setOrientation(LinearLayout.VERTICAL);
             item.setPadding(dp(9), dp(7), dp(9), dp(7));
-            item.setBackground(shape(palette.surface, 9, palette.line));
+            item.setBackground(shape(palette.surface, 14, palette.line));
             boolean present = attachmentStore.exists(attachment.id);
             String detail = attachment.displayName + "\n" + formatFileSize(attachment.sizeBytes)
-                    + " · " + attachment.mimeType + (present ? " · stored" : " · file unavailable");
+                    + " � " + attachment.mimeType + (present ? " � stored" : " � file unavailable");
             TextView label = text(detail, 12, present ? palette.text : palette.danger, Typeface.NORMAL);
             label.setContentDescription(detail);
             item.addView(label, bottomMargin(dp(3)));
@@ -5337,8 +5337,8 @@ public final class MainActivity extends Activity {
             return;
         }
         new AlertDialog.Builder(this).setTitle("Share with another app?")
-                .setMessage("Daymark will stream a read-only decrypted copy of “" + attachment.displayName
-                        + "” to the app you choose. That app may retain it. Files are untrusted; Daymark never opens them automatically or executes them.")
+                .setMessage("Daymark will stream a read-only decrypted copy of " + attachment.displayName
+                        + " to the app you choose. That app may retain it. Files are untrusted; Daymark never opens them automatically or executes them.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Choose app", (dialog, which) -> openWithAnotherApp(attachment))
                 .show();
@@ -5399,7 +5399,7 @@ public final class MainActivity extends Activity {
         cancelAttachmentButton.setEnabled(true);
         cancelAttachmentButton.setVisibility(View.VISIBLE);
         List<Task> snapshot = new ArrayList<>(tasks);
-        storageStatus.setText("Importing encrypted attachment…");
+        storageStatus.setText("Importing encrypted attachment&");
         storageStatus.setTextColor(palette.muted);
         render();
         storageExecutor.execute(() -> {
@@ -5426,7 +5426,7 @@ public final class MainActivity extends Activity {
                         attachmentCanCancel = false;
                     }
                     postActivityCallback(() -> {
-                        storageStatus.setText("Saving attachment metadata…");
+                        storageStatus.setText("Saving attachment metadata&");
                         if (cancelAttachmentButton != null) cancelAttachmentButton.setVisibility(View.GONE);
                     });
                     saveAttempted = true;
@@ -5488,7 +5488,7 @@ public final class MainActivity extends Activity {
             if (accepted) attachmentCancelRequested = true;
         }
         if (accepted) {
-            cancelAttachmentButton.setText("Cancelling…");
+            cancelAttachmentButton.setText("Cancelling&");
             cancelAttachmentButton.setEnabled(false);
         } else {
             showToast("The attachment is already being saved and can no longer be cancelled.");
@@ -5516,7 +5516,7 @@ public final class MainActivity extends Activity {
 
     private void confirmRemoveAttachment(String taskId, AttachmentRef attachment) {
         new AlertDialog.Builder(this).setTitle("Remove attachment?")
-                .setMessage("Remove “" + attachment.displayName + "” from this task and delete its local encrypted copy?")
+                .setMessage("Remove " + attachment.displayName + " from this task and delete its local encrypted copy?")
                 .setNegativeButton("Keep", null)
                 .setPositiveButton("Remove", (dialog, which) -> removeAttachment(taskId, attachment.id))
                 .show();
@@ -5534,7 +5534,7 @@ public final class MainActivity extends Activity {
         List<Task> snapshot = replaceTaskInSnapshot(new ArrayList<>(tasks), current.withAttachments(remaining));
         attachmentBusy = true;
         long revision = ++saveRevision;
-        storageStatus.setText("Removing attachment…");
+        storageStatus.setText("Removing attachment&");
         storageStatus.setTextColor(palette.muted);
         render();
         storageExecutor.execute(() -> {
@@ -5645,12 +5645,12 @@ public final class MainActivity extends Activity {
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(9), dp(7), dp(5), dp(7));
-            row.setBackground(shape(palette.background, 10, palette.line));
+            row.setBackground(shape(palette.background, 14, palette.line));
             LinearLayout copy = new LinearLayout(this);
             copy.setOrientation(LinearLayout.VERTICAL);
             copy.addView(text(template.title, 14, palette.text, Typeface.BOLD));
             String due = template.dueDate == null ? "No due date" : dateButtonLabel(template.dueDate);
-            copy.addView(text(due + " · " + template.priority.toUpperCase(Locale.ROOT) + " priority",
+            copy.addView(text(due + " � " + template.priority.toUpperCase(Locale.ROOT) + " priority",
                     12, palette.muted, Typeface.NORMAL));
             row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             Button use = compactButton("Use", false);
@@ -5696,7 +5696,7 @@ public final class MainActivity extends Activity {
             if (taskTemplates.get(index).id.equals(id)) {
                 taskTemplates.remove(index);
                 render();
-                saveTasksAsync("Saving encrypted templates…");
+                saveTasksAsync("Saving encrypted templates&");
                 showToast("Template removed. Existing tasks are unchanged.");
                 return;
             }
@@ -5717,7 +5717,7 @@ public final class MainActivity extends Activity {
         try {
             taskTemplates.add(TaskTemplateLogic.create(title, dueDate, priority));
             render();
-            saveTasksAsync("Saving encrypted templates…");
+            saveTasksAsync("Saving encrypted templates&");
             showToast("Template saved on this device. No task was created.");
             return true;
         } catch (IllegalArgumentException exception) {
@@ -6357,7 +6357,7 @@ public final class MainActivity extends Activity {
     private void confirmDeleteTask(Task task) {
         new AlertDialog.Builder(this)
                 .setTitle("Delete this task?")
-                .setMessage("“" + task.title + "” will be removed. You can use Undo for 7 seconds.")
+                .setMessage("" + task.title + " will be removed. You can use Undo for 7 seconds.")
                 .setNegativeButton("Keep task", null)
                 .setPositiveButton("Delete task", (dialog, which) -> deleteTask(task))
                 .show();
@@ -6540,7 +6540,7 @@ public final class MainActivity extends Activity {
         cancelAttachmentButton.setEnabled(true);
         cancelAttachmentButton.setVisibility(View.VISIBLE);
         List<Task> snapshot = new ArrayList<>(tasks);
-        storageStatus.setText("Encrypting private backup…");
+        storageStatus.setText("Encrypting private backup&");
         storageStatus.setTextColor(palette.muted);
         render();
         storageExecutor.execute(() -> {
@@ -6574,7 +6574,7 @@ public final class MainActivity extends Activity {
                     finishPortableExport(reason);
                     return;
                 }
-                storageStatus.setText("Choose a destination for the new backup file…");
+                storageStatus.setText("Choose a destination for the new backup file&");
                 Intent picker = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                 picker.addCategory(Intent.CATEGORY_OPENABLE);
                 picker.setType("application/octet-stream");
@@ -6592,7 +6592,7 @@ public final class MainActivity extends Activity {
         portableBusy = true;
         portableCanCancel = true;
         portableCancelRequested = false;
-        storageStatus.setText("Writing encrypted backup through Android's document picker…");
+        storageStatus.setText("Writing encrypted backup through Android's document picker&");
         storageStatus.setTextColor(palette.muted);
         render();
         storageExecutor.execute(() -> {
@@ -6834,7 +6834,7 @@ public final class MainActivity extends Activity {
         keyInput.setFilters(new InputFilter[] { new InputFilter.LengthFilter(100) });
         keyInput.setSaveEnabled(false);
         keyInput.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-        keyInput.setHint("Recovery key (DMK1-…)");
+        keyInput.setHint("Recovery key (DMK1-&)");
         content.addView(keyInput);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(content);
@@ -6884,7 +6884,7 @@ public final class MainActivity extends Activity {
         cancelAttachmentButton.setEnabled(true);
         cancelAttachmentButton.setVisibility(View.VISIBLE);
         int originalCount = tasks.size();
-        storageStatus.setText("Authenticating and validating the full backup privately…");
+        storageStatus.setText("Authenticating and validating the full backup privately&");
         storageStatus.setTextColor(palette.muted);
         render();
         portableRestoreWorkerActive = true;
@@ -6902,9 +6902,9 @@ public final class MainActivity extends Activity {
                                         portableCanCancel = false;
                                         mainHandler.post(() -> {
                                             if (isFinishing() || isDestroyed()) return;
-                                            cancelAttachmentButton.setText("Finishing restore…");
+                                            cancelAttachmentButton.setText("Finishing restore&");
                                             cancelAttachmentButton.setEnabled(false);
-                                            storageStatus.setText("Committing encrypted task snapshot…");
+                                            storageStatus.setText("Committing encrypted task snapshot&");
                                             storageStatus.setTextColor(palette.muted);
                                         });
                                     });
@@ -6965,7 +6965,7 @@ public final class MainActivity extends Activity {
                     storageReady = false;
                     storageLoadFailed = true;
                     storageSaveFailed = true;
-                    storageStatus.setText("Restore outcome not verified · reopen Daymark");
+                    storageStatus.setText("Restore outcome not verified � reopen Daymark");
                     storageStatus.setTextColor(palette.danger);
                     captureFeedback.setText("Restore commit status could not be verified. Editing is paused; reopen Daymark to reconcile the encrypted snapshot and restore journal.");
                     showToast("Restore outcome could not be verified. Reopen Daymark before retrying.");
@@ -7008,7 +7008,7 @@ public final class MainActivity extends Activity {
                 return;
             }
             portableCancelRequested = true;
-            cancelAttachmentButton.setText("Cancelling…");
+            cancelAttachmentButton.setText("Cancelling&");
             cancelAttachmentButton.setEnabled(false);
             return;
         }
@@ -7031,7 +7031,7 @@ public final class MainActivity extends Activity {
                 () -> showThemePicker());
         addSettingsRow(content, "Text size", textSizeLabel(),
                 () -> showTextSizePicker());
-        addSettingsRow(content, "High contrast", highContrast ? "On · stronger contrast" : "Off · standard colors",
+        addSettingsRow(content, "High contrast", highContrast ? "On � stronger contrast" : "Off � standard colors",
                 () -> toggleHighContrast());
 
         addSettingsSection(content, "ACCESSIBILITY & DATA");
@@ -7073,7 +7073,7 @@ public final class MainActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(12), dp(10), dp(12), dp(10));
-        row.setBackground(shape(palette.surface, 12, palette.line));
+        row.setBackground(shape(palette.surface, 16, palette.line));
         row.setClickable(true);
         row.setFocusable(true);
         row.setContentDescription(title + ". " + subtitle);
@@ -7085,7 +7085,7 @@ public final class MainActivity extends Activity {
         copy.addView(heading);
         copy.addView(detail, topMargin(dp(3)));
         row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView arrow = text("›", 24, palette.muted, Typeface.NORMAL);
+        TextView arrow = text(":", 24, palette.muted, Typeface.NORMAL);
         arrow.setGravity(Gravity.CENTER);
         row.addView(arrow, new LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT));
         row.setOnClickListener(view -> action.run());
@@ -7178,7 +7178,7 @@ public final class MainActivity extends Activity {
                 boolean internetDeclared = false;
                 boolean notificationRemindersDeclared = false;
                 for (String permission : requested) {
-                    details.append("• ").append(permission).append('\n');
+                    details.append("" ").append(permission).append('\n');
                     if ("android.permission.INTERNET".equals(permission)) internetDeclared = true;
                     if ("android.permission.POST_NOTIFICATIONS".equals(permission)) notificationRemindersDeclared = true;
                 }
@@ -7525,7 +7525,7 @@ public final class MainActivity extends Activity {
         if (recoveryPromptShowing) return;
         recoveryPromptShowing = true;
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("APK verified — not installed")
+                .setTitle("APK verified  not installed")
                 .setMessage("The APK passed the declared size, SHA-256, package, version, minimum Android version, and signer checks. The verified app-private copy is retained across restarts until you explicitly discard it. Daymark will not open an installer. Save a copy to a location you choose; if you decide to continue, open it yourself from Files. Android controls any install-source approval and final confirmation.")
                 .setPositiveButton("Save verified APK", (ignored, which) -> startVerifiedApkSave(release, verifiedApk))
                 .setNegativeButton("Discard", (ignored, which) -> discardVerifiedUpdate(release))
@@ -7716,7 +7716,7 @@ public final class MainActivity extends Activity {
         button.setTextColor(palette.dark ? palette.background : Color.WHITE);
         button.setMinHeight(dp(50));
         button.setMinimumHeight(dp(50));
-        button.setBackground(shape(palette.accent, 13, palette.accent));
+        button.setBackground(shape(palette.accent, 22, palette.accent));
         return button;
     }
 
@@ -7729,7 +7729,7 @@ public final class MainActivity extends Activity {
         button.setMinHeight(dp(48));
         button.setMinimumHeight(dp(48));
         button.setPadding(dp(8), 0, dp(8), 0);
-        button.setBackground(shape(palette.accentSoft, 18, palette.line));
+        button.setBackground(shape(palette.accentSoft, 22, palette.line));
         return button;
     }
 
@@ -7806,35 +7806,32 @@ public final class MainActivity extends Activity {
         private Palette(boolean dark, boolean highContrast) {
             this.dark = dark;
             if (dark) {
-                background = Color.rgb(18, 24, 21);
-                surface = Color.rgb(27, 36, 31);
-                surfaceAlt = Color.rgb(36, 51, 42);
-                suggestionSurface = Color.rgb(29, 43, 34);
-                text = highContrast ? Color.WHITE : Color.rgb(237, 243, 238);
-                muted = highContrast ? Color.rgb(225, 233, 227) : Color.rgb(164, 178, 167);
-                line = highContrast ? Color.rgb(136, 153, 141) : Color.rgb(54, 68, 59);
-                accent = highContrast ? Color.rgb(190, 235, 199) : Color.rgb(155, 197, 164);
-                accentSoft = highContrast ? Color.rgb(31, 58, 39) : Color.rgb(37, 57, 43);
-                warning = highContrast ? Color.rgb(255, 214, 147) : Color.rgb(229, 188, 126);
-                danger = highContrast ? Color.rgb(255, 177, 164) : Color.rgb(233, 153, 143);
-                dangerSoft = highContrast ? Color.rgb(71, 33, 29) : Color.rgb(62, 39, 37);
+                background = Color.rgb(14, 18, 22);
+                surface = Color.rgb(22, 28, 34);
+                surfaceAlt = Color.rgb(30, 38, 46);
+                suggestionSurface = Color.rgb(26, 33, 40);
+                text = highContrast ? Color.WHITE : Color.rgb(232, 238, 242);
+                muted = highContrast ? Color.rgb(206, 216, 222) : Color.rgb(148, 161, 172);
+                line = highContrast ? Color.rgb(122, 138, 148) : Color.rgb(48, 58, 68);
+                accent = highContrast ? Color.rgb(168, 232, 212) : Color.rgb(122, 204, 178);
+                accentSoft = highContrast ? Color.rgb(26, 56, 48) : Color.rgb(32, 52, 47);
+                warning = highContrast ? Color.rgb(255, 216, 152) : Color.rgb(235, 190, 122);
+                danger = highContrast ? Color.rgb(255, 176, 168) : Color.rgb(238, 150, 142);
+                dangerSoft = highContrast ? Color.rgb(74, 34, 32) : Color.rgb(58, 38, 38);
             } else {
-                background = Color.rgb(246, 247, 244);
+                background = Color.rgb(242, 245, 247);
                 surface = Color.WHITE;
-                surfaceAlt = Color.rgb(239, 244, 238);
-                suggestionSurface = Color.rgb(239, 245, 238);
-                text = highContrast ? Color.BLACK : Color.rgb(32, 41, 35);
-                muted = highContrast ? Color.rgb(48, 55, 50) : Color.rgb(91, 104, 94);
-                line = highContrast ? Color.rgb(101, 112, 103) : Color.rgb(226, 233, 226);
-                accent = highContrast ? Color.rgb(17, 64, 39) : Color.rgb(49, 91, 70);
-                accentSoft = highContrast ? Color.rgb(224, 239, 225) : Color.rgb(232, 241, 232);
-                warning = highContrast ? Color.rgb(109, 62, 12) : Color.rgb(151, 84, 53);
-                danger = highContrast ? Color.rgb(129, 35, 26) : Color.rgb(167, 71, 71);
-                dangerSoft = highContrast ? Color.rgb(255, 232, 227) : Color.rgb(251, 239, 236);
+                surfaceAlt = Color.rgb(235, 240, 243);
+                suggestionSurface = Color.rgb(238, 243, 243);
+                text = highContrast ? Color.BLACK : Color.rgb(28, 35, 42);
+                muted = highContrast ? Color.rgb(46, 54, 60) : Color.rgb(82, 95, 105);
+                line = highContrast ? Color.rgb(100, 112, 120) : Color.rgb(219, 226, 232);
+                accent = highContrast ? Color.rgb(13, 84, 73) : Color.rgb(22, 112, 95);
+                accentSoft = highContrast ? Color.rgb(219, 240, 235) : Color.rgb(226, 240, 236);
+                warning = highContrast ? Color.rgb(120, 70, 15) : Color.rgb(148, 88, 30);
+                danger = highContrast ? Color.rgb(140, 38, 30) : Color.rgb(168, 62, 56);
+                dangerSoft = highContrast ? Color.rgb(255, 231, 228) : Color.rgb(251, 238, 237);
             }
-        }
-
-        static Palette from(Activity activity, int mode, boolean highContrast) {
             boolean dark;
             if (mode == THEME_DARK) dark = true;
             else if (mode == THEME_LIGHT) dark = false;
@@ -7844,6 +7841,7 @@ public final class MainActivity extends Activity {
         }
     }
 }
+
 
 
 
