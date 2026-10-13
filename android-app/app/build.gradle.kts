@@ -24,7 +24,7 @@ android {
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "com.abrar.daymark.DaymarkPlatformInstrumentation"
-        // Owner-approved fresh app identity; legacy com.abrar.daymark installs remain separate.
+        // Owner-approved fresh app identity; previous app installations remain separate.
         // Keep versionCode monotonic even though the displayed version restarts.
         versionCode = 7
         versionName = "1.0"

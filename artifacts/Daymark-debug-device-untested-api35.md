@@ -6,7 +6,7 @@
 
 **Status: debug / device-untested.** This is a locally built debug APK for testing, not a release artifact.
 
-- Package: `com.cue.daymark` (`1.0.0`), minimum API 26, target/compile API 35.
+- Package: the legacy application ID (`1.0.0`), minimum API 26, target/compile API 35.
 - APK size: 51,831 bytes.
 - SHA-256: `e80428836bcac97ea6655cf9d865a7eb7b9d7bbcd7c4f6859c308d056b533724`.
 - Source commit: `aac189a5b6fe177fd4fbe480232ff81390f3e139`.

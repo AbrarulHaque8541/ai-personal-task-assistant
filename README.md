@@ -2,7 +2,7 @@
 
 **Daymark** is a local-first Android task assistant with an HTTPS-only embedded browser, encrypted local task storage, attachments, portable encrypted backups, and a lightweight page-local extension system.
 
-- **Android application ID:** `com.abrar.daymark` (fresh app identity; legacy `com.abrar.daymark` is separate)
+- **Android application ID:** `com.abrar.daymark` (fresh app identity; previous app installations remain separate)
 - **Architecture:** native Java Activity + Android System WebView; no third-party runtime dependencies
 - **Task data:** encrypted on-device; no account, cloud task sync, analytics, or telemetry
 - **Source version:** see `android-app/app/build.gradle.kts` (`versionName` / `versionCode`)
@@ -11,7 +11,7 @@
 
 **Latest production build:** [GitHub Releases — latest](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest)
 
-Install the APK attached to the new `v1.0` release for application ID `com.abrar.daymark`. This is a fresh app identity, not an in-place update of legacy `com.abrar.daymark`; Android keeps it as a separate app and old local data is not migrated. The existing production signing key remains pinned and required.
+Install the APK attached to the new `v1.0` release for application ID `com.abrar.daymark`. This is a fresh app identity, not an in-place update of previous app installations; Android keeps it as a separate app and old local data is not migrated. The existing production signing key remains pinned and required.
 
 Previous releases remain available on the [full releases page](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases).
 

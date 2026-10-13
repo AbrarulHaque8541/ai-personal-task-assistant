@@ -4,7 +4,7 @@ This document is binding for **humans and AI agents** working on this repository
 
 ## Goal
 
-The owner approved a fresh application identity for the new Daymark line. The next production artifact uses `com.abrar.daymark`, displayed version `1.0`, and a fresh install. Legacy `com.abrar.daymark` installs remain separate and do not update in place; their local data is not migrated automatically. The production signing certificate remains pinned and must still be verified.
+The owner approved a fresh application identity for the new Daymark line. The next production artifact uses `com.abrar.daymark`, displayed version `1.0`, and a fresh install. Previous app installations remain separate and do not update in place; their local data is not migrated automatically. The production signing certificate remains pinned and must still be verified.
 
 ## Immutable identity
 
@@ -25,12 +25,12 @@ If the keystore is lost or rotated without a careful migration, **all existing i
 4. Publish only via `.github/workflows/android-production-release.yml` (tag push on `main`).
 5. APK asset name: `Daymark-v{versionName}-githubSideload.apk`.
 
-Published releases and their APK and AAB assets are listed on the repository's Releases page; old `com.abrar.daymark` releases remain historical and do not become updates for `com.abrar.daymark`. The current source's `versionName`/`versionCode` live in `android-app/app/build.gradle.kts`, and a version counts as published only when its exact `v<versionName>` tag's production workflow completes successfully. Main CI validates the protected signing secrets, generates signed candidate APK/AAB artifacts, and confirms signer continuity; it does not publish a release or prove physical-device behavior. Always verify the exact tag's production workflow and attached artifacts before distribution.
+Published releases and their APK and AAB assets are listed on the repository's Releases page; previous releases remain historical and do not become updates for the current application identity. The current source's `versionName`/`versionCode` live in `android-app/app/build.gradle.kts`, and a version counts as published only when its exact `v<versionName>` tag's production workflow completes successfully. Main CI validates the protected signing secrets, generates signed candidate APK/AAB artifacts, and confirms signer continuity; it does not publish a release or prove physical-device behavior. Always verify the exact tag's production workflow and attached artifacts before distribution.
 
 
 ## Fresh identity migration notes
 
-- `com.abrar.daymark` installs alongside `com.abrar.daymark`; Android does not treat it as an in-place update.
+- The fresh application identity installs separately from previous app installations; Android does not treat it as an in-place update.
 - Existing encrypted task data is app-private and will not appear in the new package. The owner explicitly accepted a fresh install and no automatic data migration.
 - Old release history and assets are not deleted. Once the new package release becomes GitHub latest stable, the legacy updater may reject its metadata because it targets a different application ID; this is expected and fail-closed.
 - Keep the same production signer pin. Reusing the signer preserves publisher verification but does not make different application IDs update-compatible.
