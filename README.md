@@ -2,7 +2,7 @@
 
 **Daymark** is a local-first Android task assistant with an HTTPS-only embedded browser, encrypted local task storage, attachments, portable encrypted backups, and a lightweight page-local extension system.
 
-- **Android package:** `com.cue.daymark`
+- **Android application ID:** `com.abrar.daymark` (fresh app identity; legacy `com.cue.daymark` is separate)
 - **Architecture:** native Java Activity + Android System WebView; no third-party runtime dependencies
 - **Task data:** encrypted on-device; no account, cloud task sync, analytics, or telemetry
 - **Source version:** see `android-app/app/build.gradle.kts` (`versionName` / `versionCode`)
@@ -11,7 +11,7 @@
 
 **Latest production build:** [GitHub Releases — latest](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest)
 
-Install the `Daymark-v*-githubSideload.apk` asset. For an in-place update, use the same production signing key as previous sideload builds (package `com.cue.daymark`). Prefer updating over uninstalling so local encrypted data stays intact.
+Install the APK attached to the new `v1.0` release for application ID `com.abrar.daymark`. This is a fresh app identity, not an in-place update of legacy `com.cue.daymark`; Android keeps it as a separate app and old local data is not migrated. The existing production signing key remains pinned and required.
 
 Previous releases remain available on the [full releases page](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases).
 
@@ -28,7 +28,7 @@ Previous releases remain available on the [full releases page](https://github.co
 Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** first.
 
 - Production signing secrets are already in GitHub Actions — **do not ask the owner for keystore files**.
-- Publish only by tagging `vX.Y.Z` on `main` so `.github/workflows/android-production-release.yml` runs.
+- Publish only by tagging `v` + exact `versionName` on `main` (initial fresh release tag: `v1.0`) so `.github/workflows/android-production-release.yml` runs.
 - Verify live Releases, Issues, and PRs instead of trusting outdated “candidate” sentences in old audit notes.
 
 ## Build and test

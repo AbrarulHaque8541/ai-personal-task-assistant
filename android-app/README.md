@@ -35,12 +35,12 @@ Before any APK download, the app shows the release name/version/notes and exact 
 
 ### Stable-release publishing prerequisites
 
-1. Publish a non-draft, non-prerelease GitHub Release with one `.apk` asset whose GitHub API `digest` is `sha256:<64 hex characters>`. The version tag must be `vMAJOR.MINOR.PATCH`; the APK `versionName` must match the tag, `versionCode` must exceed the installed app, and the APK application ID must be `com.cue.daymark`.
+1. Publish a non-draft, non-prerelease GitHub Release with one `.apk` asset whose GitHub API `digest` is `sha256:<64 hex characters>`. The version tag must equal `v` + exact `versionName` (initial fresh release: `v1.0`; later patch versions may use three components); the APK `versionName` must match the tag, `versionCode` must exceed the installed app, and the APK application ID must be `com.abrar.daymark`.
 2. Include this machine-readable block in the release body, followed by human-readable notes. `minSdkVersion` must match the APK manifest and be supported by the device; `signerCertificateSha256` is the APK signing certificate SHA-256 fingerprint.
 
    ```html
    <!-- daymark-updater-v1
-   {"applicationId":"com.cue.daymark","versionCode":2,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
+   {"applicationId":"com.abrar.daymark","versionCode":2,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
    -->
    ```
 

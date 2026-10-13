@@ -68,11 +68,11 @@ Android's [dynamic code loading security guidance](https://developer.android.com
 
 ### Release metadata required by the updater
 
-Create a non-draft, non-prerelease GitHub Release with a `vMAJOR.MINOR.PATCH` tag, exactly one `.apk` asset whose release API `digest` is `sha256:<64 hex characters>`, and the following body block followed by human-readable release notes. The tag-derived `versionName` and block `versionCode` must match the APK; `minSdkVersion` and `applicationId` must match its manifest. The SHA-256 signer value is the production APK certificate fingerprint, not the debug certificate.
+Create a non-draft, non-prerelease GitHub Release with a tag equal to `v` + exact `versionName` (the initial fresh release uses `v1.0`), exactly one `.apk` asset whose release API `digest` is `sha256:<64 hex characters>`, and the following body block followed by human-readable release notes. The tag-derived `versionName` and block `versionCode` must match the APK; `minSdkVersion` and `applicationId` must match its manifest. The SHA-256 signer value is the production APK certificate fingerprint, not the debug certificate.
 
 ```html
 <!-- daymark-updater-v1
-{"applicationId":"com.cue.daymark","versionCode":2,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
+{"applicationId":"com.abrar.daymark","versionCode":2,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
 -->
 ```
 
