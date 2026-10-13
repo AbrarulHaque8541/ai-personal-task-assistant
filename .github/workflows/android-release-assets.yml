@@ -36,6 +36,11 @@ jobs:
           cache: gradle
           cache-dependency-path: android-app/**/*.gradle*
 
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
       - name: Validate required release secrets
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         shell: bash
@@ -79,7 +84,7 @@ jobs:
               echo "Release tag $tag does not point to a commit on main" >&2
               exit 1
             }
-            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-device-test\.[0-9]+$ ]] || {
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?-device-test\.[0-9]+$ ]] || {
               echo "Unexpected device-test tag format: $tag" >&2
               exit 1
             }
@@ -187,7 +192,7 @@ jobs:
           version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")"
           min_sdk="$(sed -n "s/^sdkVersion:[[:space:]]*'\([^']*\)'.*/\1/p" "$badging")"
           target_sdk="$(sed -n "s/^targetSdkVersion:[[:space:]]*'\([^']*\)'.*/\1/p" "$badging")"
-          [[ "$app_id" == "com.cue.daymark" ]] || { echo "Unexpected application ID: $app_id" >&2; exit 1; }
+          [[ "$app_id" == "com.abrar.daymark" ]] || { echo "Unexpected application ID: $app_id" >&2; exit 1; }
           [[ "$min_sdk" == "26" ]] || { echo "Unexpected min SDK: $min_sdk" >&2; exit 1; }
           [[ "$target_sdk" == "36" ]] || { echo "Unexpected target SDK: $target_sdk" >&2; exit 1; }
           [[ -n "$version_name" && -n "$version_code" ]] || { echo "APK version metadata is missing" >&2; exit 1; }

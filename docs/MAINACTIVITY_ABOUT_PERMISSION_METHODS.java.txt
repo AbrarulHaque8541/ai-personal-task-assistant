@@ -1,4 +1,4 @@
-// Paste into MainActivity (package com.cue.daymark)
+// Paste into MainActivity (package com.abrar.daymark)
 
     private void showAboutApp() {
         String versionName = "?";

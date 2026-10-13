@@ -1,5 +1,5 @@
---- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
-+++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+--- a/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
 @@ -789,6 +789,9 @@
          pathButton.setVisibility(View.GONE);
          Button moreButton = plainButton("More");

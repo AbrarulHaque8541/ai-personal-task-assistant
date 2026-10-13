@@ -1,7 +1,9 @@
 # Task home vs Browser — settings ownership + competitor gaps
 
-Date: 2026-10-11. Honest audit against live main + external product research.
+Date: 2026-10-11 snapshot. Honest audit against live main + external product research; task-tag status refreshed 2026-10-13.
 Audience: owner + agents. Not a release claim.
+
+**Current-source correction (2026-10-13):** Task tags are available in the editor, visible task summary, and search. A dedicated tag-filter-chip UI is not present. Read this correction for current status; the rest of the dated audit remains a point-in-time snapshot.
 
 ## 1. What improved recently (main)
 
@@ -81,8 +83,8 @@ References used for *why multiple browsers exist*: Chrome, Firefox, Brave, Samsu
 |------------|---------|-----|
 | Local encrypted store | Strong | — |
 | Due + time + priority + notes + subtasks | Yes | — |
-| Reminders + repeat | Code path | Device proof open |
-| Tags / labels | No | **High gap** |
+| Reminders + repeat | Implemented in source; notifications are best-effort | Device proof open |
+| Tags / labels | Yes — editor, task summary, and search | Dedicated filter chips missing |
 | Natural-language quick add | No | High leverage |
 | Global search (title+notes) | Filter search | Notes depth |
 | Templates | Yes | — |
@@ -100,7 +102,7 @@ References used for *why multiple browsers exist*: Chrome, Firefox, Brave, Samsu
 - Expand browser settings dialog to match §3 must-haves (bookmarks can be P1).
 
 **B — Task home density**
-- Tags, NL quick-add, global search depth.
+- Dedicated tag-filter chips, NL quick-add, global search depth.
 - Merge perf branch (hardware WebView + list gate + search debounce).
 
 **C — Research loop**

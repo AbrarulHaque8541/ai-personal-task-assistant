@@ -8,7 +8,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java"
+SOURCE = ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java"
 MINIMUM_RATIO = 4.5
 SURFACE_FIELDS = ("background", "surface", "surfaceAlt", "suggestionSurface", "accentSoft", "dangerSoft")
 TEXT_FIELDS = ("text", "muted", "accent", "warning", "danger")

@@ -1,6 +1,6 @@
-# Daymark — Task reminders (v1.0.6)
+# Daymark — Task reminders (v1.0.6 feature work)
 
-How reminders work after the v1.0.6 OS-reminders work, including the honest limits.
+Current `main` source behavior after the v1.0.6 OS-reminders work, including the honest limits. This later source work is not part of the published v1.0.5 artifact; device notification behavior remains unverified.
 
 ## What reminders do
 

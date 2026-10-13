@@ -2,6 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
+python3 ./tools/check-package-cleanliness.py "$ROOT/.."
 sh ./tools/run-core-tests.sh
 sh ./tools/run-activity-request-code-tests.sh
 sh ./tools/run-portable-export-tests.sh
@@ -34,6 +35,7 @@ python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-browser-site-info.py "$ROOT"
 python3 ./tools/check-browser-diagnostics.py "$ROOT"
 python3 ./tools/check-browser-log-privacy.py "$ROOT"
+python3 ./tools/check-app-shortcuts.py "$ROOT"
 bash ./tools/check-release-identity.sh
 python3 ./tools/check-api36-readiness.py "$ROOT"
 python3 ./tools/check-merged-manifests.py "$ROOT"
@@ -100,12 +102,12 @@ for path in main.rglob("*"):
 build = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
 deps = build.split("dependencies {", 1)[1].split("}", 1)[0]
 assert "implementation(" not in deps and "api(" not in deps and "runtimeOnly(" not in deps, "unexpected app runtime dependency"
-activity = (main / "java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+activity = (main / "java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
 render_suggestions = re.search(r"private void renderSuggestions\(LocalDate today\)\s*\{(.*?)\n    \}", activity, re.S)
 assert render_suggestions and re.match(r"\s*if \(suggestionList == null\) return;", render_suggestions.group(1)), \
     "the suggestions renderer must tolerate its optional view being absent"
-sideload_network = (root / "app/src/githubSideload/java/com/cue/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
-play_network = (root / "app/src/play/java/com/cue/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
+sideload_network = (root / "app/src/githubSideload/java/com/abrar/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
+play_network = (root / "app/src/play/java/com/abrar/daymark/UpdaterNetworkAccess.java").read_text(encoding="utf-8")
 assert "UpdaterNetworkAccess.isWifiConnected(getApplicationContext())" in activity, \
     "the updater must use the flavor-specific network-access boundary"
 assert "getActiveNetwork()" in sideload_network and "getNetworkCapabilities(" in sideload_network
@@ -115,7 +117,7 @@ assert re.search(r"static boolean isWifiConnected\(Context context\)\s*\{\s*retu
 export_flow = activity.split("private void beginPortableExport", 1)[1].split("private void writePortableExport", 1)[0]
 assert "new Intent(Intent.ACTION_CREATE_DOCUMENT)" in export_flow, "portable export must create a new SAF document"
 assert "Intent.ACTION_OPEN_DOCUMENT" not in export_flow, "portable export must not select an existing document for overwrite"
-codec = (main / "java/com/cue/daymark/PortableBackupCodec.java").read_text(encoding="utf-8")
+codec = (main / "java/com/abrar/daymark/PortableBackupCodec.java").read_text(encoding="utf-8")
 assert 'Cipher.getInstance("AES/GCM/NoPadding")' in codec and "MAX_ARCHIVE_BYTES" in codec and "MAX_MANIFEST_BYTES" in codec
 saved_state = activity.split("protected void onSaveInstanceState", 1)[1].split("protected void onActivityResult", 1)[0]
 assert "STATE_PENDING_PORTABLE_IMPORT_URI" in saved_state, "pending portable URI must survive activity recreation"
@@ -137,15 +139,15 @@ active_restore = activity.split("private void beginPortableRestore", 1)[1].split
 assert "finishActivePortableImportUri(" in active_restore and "selectedOperation" in active_restore
 assert "PortableBackupCodec.clear(recoveryKey);" in active_restore and "portableRestoreWorkerActive = false;" in active_restore
 assert "finishPortableImportSelection(selected" in activity, "cancel cleanup must reconcile before exact URI release"
-manager = (main / "java/com/cue/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
+manager = (main / "java/com/abrar/daymark/PortableBackupManager.java").read_text(encoding="utf-8")
 assert "writePending(" in manager and "appendAtomically(additions)" in manager and "reconcile(" in manager
 assert "reconcileStartupImportUri" in manager and "reconcileStartup(" in manager
 assert "recordTakenGrantOrRelease" in manager and "releaseExactPortableReadGrant" in manager
 assert "JOURNAL_MAGIC" in manager and "operationToken" in manager, "URI journal must bind the token and URI"
 assert "releasePersistableUriPermission(uri," in manager and "Intent.FLAG_GRANT_READ_URI_PERMISSION" in manager
 assert "exactUri.equals(permission.getUri()) && permission.isReadPermission()" in manager
-blob_store = (main / "java/com/cue/daymark/AttachmentBlobStore.java").read_text(encoding="utf-8")
-attachment_store = (main / "java/com/cue/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
+blob_store = (main / "java/com/abrar/daymark/AttachmentBlobStore.java").read_text(encoding="utf-8")
+attachment_store = (main / "java/com/abrar/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
 assert "long verifyReadable(String taskId, String id) throws IOException" in blob_store, \
     "payload integrity must be checkable by full AES-GCM authentication, not existence alone"
 assert "boolean isReadable(String taskId, String id)" in blob_store, \
@@ -165,19 +167,28 @@ assert "totalAttachments > AttachmentLogic.MAX_TOTAL_COUNT - attachmentCount" in
 assert codec.index("preflightManifestAttachmentCount(plaintext)") < codec.index("List<PortableTask> tasks = new ArrayList<>(taskCount)")
 writer = codec.split("static String writeArchive", 1)[1].split("static VerifiedArchive readArchive", 1)[0]
 assert writer.index("countAttachmentDescriptors(tasks)") < writer.index("TaskLogic.isValidTaskList(tasks)")
-grant_recovery = (main / "java/com/cue/daymark/PortableImportGrantRecovery.java").read_text(encoding="utf-8")
+grant_recovery = (main / "java/com/abrar/daymark/PortableImportGrantRecovery.java").read_text(encoding="utf-8")
 assert "transaction.reconcile();" in grant_recovery and "releaseAndClear(journal, releaser, journaled);" in grant_recovery
 assert "ACTIVE_SELECTIONS" in grant_recovery and "isValidLiveSelection" in grant_recovery
 assert "restorePendingActivitySelection" in grant_recovery and "operationToken" in grant_recovery
-webview = (main / "java/com/cue/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
-media_policy = (main / "java/com/cue/daymark/BrowserMediaPolicy.java").read_text(encoding="utf-8")
-tab_policy = (main / "java/com/cue/daymark/BrowserTabPolicy.java").read_text(encoding="utf-8")
+webview = (main / "java/com/abrar/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
+for expected in (
+    "onPageCommitVisible(WebView view, String url)",
+    "view.postVisualStateCallback(SystemClock.uptimeMillis()",
+    "BrowserLogPolicy.redactedOrigin(url)",
+    '"visual state ready origin="',
+    '" attached="',
+    '" visible="',
+):
+    assert expected in webview, f"missing privacy-safe WebView visual-state diagnostic: {expected}"
+media_policy = (main / "java/com/abrar/daymark/BrowserMediaPolicy.java").read_text(encoding="utf-8")
+tab_policy = (main / "java/com/abrar/daymark/BrowserTabPolicy.java").read_text(encoding="utf-8")
 media_smoke = (root / "tools/BrowserMediaPolicySmoke.java").read_text(encoding="utf-8")
 tab_smoke = (root / "tools/BrowserTabPolicySmoke.java").read_text(encoding="utf-8")
-address = (main / "java/com/cue/daymark/BrowserAddress.java").read_text(encoding="utf-8")
-history_source = (main / "java/com/cue/daymark/BrowserHistory.java").read_text(encoding="utf-8")
+address = (main / "java/com/abrar/daymark/BrowserAddress.java").read_text(encoding="utf-8")
+history_source = (main / "java/com/abrar/daymark/BrowserHistory.java").read_text(encoding="utf-8")
 browser_smoke = (root / "tools/BrowserAddressSmoke.java").read_text(encoding="utf-8")
-settings_policy = (main / "java/com/cue/daymark/BrowserSettingsPolicy.java").read_text(encoding="utf-8")
+settings_policy = (main / "java/com/abrar/daymark/BrowserSettingsPolicy.java").read_text(encoding="utf-8")
 settings_smoke = (root / "tools/BrowserSettingsPolicySmoke.java").read_text(encoding="utf-8")
 for expected in ("What do you want", "Power path", "DEMO SUGGESTION", "highContrast", "textScale"):
     assert expected in activity, f"missing task source feature marker: {expected}"
@@ -197,7 +208,7 @@ assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity
 assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
-network_policy = (main / "java/com/cue/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
+network_policy = (main / "java/com/abrar/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
 online_pref = activity.split("private boolean readBrowserOnlinePreference()", 1)[1].split("private boolean readSafeBrowsingPreference()", 1)[0]
 assert "static final boolean DEFAULT_ONLINE_ENABLED = false;" in network_policy, "fresh installs must default to Offline"
 assert "getBoolean(BROWSER_ONLINE_ENABLED_KEY, false)" in online_pref and "getBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, false)" in online_pref
@@ -348,7 +359,7 @@ for expected in (
 for forbidden in ("addJavascriptInterface(", "shouldInterceptRequest(", "loadUrl(request.getUrl",
                  "setSupportMultipleWindows(true)"):
     assert forbidden not in webview, f"unsafe/unrequested WebView bridge or interception found: {forbidden}"
-viewport_policy = (main / "java/com/cue/daymark/BrowserViewportPolicy.java").read_text(encoding="utf-8")
+viewport_policy = (main / "java/com/abrar/daymark/BrowserViewportPolicy.java").read_text(encoding="utf-8")
 viewport_smoke = (root / "tools/BrowserViewportPolicySmoke.java").read_text(encoding="utf-8")
 assert "SUPPORT_MULTIPLE_WINDOWS = false" in viewport_policy, \
     "multiple windows must stay disabled so target=_blank result links are not dropped"
@@ -371,7 +382,7 @@ for expected in (
 assert "https://" + "example" not in address  # Search/address behavior is covered by executable smoke tests.
 assert "AiSiteCatalog.entries()" in activity, \
     "browser AI shortcuts must be built from the shared catalog, not duplicated inline"
-ai_catalog = (main / "java/com/cue/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
+ai_catalog = (main / "java/com/abrar/daymark/AiSiteCatalog.java").read_text(encoding="utf-8")
 assert "ChatGPT" in ai_catalog and "Claude" in ai_catalog and "Gemini" in ai_catalog and "Perplexity" in ai_catalog
 assert "https://chatgpt.com/" in ai_catalog and "https://claude.ai/" in ai_catalog
 assert "new Entry(\"Mistral Le Chat\"" in ai_catalog and "new Entry(\"Duck.ai\"" in ai_catalog
@@ -411,12 +422,12 @@ assert '"Edit task", task.completed ? "Mark as not done" : "Mark as done"' in ac
 assert '"Task options", "Manage attachments", "Delete task"' in activity, "task overflow must expose options, attachments, and delete actions"
 assert "setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE)" in activity
 assert "screen text is English only" in activity, "language limitations must remain explicit"
-task_logic = (main / "java/com/cue/daymark/TaskLogic.java").read_text(encoding="utf-8")
+task_logic = (main / "java/com/abrar/daymark/TaskLogic.java").read_text(encoding="utf-8")
 assert "Locale.getDefault()" in task_logic, "date formatting should follow the device locale"
-codec = (main / "java/com/cue/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
+codec = (main / "java/com/abrar/daymark/TaskSnapshotCodec.java").read_text(encoding="utf-8")
 assert "TaskLogic.isValidTaskList(tasks)" in codec, "encrypted writer must reject invalid or duplicate task snapshots"
 assert "TaskLogic.isValidTaskList(result)" in codec, "encrypted reader must use the same task-list validation contract"
-callback_gate = (main / "java/com/cue/daymark/ActivityCallbackGate.java").read_text(encoding="utf-8")
+callback_gate = (main / "java/com/abrar/daymark/ActivityCallbackGate.java").read_text(encoding="utf-8")
 assert "AtomicBoolean" in callback_gate and "if (open.get()) callback.run();" in callback_gate
 destroy = activity.split("protected void onDestroy", 1)[1].split("protected void onSaveInstanceState", 1)[0]
 assert "activityCallbackGate.close();" in destroy, "Activity destruction must close the callback gate"
@@ -449,7 +460,7 @@ assert "postActivityCallback(() -> showSaveFailureChoices" in save_start, \
     "queued APK save-failure UI must use the lifecycle gate"
 assert "mainHandler.post(() -> showSaveFailureChoices" not in save_start
 
-updater_dir = main / "java/com/cue/daymark/updater"
+updater_dir = main / "java/com/abrar/daymark/updater"
 updater_sources = "\n".join(path.read_text(encoding="utf-8") for path in updater_dir.glob("*.java"))
 release_client = (updater_dir / "GitHubReleaseClient.java").read_text(encoding="utf-8")
 updater_core = (updater_dir / "UpdaterCore.java").read_text(encoding="utf-8")

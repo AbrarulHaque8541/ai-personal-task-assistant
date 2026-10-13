@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+activity = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
 for marker in (
     'BROWSER_BLOCK_IMAGES_KEY = "block_network_images"',
     "readBrowserImagesBlockedPreference()",

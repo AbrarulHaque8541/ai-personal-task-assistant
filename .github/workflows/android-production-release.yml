@@ -2,7 +2,7 @@ name: Android production release
 
 on:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
-          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main
 
@@ -45,6 +45,11 @@ jobs:
           distribution: "temurin"
           cache: gradle
           cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
 
       - name: Validate signing secrets
         shell: bash
@@ -108,18 +113,21 @@ jobs:
           version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$package_line")"
           expected_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
           expected_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
-          expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/cue/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
+          expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/abrar/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
           min_sdk_version="$(grep -m1 "^sdkVersion:" <<< "$badging" | sed -n "s/^sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p")"
           echo "Package ID:       $package_id"
           echo "Version Name:     $version_name"
           echo "Version Code:     $version_code"
+          target_sdk_version="$(awk -F"'" '/^targetSdkVersion:/ {print $2; exit}' <<< "$badging")"
+          echo "Target SDK:       $target_sdk_version"
           echo "Expected Name:    $expected_name"
           echo "Expected Code:    $expected_code"
-          [[ "$package_id" == "com.cue.daymark" ]]
+          [[ "$package_id" == "com.abrar.daymark" ]]
           [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
           [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
+          [[ "$target_sdk_version" == "36" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
           apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
           actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
           if [[ -z "$actual_signer" ]]; then
@@ -181,7 +189,7 @@ jobs:
           {
             echo "## Daymark v$VERSION_NAME"
             echo
-            echo "Production build. Package: `com.cue.daymark`. Version code: `$VERSION_CODE`."
+            echo "Production build. Package: `com.abrar.daymark`. Version code: `$VERSION_CODE`."
             echo
             echo "- APK: `$APK_NAME`"
             echo "- APK SHA-256: `$APK_SHA`"
@@ -189,7 +197,7 @@ jobs:
             echo "- AAB SHA-256: `$AAB_SHA`"
             echo
             echo "<!-- daymark-updater-v1"
-            printf '{"applicationId":"com.cue.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
+            printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
             echo "-->"
           } > "$notes"
           release_json="$RUNNER_TEMP/release.json"
@@ -218,7 +226,7 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
             actual_body="$(jq -r '.body // ""' "$release_json")"
             grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
-            grep -Fq '"applicationId":"com.cue.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
             grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
             grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
             grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
@@ -229,7 +237,7 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
             actual_body="$(jq -r '.body // ""' "$release_json")"
             grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
-            grep -Fq '"applicationId":"com.cue.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
             grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
             grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
             grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }

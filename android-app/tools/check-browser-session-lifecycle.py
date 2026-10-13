@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1]).resolve()
-source = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+source = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
 
 pause_start = source.find("protected void onPause()")
 pause_end = source.find("private boolean isActivityCallbackCurrent()", pause_start)

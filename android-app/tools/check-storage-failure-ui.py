@@ -2,10 +2,10 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVITY = (ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text()
-STORE = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedTaskStore.java").read_text()
-CODEC = (ROOT / "app/src/main/java/com/cue/daymark/TaskSnapshotCodec.java").read_text()
-BLOB_STORE = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedBlobStore.java").read_text()
+ACTIVITY = (ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text()
+STORE = (ROOT / "app/src/main/java/com/abrar/daymark/EncryptedTaskStore.java").read_text()
+CODEC = (ROOT / "app/src/main/java/com/abrar/daymark/TaskSnapshotCodec.java").read_text()
+BLOB_STORE = (ROOT / "app/src/main/java/com/abrar/daymark/EncryptedBlobStore.java").read_text()
 checks = 0
 
 

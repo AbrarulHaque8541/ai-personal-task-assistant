@@ -1,6 +1,8 @@
 # Daymark — Owner feature suggestions (hardcore-developer use case)
 
-Date: 2026-10-10 · Status: **proposal only — nothing below is implemented. The owner picks items before any work starts.**
+Date: 2026-10-10 · Status: **historical proposal snapshot; recheck current `main` before treating any item as pending.**
+
+**Status update (2026-10-13):** D1.1 is partly superseded: task tags are implemented in the editor, task summary, and search; dedicated tag-filter chips remain only a proposal. D1.3 is implemented and no longer pending: current `main` uses DMM3 to preserve tags, repeat rules, and the monthly anchor in portable backup/restore; see [`TASK_REMINDERS.md`](TASK_REMINDERS.md). The documentation-truth note below describes an earlier `PROJECT_PLAN.md` snapshot, which has since been corrected. Other entries remain proposals unless verified against live source.
 
 ## Scope and method
 
@@ -12,9 +14,9 @@ Date: 2026-10-10 · Status: **proposal only — nothing below is implemented. Th
 
 | ID | Feature | Why it matters for a hardcore developer | Effort | Data impact |
 |---|---|---|---|---|
-| D1.1 | **Task tags** (per `docs/FUTURE_MILESTONES.md` #168 candidate: ≤8 tags, ≤24 chars) + tag filter chips | Dev work splits by repo/context (daymark, work, learning); search alone does not facet | M | Task schema v5 + backup manifest bump |
+| D1.1 | **Dedicated tag filter chips** (task tags, editor, visible labels, search, and backup already exist in current `main`) | Dev work splits by repo/context (daymark, work, learning); search alone does not facet | M | Filter UI only; no new task/backup fields expected |
 | D1.2 | **Natural-language time in quick add** ("9:30pm", "at 3pm tomorrow", "in 2h") — gap already flagged in `docs/TASK_ADD_GAPS.md` | Capture speed is the point of quick add; retyping the time in the editor breaks flow | S | None (parser only, host-tested) |
-| D1.3 | **Repeat rules in portable backup** — known v1.0.6 limitation: restore resets repeat to "No repeat" | Backup/restore is the safety net; silently losing repeat state is data loss | S | Backup manifest v3 (DMM2 → DMM3) |
+| D1.3 | **Repeat rules in portable backup — implemented; not pending**. Current DMM3 stores/restores the repeat rule and monthly anchor; DMM2 remains a historical format without those fields. | Backup/restore is the safety net; silently losing repeat state is data loss | Done in source; device acceptance remains separate | DMM3 |
 | D1.4 | **Code-friendly notes rendering**: monospace for `inline code` and fenced blocks, clickable links in the note dialog | Dev notes are snippets, commands, and URLs; rendering them as plain prose hurts readability | S–M | None (render only; storage unchanged) |
 
 ## D2 — Power-user features
@@ -35,7 +37,7 @@ Date: 2026-10-10 · Status: **proposal only — nothing below is implemented. Th
 
 ## Documentation-truth note (for the next PROJECT_PLAN.md revision)
 
-The capability map in `PROJECT_PLAN.md` (added in #242) currently says the task model "does not establish time-of-day, timezone, recurrence, notes, or subtasks" and lists offline timed reminders as "Roadmap / needs current-source verification". That is stale versus live `main`: notes, due time, and subtasks shipped in v1.0.3 (`docs/TASK_ADD_GAPS.md`), and best-effort OS reminders plus daily/weekly/monthly repeat rules merged in v1.0.6 (`d44d909`, `4033cf1`; see `docs/TASK_REMINDERS.md` — source-verified on `main` at `7df2acac`: `TaskReminderScheduler.java`, `TaskReminderReceiver.java`, `tools/check-reminder-lifecycle.py` present). Device acceptance is still pending (issues #160 / #221 remain owner-device gates). Those rows should be corrected in a follow-up docs pass; this file deliberately does not rewrite `PROJECT_PLAN.md`.
+Historical note from 2026-10-10: at the cited earlier `main` snapshot, the capability map lacked notes, due time, subtasks, and reminder/repeat status. That note is now superseded: current `main` and `PROJECT_PLAN.md` describe those source features, while device notification acceptance remains unverified. It is retained here as dated proposal context, not as current backlog guidance.
 
 ## Delivery rules (inherited)
 
