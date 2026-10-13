@@ -94,7 +94,7 @@ Reject or request changes on PRs/issues that still contain `<...>` identity plac
 
 ## 4. Hard product limits
 
-1. Current `applicationId = com.abrar.daymark`; do not change it again without explicit owner approval. The previous app identity is separate and is not upgraded by this release.
+1. Canonical identity is `com.abrar.daymark` everywhere in the current tracked app tree: installed `applicationId`, Gradle `namespace`, Java/Kotlin package declarations and directory paths, instrumentation runner, manifest components, updater checks, host tests, CI/release scripts and current documentation. Do not leave any retired namespace fragment or source path in current tracked files. The previous app identity is separate and is not upgraded by this release. The `android-app/tools/check-package-cleanliness.py` guard must enforce the full-tree rule.
 2. Keep the production signer pin; `versionCode` stays monotonic (current baseline 7); tag = `v` + `versionName` (supports `v1.0` and later version names).
 3. Production APK/AAB via production release workflow from a tag on `main`.
 4. Never empty user task data on error. No analytics/ad SDKs. No broad JS bridge to untrusted pages.
