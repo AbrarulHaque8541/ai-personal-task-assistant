@@ -172,6 +172,15 @@ assert "transaction.reconcile();" in grant_recovery and "releaseAndClear(journal
 assert "ACTIVE_SELECTIONS" in grant_recovery and "isValidLiveSelection" in grant_recovery
 assert "restorePendingActivitySelection" in grant_recovery and "operationToken" in grant_recovery
 webview = (main / "java/com/abrar/daymark/DaymarkWebView.java").read_text(encoding="utf-8")
+for expected in (
+    "onPageCommitVisible(WebView view, String url)",
+    "view.postVisualStateCallback(SystemClock.uptimeMillis()",
+    "BrowserLogPolicy.redactedOrigin(url)",
+    '"visual state ready origin="',
+    '"attached="',
+    '"visible="',
+):
+    assert expected in webview, f"missing privacy-safe WebView visual-state diagnostic: {expected}"
 media_policy = (main / "java/com/abrar/daymark/BrowserMediaPolicy.java").read_text(encoding="utf-8")
 tab_policy = (main / "java/com/abrar/daymark/BrowserTabPolicy.java").read_text(encoding="utf-8")
 media_smoke = (root / "tools/BrowserMediaPolicySmoke.java").read_text(encoding="utf-8")
