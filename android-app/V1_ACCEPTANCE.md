@@ -2,6 +2,8 @@
 
 This is a release checklist, not a claim that every device-level item has already passed. Source-only status is distinguished from runtime verification.
 
+> **Current source/release snapshot checked 2026-10-13:** `main` uses application ID `com.abrar.daymark`, version `1.0`/code `7`, and target API 36. The latest published release remains v1.0.5 (API 35); current source is not published, is a separate install, and does not automatically migrate task data. No physical device/emulator acceptance was available for this review. See the [status index](../docs/AGENT_STATUS.md) and [API 36 readiness](../API36_MIGRATION_READINESS.md) for current dated evidence.
+
 ## Original specification: requirement status map
 
 The original platform specification remains the baseline. This map separates current Daymark behavior from future proposals and tests that still require a device.
@@ -33,6 +35,7 @@ Android's [dynamic code loading security guidance](https://developer.android.com
 | Feature area | Status | Evidence or boundary |
 |---|---|---|
 | Offline task CRUD, dates/priorities, filters, deterministic suggestions | **Implemented in source; host-tested** | Suggestions are rules, not AI. Android UI and airplane-mode behavior remain untested on a device. |
+| Offline natural-language quick add | **Implemented in source; parser smoke-tested** | The single-line capture path parses supported dates/times, priorities, and `#tag` tokens; unknown words remain title text. Smoke test passed 16 assertions; device-level UX is untested. See [`../docs/NL_QUICK_ADD.md`](../docs/NL_QUICK_ADD.md). |
 | Encrypted task storage and attachments | **Implemented in source; partially verified** | AES-GCM/Keystore source is present; host checks passed. Hardware-backed keys and Android runtime behavior vary by device and remain untested. |
 | Portable encrypted backup/import | **Implemented in `main`; host-tested** | Explicit SAF `.dmbackup` flow uses a generated recovery key, not a passphrase. Provider, Keystore, and device restore behavior remain untested; no release qualification is established. |
 | Permissions and network boundary | **Source/configuration verified** | Common and Play merged manifests contain `INTERNET`; `githubSideload` also has `ACCESS_NETWORK_STATE`. Task CRUD needs no permission. |
@@ -45,7 +48,7 @@ Android's [dynamic code loading security guidance](https://developer.android.com
 
 “Later opt-in” means not present in this V1 and subject to a separately approved phase; it is not a commitment to ship. “V1 implemented” here is a source status, not proof of device-level acceptance.
 
-## Automated checks reproduced on `main` baseline `66476cb49a6caa9a43b65db39912ee397b6e6857`
+## Historical automated checks on main baseline `66476cb49a6caa9a43b65db39912ee397b6e6857` (not current-head results)
 
 - [x] `npm test` from the repository root: **8 passed, 0 failed**.
 - [x] From `android-app/`, `sh tools/check-v1-source.sh`: passed 55 core, 70 updater-policy, 120 parser/transport, 35 attachment, and 307 portable-backup assertions, plus source-policy, schema, accessibility, and contrast checks. The script and check-merged-manifests.py verify that main declares `INTERNET` for the in-app browser, Play inherits it without extra permissions, and sideload adds `ACCESS_NETWORK_STATE`.
@@ -53,7 +56,7 @@ Android's [dynamic code loading security guidance](https://developer.android.com
 - [x] From `android-app/`, `sh tools/run-attachment-tests.sh`: 35 assertions passed; `sh tools/run-portable-backup-tests.sh`: 307 assertions passed.
 - [x] `./gradlew --offline --no-daemon --console=plain :app:processGithubSideloadDebugMainManifest :app:processPlayDebugMainManifest`: `BUILD SUCCESSFUL`. The merged Play debug manifest contains only `INTERNET`; sideload debug contains `INTERNET` and `ACCESS_NETWORK_STATE`.
 - [x] GitHub Actions Android CI on this exact commit passed its host regression checks and `Build and verify debug variants` job ([run](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37445697952)). This CI result is not a device test or production-release qualification.
-- [ ] Device/emulator install, launch, API 26 runtime, SAF provider, Android Keystore, process death, TalkBack, and live updater behavior remain **not tested**. `adb` was unavailable; no APK was assembled or installed during this documentation audit.
+- [ ] Device/emulator install, launch, API 26 runtime, SAF provider, Android Keystore, process death, TalkBack, and live updater behavior were **NOT TESTED** in that historical audit. This checklist still has no physical-device result for the current source line; do not treat the historical `adb`/APK note as a current test run.
 
 ## In-app updater release gate
 
@@ -68,11 +71,11 @@ Android's [dynamic code loading security guidance](https://developer.android.com
 
 ### Release metadata required by the updater
 
-Create a non-draft, non-prerelease GitHub Release with a tag equal to `v` + exact `versionName` (the initial fresh release uses `v1.0`), exactly one `.apk` asset whose release API `digest` is `sha256:<64 hex characters>`, and the following body block followed by human-readable release notes. The tag-derived `versionName` and block `versionCode` must match the APK; `minSdkVersion` and `applicationId` must match its manifest. The SHA-256 signer value is the production APK certificate fingerprint, not the debug certificate.
+Create a non-draft, non-prerelease GitHub Release with a tag equal to `v` + exact `versionName` (`v1.0` is the current source value, not evidence of a published release), exactly one `.apk` asset whose release API `digest` is `sha256:<64 hex characters>`, and the following body block followed by human-readable release notes. The tag-derived `versionName` and block `versionCode` must match the APK; `minSdkVersion` and `applicationId` must match its manifest. The SHA-256 signer value is the production APK certificate fingerprint, not the debug certificate.
 
 ```html
 <!-- daymark-updater-v1
-{"applicationId":"com.abrar.daymark","versionCode":2,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
+{"applicationId":"com.abrar.daymark","versionCode":7,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
 -->
 ```
 
@@ -166,7 +169,7 @@ The shared manifest declares normal `INTERNET` for the embedded browser; the `gi
 - [ ] **Locales and online sources:** a downloaded locale JSON or model source requires a visible network/region/source/size disclosure and explicit user action. Verify offline operation without it, no silent fallback, removable cached data, and no background downloads.
 - [ ] **Background jobs:** if a user-requested local-data import later needs longer execution, test OS-compliant WorkManager or visible foreground work, constraints, cancellation, process death/reboot recovery, and denial/failure paths. Verify the app never schedules model downloads, updates, indexing, or inference; never relies on indefinite residency; and never bypasses Android background limits.
 - [ ] **CLI/plugins/providers:** test allowlisted typed inputs, caller/signature checks, permissions, cancellation/quotas/timeouts, denied/unavailable companion behavior, no shell-string execution, no secret/path leakage, provider selection without cloud fallback, remote data/cost disclosure, and Telegram backend/token isolation.
-- [ ] **Play target API:** current source targets API 36, and both Play/sideload debug APKs were built successfully with that target. The build warns that AGP 8.8.2 was tested only through compileSdk 35; upgrade to a supported AGP and complete API 36 release checks before a Play submission. See `ANDROID_SOURCES.md`.
+- [x] **Source API/toolchain:** current `main` targets compileSdk/targetSdk 36 and uses AGP 8.12.2 with Gradle 8.13; the source migration and toolchain alignment landed in PRs #261 and #280. This replaces the earlier AGP 8.8.2 warning. Main Android CI passed on the reviewed SHA. This is source/build evidence, not API 36 runtime, policy, or production-release acceptance; see [`API36_MIGRATION_READINESS.md`](../API36_MIGRATION_READINESS.md).
 - [ ] **Android 16 edge-to-edge:** API 36 debug APKs build, but no API 36 device/emulator runtime or visual test was run. Android 16 disables the edge-to-edge opt-out for apps targeting API 36. Before release, test status/navigation bars, display cutouts, IME/keyboard, dialogs, rotation, gesture and three-button navigation, and large text on API 35 and 36 devices/emulators. Do not claim API 36 readiness until those tests pass.
 - [ ] **Release pipeline:** pin and verify dependencies/toolchain, produce SBOM/license inventory, build twice for reproducibility, inspect manifest and APK/AAB contents for hidden developer bypasses, test endpoints, sensitive logging, or executable downloads, align/sign/verify release certificate identity, run connected Android tests and install/update/rollback on the supported matrix. Release qualification remains pending. This review used the already installed SDK packages only and accepted/installed none; no device install, APK upload, or app release was performed.
 
@@ -196,10 +199,18 @@ Telegram is a separate hosted-bot service that needs a backend and bot token. It
 See [STORAGE_RECOVERY.md](STORAGE_RECOVERY.md) for the exact contract and official Android references.
 
 
-## Weekly review evidence (2026-10-12)
+## Historical weekly review evidence (2026-10-12)
 
 On the review branch based on `origin/main` commit `f5c6a57f69dfbd0b15c08336e52c5b313ad4eb34`, the browser now starts Offline and requires a persisted explicit-consent marker before restoring Online; legacy default-Online values are discarded. `sh android-app/tools/check-v1-source.sh` passed, including the new offline/consent regression and existing text-size, accessibility-label source, English-only/locale-date, contrast, permission, and WebView policy checks. Lowest source-computed palette contrast is 5.00:1; this does not prove rendered contrast or TalkBack behavior. Root `npm test` passed 13/13.
 
 Offline Gradle builds succeeded for `:app:assembleGithubSideloadDebug` and `:app:assemblePlayDebug`; both flavor lint tasks succeeded with 118 warnings each (111 `SetTextI18n` warnings), with no findings on the edited browser-preference lines; `:app:testGithubSideloadDebugUnitTest` and `:app:testPlayDebugUnitTest` were `NO-SOURCE`. The build emitted a warning that Android Gradle Plugin 8.8.2 was tested only through compileSdk 35 while the source targets 36. Sideload debug: 305,945 bytes, SHA-256 `a75a755f013d2bd9210af79d54c3e0e36caffe0046c0eac9e63e47a78600e386`; Play debug: 304,829 bytes, SHA-256 `7bbb08d6d6af7fcb7637b3e060e3ead1513bd3facd2717fad9dcfdd963ebb295`. Both are package `com.abrar.daymark`, minSdk 26/targetSdk 36, and passed debug APK v2 signature verification. The sideload flavor adds `ACCESS_NETWORK_STATE`; Play does not. No model/weight payload was found. These debug APKs are not published.
 
 The latest published production artifact remains v1.0.5 `githubSideload`, 221,293 bytes, targetSdk 35. Its SHA-256 matches the Release metadata; its v2 signature matches the pinned production certificate; its exact-tag workflow passed. That proves the published artifact is below the `<15 MB` target, not that a future target-36 production APK will have the same size. No device/emulator was available (`adb devices -l` empty; emulator binary absent), so APK installation/launch, offline traffic behavior, font rendering, TalkBack traversal, non-English/RTL layout, API 36 edge-to-edge behavior, and device Keystore operation remain NOT TESTED. No APK was uploaded or released in this review.
+
+
+---
+Current source/release snapshot:
+Work by: Cue
+Model: not disclosed by runtime
+Tooling: GitHub connector CLI, git, local source/workflow review
+Timestamp (UTC): 2026-10-13T14:42:14Z

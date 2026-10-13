@@ -3,8 +3,9 @@ package com.abrar.daymark.updater;
 import com.abrar.daymark.BuildConfig;
 
 /**
- * The owner-approved com.abrar.daymark identity is a fresh install, not an in-place
- * update of legacy com.abrar.daymark. Keep the same pinned production signer for integrity.
+ * The owner-approved application identity is a separate fresh-install line from earlier releases.
+ * Keep the pinned production signer; signer continuity does not migrate app data or make
+ * different application IDs update-compatible.
  */
 public final class UpdaterPublisherConfig {
     public static final boolean UPDATER_ENABLED = true;

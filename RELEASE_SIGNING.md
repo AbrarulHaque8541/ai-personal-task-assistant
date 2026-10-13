@@ -1,78 +1,69 @@
 # Daymark — release identity and signing contract
 
-This document is binding for **humans and AI agents** working on this repository.
+This document describes durable release rules plus a dated source/release snapshot. Verify the live `main` branch, GitHub Releases, and exact workflow run before acting.
 
-## Goal
+## Current source and published release (checked 2026-10-13)
 
-The owner approved a fresh application identity for the new Daymark line. The next production artifact uses `com.abrar.daymark`, displayed version `1.0`, and a fresh install. Previous app installations remain separate and do not update in place; their local data is not migrated automatically. The production signing certificate remains pinned and must still be verified.
+- Current source on `main` uses application ID `com.abrar.daymark`, `versionName = 1.0`, `versionCode = 7`, and `targetSdk = 36`.
+- The latest published release is **v1.0.5**; its APK targets API 35 and belongs to a separate, older application identity. The current `1.0` source line is not published and installs separately from that older line. There is no automatic task-data migration between the apps.
+- Do not infer publication from Gradle values or CI. The live Releases page is the source of truth for published assets; the current source values are in [`android-app/app/build.gradle.kts`](android-app/app/build.gradle.kts).
 
-## Immutable identity
+## Immutable identity and signer
 
-| Field | Value | Rule |
-|-------|--------|------|
-| `applicationId` | `com.abrar.daymark` | Current identity after owner-approved reset; do not change again without explicit owner approval |
-| Production keystore | GitHub Actions secrets only | **Never replace** with a new JKS for "convenience" |
-| Secrets | `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | Must stay the **same four secrets** used for v1.0.1 / v1.0.2 |
-| Production cert SHA-256 | `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580` | Must match every production APK; also pinned in `UpdaterPublisherConfig` |
+| Field | Current value | Rule |
+|---|---|---|
+| `applicationId` | `com.abrar.daymark` | Owner-approved identity; do not change without explicit owner approval. |
+| Production keystore | GitHub Actions secrets only | Keep key material out of source and artifacts other than the signed app. |
+| Signing secrets | `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | Preserve the configured production secrets; never ask the owner to send keystore files or passwords. |
+| Production cert SHA-256 | `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580` | Must match the signer pin in `UpdaterPublisherConfig` and every production APK. |
 
-If the keystore is lost or rotated without a careful migration, **all existing installs cannot update** — users must uninstall (data loss) or use portable backup restore.
+This repository's release and updater checks require exact production-signer continuity. Do not rotate or replace the key without a separately approved and verified migration. For the **same application ID**, a different signer can prevent an in-place Android update; for **different application IDs**, the apps are separate installs even when they use the same signer. Neither case permits an automatic transfer of app-private encrypted task data.
 
-## Version rules (every release)
+## Version and publication rules
 
-1. Bump **`versionCode` by at least +1** (integer, always increasing).
-2. Current fresh-install baseline is `versionName = 1.0`; subsequent releases must bump it.
-3. Tag must be exactly `v` + `versionName` (initial tag `v1.0`; three-component versions such as `v1.0.1` are also accepted).
-4. Publish only via `.github/workflows/android-production-release.yml` (tag push on `main`).
-5. APK asset name: `Daymark-v{versionName}-githubSideload.apk`.
+1. Keep `versionCode` strictly increasing.
+2. Keep `versionName` in `android-app/app/build.gradle.kts`; the production tag must be exactly `v` + that value.
+3. Publish only through `.github/workflows/android-production-release.yml` on the exact version tag after all required checks pass.
+4. The production workflow builds the signed APK/AAB and verifies package ID, version, target SDK 36, and signer before publication. Main Android CI is not a signed production release and does not publish assets.
+5. The expected APK asset name is `Daymark-v{versionName}-githubSideload.apk`; verify the actual release assets and checksums before distribution.
+6. A successful CI build does not establish Android-device behavior or upgrade/data-migration compatibility.
 
-Published releases and their APK and AAB assets are listed on the repository's Releases page; previous releases remain historical and do not become updates for the current application identity. The current source's `versionName`/`versionCode` live in `android-app/app/build.gradle.kts`, and a version counts as published only when its exact `v<versionName>` tag's production workflow completes successfully. Main CI validates the protected signing secrets, generates signed candidate APK/AAB artifacts, and confirms signer continuity; it does not publish a release or prove physical-device behavior. Always verify the exact tag's production workflow and attached artifacts before distribution.
+## Separate-install and data boundary
 
+The current owner-approved application identity is separate from the previously published app line. Installing it does not replace that app or carry its app-private encrypted data across. The user must retain access to the earlier installation and use Daymark's explicit encrypted backup/restore flow if they choose to move tasks; no automatic package-to-package migration is implemented. Reusing the production signer preserves publisher verification, but does not make distinct application IDs update-compatible.
 
-## Fresh identity migration notes
+## Historical package-conflict note — 2026-10-08
 
-- The fresh application identity installs separately from previous app installations; Android does not treat it as an in-place update.
-- Existing encrypted task data is app-private and will not appear in the new package. The owner explicitly accepted a fresh install and no automatic data migration.
-- Old release history and assets are not deleted. Once the new package release becomes GitHub latest stable, the legacy updater may reject its metadata because it targets a different application ID; this is expected and fail-closed.
-- Keep the same production signer pin. Reusing the signer preserves publisher verification but does not make different application IDs update-compatible.
+A prior device reported Android's “App not installed as package conflicts with an existing package” error when a production-signed build was installed over a build signed with a different certificate (for example, a debug build). For the same application ID, the signing mismatch is an Android install/update constraint, not evidence that a new production key should be generated.
 
-## What caused "package conflicts" (2026-10-08)
+The original recovery note referred to backing up, uninstalling that specific older install, then installing [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) and restoring. That is **historical, device-specific guidance**, not a general update path. Do not tell a user to uninstall as a routine fix; uninstall can remove the encrypted task file and its device-held key. Confirm a usable backup/recovery plan before any user chooses to remove an installation.
 
-Android error: *App not installed as package conflicts with an existing package.*
+After a clean install, a later build can update in place only when it has the same application ID, the accepted signer continuity, and a higher `versionCode`. A different application ID installs alongside the earlier app and does not migrate its data automatically.
 
-**Cause:** The phone had Daymark installed with a **different signing certificate** (typically a **debug** or ad-hoc build) than the production keystore in GitHub Secrets. Same `applicationId` + different cert = conflict. This is OS policy, not a bug in the APK.
+## Required production-release sequence
 
-**Fix for that device:** optional portable backup → uninstall old Daymark → install [Daymark-v1.0.2.apk](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) → restore backup.
+1. On `main`, set the intended `versionName` and a higher `versionCode` in `android-app/app/build.gradle.kts`.
+2. Preserve `UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256` and the protected signing secrets.
+3. Complete review and merge the release change under the owner's authority.
+4. Only when the owner authorizes publication, create/push the exact `v<versionName>` tag on the intended `main` commit.
+5. Wait for the production-release workflow; verify its exact commit, package/version/target-SDK/signer assertions, signed APK/AAB, checksums, and attached release assets.
+6. Describe an update as in-place only for a compatible same-application-ID installation. For the current separate identity, do not promise replacement of the older app or automatic data transfer.
 
-**After that clean production install:** every later release built with the **same secrets** and higher `versionCode` updates in place with **no conflict**.
+## Debug vs. production
 
-## Forbidden actions (agents)
+| Build | Signature | Can update a production install? |
+|---|---|---|
+| `assembleGithubSideloadDebug` | Debug keystore | **No** — signer differs from production. |
+| `assembleGithubSideloadRelease` + protected production secrets | Production keystore | **Only if** application ID matches, signer continuity is accepted, and `versionCode` is higher. |
 
-- Do **not** change `applicationId` again without explicit owner approval.
-- Do **not** generate a new keystore or commit any `.jks` / `.keystore`.
-- Do **not** ship a **debug**-signed APK as a production GitHub Release asset.
-- Do **not** lower `versionCode`.
-- Do **not** use a different signing path for "just this once".
-- Do **not** enable Play flavor updater (`BuildConfig.UPDATER_ENABLED` stays false for `play`).
-- Do **not** rewrite or delete existing release assets for old tags unless the owner explicitly requests it.
+Use debug builds for development; never present one as a production release or tell an end user to sideload it over a production installation.
 
-## Required release sequence (agents)
+## Portable backup
 
-1. On `main`: set next `versionCode` / `versionName` in `android-app/app/build.gradle.kts`.
-2. Keep `UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256` equal to the production cert above (unless the owner rotates keys in a dedicated, documented migration).
-3. Merge to `main`.
-4. Tag: `git tag -a v1.0 -m "Daymark 1.0" && git push origin v1.0` for the fresh baseline; future tags must equal `v` + exact `versionName`.
-5. Wait for **Android production release** workflow — it signs with repo secrets and attaches `Daymark-vX.Y.Z.apk`.
-6. Users update over the previous production install — data preserved.
+Before a user voluntarily removes an installation, advise them to use **More → Encrypted backup / restore** and confirm they have retained the recovery key separately. Restoring is an explicit user action; it is not an automatic migration, and an unavailable or lost device-held key cannot be replaced by changing the signer or application ID.
 
-## Debug vs production
-
-| Build | Signature | May update production install? |
-|-------|-----------|--------------------------------|
-| `assembleGithubSideloadDebug` | Debug keystore | **No** — will conflict |
-| `assembleGithubSideloadRelease` + CI secrets | Production keystore | **Yes** — if versionCode higher |
-
-Local developers: use debug for day-to-day; never tell end users to sideload debug over production.
-
-## Portable backup escape hatch
-
-If a signing mistake ever forces uninstall, users should use **More → Encrypted backup / restore** before uninstalling, then restore after installing a production APK.
+---
+Work by: Cue
+Model: not disclosed by runtime
+Tooling: GitHub connector CLI, git, local source/workflow/documentation review
+Timestamp (UTC): 2026-10-13T14:42:14Z
