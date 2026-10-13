@@ -3,8 +3,8 @@ package com.cue.daymark.updater;
 import com.cue.daymark.BuildConfig;
 
 /**
- * Same production signer as v1.0.1 so installed users get an in-place update
- * (package com.cue.daymark, higher versionCode) without losing local data.
+ * The owner-approved com.abrar.daymark identity is a fresh install, not an in-place
+ * update of legacy com.cue.daymark. Keep the same pinned production signer for integrity.
  */
 public final class UpdaterPublisherConfig {
     public static final boolean UPDATER_ENABLED = true;

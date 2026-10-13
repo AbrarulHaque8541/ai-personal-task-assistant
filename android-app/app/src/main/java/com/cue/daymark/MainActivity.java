@@ -98,9 +98,9 @@ import com.cue.daymark.updater.UpdaterRecoveryStore;
 // Browser workspace + task workspace share one Activity but never share visible controls.
 public final class MainActivity extends Activity {
     private static final int REQUEST_ATTACH_DOCUMENT = 7341;
-    private static final String ACTION_SHORTCUT_NEW_TASK = "com.cue.daymark.action.SHORTCUT_NEW_TASK";
-    private static final String ACTION_SHORTCUT_TASK_DETAILS = "com.cue.daymark.action.SHORTCUT_TASK_DETAILS";
-    private static final String ACTION_SHORTCUT_OPEN_BROWSER = "com.cue.daymark.action.SHORTCUT_OPEN_BROWSER";
+    private static final String ACTION_SHORTCUT_NEW_TASK = "com.abrar.daymark.action.SHORTCUT_NEW_TASK";
+    private static final String ACTION_SHORTCUT_TASK_DETAILS = "com.abrar.daymark.action.SHORTCUT_TASK_DETAILS";
+    private static final String ACTION_SHORTCUT_OPEN_BROWSER = "com.abrar.daymark.action.SHORTCUT_OPEN_BROWSER";
     private String pendingLauncherShortcutAction;
     private static final int REQUEST_IMPORT_EXTENSION = 7812;
     private static final int REQUEST_EXPORT_EXTENSION = 7813;

@@ -10,7 +10,7 @@ import java.util.Locale;
 
 /** Pure-Java policy and verification logic for the opt-in GitHub APK updater. */
 public final class UpdaterCore {
-    public static final String APPLICATION_ID = "com.cue.daymark";
+    public static final String APPLICATION_ID = "com.abrar.daymark";
     public static final long CHECK_INTERVAL_MILLIS = 24L * 60L * 60L * 1000L;
     public static final long MAX_APK_BYTES = 100L * 1024L * 1024L;
     private static final String RELEASE_ASSET_PREFIX =

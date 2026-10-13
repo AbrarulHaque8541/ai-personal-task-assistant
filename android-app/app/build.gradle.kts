@@ -20,13 +20,14 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.cue.daymark"
+        applicationId = "com.abrar.daymark"
         minSdk = 26
         targetSdk = 36
         testInstrumentationRunner = "com.cue.daymark.DaymarkPlatformInstrumentation"
-        // Next release target. Same package and production signer are required for an in-place update.
-        versionCode = 6
-        versionName = "1.0.5"
+        // Owner-approved fresh app identity; legacy com.cue.daymark installs remain separate.
+        // Keep versionCode monotonic even though the displayed version restarts.
+        versionCode = 7
+        versionName = "1.0"
     }
 
     signingConfigs {

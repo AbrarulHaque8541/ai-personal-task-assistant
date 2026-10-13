@@ -26,9 +26,9 @@ strings = {item.get("name"): (item.text or "") for item in strings_root.findall(
 shortcuts_root = ET.parse(shortcuts_path).getroot()
 shortcuts = shortcuts_root.findall("shortcut")
 expected = {
-    "new_task": ("com.cue.daymark.action.SHORTCUT_NEW_TASK", "shortcut_new_task_short", "shortcut_new_task_long"),
-    "task_details": ("com.cue.daymark.action.SHORTCUT_TASK_DETAILS", "shortcut_task_details_short", "shortcut_task_details_long"),
-    "open_browser": ("com.cue.daymark.action.SHORTCUT_OPEN_BROWSER", "shortcut_open_browser_short", "shortcut_open_browser_long"),
+    "new_task": ("com.abrar.daymark.action.SHORTCUT_NEW_TASK", "shortcut_new_task_short", "shortcut_new_task_long"),
+    "task_details": ("com.abrar.daymark.action.SHORTCUT_TASK_DETAILS", "shortcut_task_details_short", "shortcut_task_details_long"),
+    "open_browser": ("com.abrar.daymark.action.SHORTCUT_OPEN_BROWSER", "shortcut_open_browser_short", "shortcut_open_browser_long"),
 }
 assert len(shortcuts) == len(expected), "exactly the three supported shortcuts should be published"
 seen = set()
@@ -47,14 +47,14 @@ for shortcut in shortcuts:
     intent = shortcut.find("intent")
     assert intent is not None, f"{shortcut_id} must have a launch intent"
     assert intent.get(android + "action") == action, f"{shortcut_id} action mismatch"
-    assert intent.get(android + "targetPackage") == "com.cue.daymark", "shortcut package identity changed"
+    assert intent.get(android + "targetPackage") == "com.abrar.daymark", "shortcut package identity changed"
     assert intent.get(android + "targetClass") == "com.cue.daymark.MainActivity", "shortcut must route to MainActivity"
 
 activity = activity_path.read_text(encoding="utf-8")
 for marker in (
-    'ACTION_SHORTCUT_NEW_TASK = "com.cue.daymark.action.SHORTCUT_NEW_TASK"',
-    'ACTION_SHORTCUT_TASK_DETAILS = "com.cue.daymark.action.SHORTCUT_TASK_DETAILS"',
-    'ACTION_SHORTCUT_OPEN_BROWSER = "com.cue.daymark.action.SHORTCUT_OPEN_BROWSER"',
+    'ACTION_SHORTCUT_NEW_TASK = "com.abrar.daymark.action.SHORTCUT_NEW_TASK"',
+    'ACTION_SHORTCUT_TASK_DETAILS = "com.abrar.daymark.action.SHORTCUT_TASK_DETAILS"',
+    'ACTION_SHORTCUT_OPEN_BROWSER = "com.abrar.daymark.action.SHORTCUT_OPEN_BROWSER"',
     "handleShortcutIntent(getIntent());",
     "setIntent(intent);",
     "dispatchPendingLauncherShortcut();",

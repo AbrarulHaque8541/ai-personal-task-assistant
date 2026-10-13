@@ -194,7 +194,7 @@ public final class UpdaterSmoke {
         expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.1", 2L, 26, SIGNER)),
+                apk -> new UpdaterCore.ApkIdentity("com.abrar.daymark", "1.1.1", 2L, 26, SIGNER)),
                 "APK version name must match release metadata");
         expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
@@ -204,12 +204,12 @@ public final class UpdaterSmoke {
         expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 3L, 26, SIGNER)),
+                apk -> new UpdaterCore.ApkIdentity("com.abrar.daymark", "1.1.0", 3L, 26, SIGNER)),
                 "APK version code must match release metadata");
         expectFailure(UpdaterCore.Failure.APK_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> writeTemp(APK_BYTES),
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 28, SIGNER)),
+                apk -> new UpdaterCore.ApkIdentity("com.abrar.daymark", "1.1.0", 2L, 28, SIGNER)),
                 "APK minimum SDK must match release metadata");
     }
 
@@ -225,7 +225,7 @@ public final class UpdaterSmoke {
         expectFailure(UpdaterCore.Failure.SIGNER_MISMATCH, () -> UpdaterCore.downloadAndVerify(
                 validRelease(), UpdaterCore.APPLICATION_ID, 1L, 35, SIGNER, SIGNER,
                 release -> true, release -> { downloaded[0] = writeTemp(APK_BYTES); return downloaded[0]; },
-                apk -> new UpdaterCore.ApkIdentity("com.cue.daymark", "1.1.0", 2L, 26, repeat('b', 64))),
+                apk -> new UpdaterCore.ApkIdentity("com.abrar.daymark", "1.1.0", 2L, 26, repeat('b', 64))),
                 "APK signer must match installed and configured signer");
         check(downloaded[0] != null && !downloaded[0].exists(), "signer verification failure deletes the temporary APK");
     }
