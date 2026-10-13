@@ -75,13 +75,13 @@ public final class UpdaterSmoke {
         check(!UpdaterCore.isAllowedAssetRedirectUrl("https://release-assets.githubusercontent.com:444/a.apk"),
                 "nonstandard redirect port is rejected");
         check(UpdaterCore.isAllowedAssetUrl(assetUrl()), "HTTPS GitHub release download URL is allowed");
-        check(UpdaterCore.isAllowedAssetUrl("https://github.com:443/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+        check(UpdaterCore.isAllowedAssetUrl("https://github.com:443/AbrarulHaque8541/daymark/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
                 "explicit default HTTPS port is allowed for the GitHub release host");
-        check(!UpdaterCore.isAllowedAssetUrl("https://github.com:444/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+        check(!UpdaterCore.isAllowedAssetUrl("https://github.com:444/AbrarulHaque8541/daymark/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
                 "unusual port on the GitHub release asset host is rejected");
-        check(!UpdaterCore.isAllowedAssetUrl("https://evil.example/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+        check(!UpdaterCore.isAllowedAssetUrl("https://evil.example/AbrarulHaque8541/daymark/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
                 "non-GitHub release asset host is rejected");
-        check(!UpdaterCore.isAllowedAssetUrl("http://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
+        check(!UpdaterCore.isAllowedAssetUrl("http://github.com/AbrarulHaque8541/daymark/releases/download/v1.1.0/Daymark-v1.1.0.apk"),
                 "cleartext GitHub release asset URL is rejected");
     }
 
@@ -330,7 +330,7 @@ public final class UpdaterSmoke {
     }
 
     private static String assetUrl() {
-        return "https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.1.0/Daymark-v1.1.0.apk";
+        return "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.1.0/Daymark-v1.1.0.apk";
     }
 
     private static File writeTemp(byte[] bytes) throws UpdaterCore.UpdateException {

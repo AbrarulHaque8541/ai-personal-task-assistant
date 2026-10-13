@@ -14,7 +14,7 @@ public final class UpdaterCore {
     public static final long CHECK_INTERVAL_MILLIS = 24L * 60L * 60L * 1000L;
     public static final long MAX_APK_BYTES = 100L * 1024L * 1024L;
     private static final String RELEASE_ASSET_PREFIX =
-            "/AbrarulHaque8541/ai-personal-task-assistant/releases/download/";
+            "/AbrarulHaque8541/daymark/releases/download/";
 
     private UpdaterCore() { }
 
