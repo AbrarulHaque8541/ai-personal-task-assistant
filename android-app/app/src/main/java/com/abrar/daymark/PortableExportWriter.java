@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -18,7 +18,7 @@ import java.security.NoSuchAlgorithmException;
  * its final {@code daymark-backup.dmbackup} name, so a truncated archive could be mistaken for a
  * complete backup and its recovery key trusted.
  *
- * <p>This mirrors {@link com.cue.daymark.updater.SafApkSaver}'s contract for the same reason:
+ * <p>This mirrors {@link com.abrar.daymark.updater.SafApkSaver}'s contract for the same reason:
  * <ol>
  *   <li>rename the app-created document to a conspicuous incomplete marker <em>before</em> writing;</li>
  *   <li>stream the staged archive, verifying the byte count and the SHA-256 of the bytes written;</li>

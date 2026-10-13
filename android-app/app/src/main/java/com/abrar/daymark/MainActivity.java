@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -85,15 +85,15 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.cue.daymark.updater.AndroidApkVerifier;
-import com.cue.daymark.updater.GitHubApkDownloader;
-import com.cue.daymark.updater.GitHubReleaseClient;
-import com.cue.daymark.updater.PendingSaveTransaction;
-import com.cue.daymark.updater.SafApkSaver;
-import com.cue.daymark.updater.UpdaterActivityResultRouter;
-import com.cue.daymark.updater.UpdaterCore;
-import com.cue.daymark.updater.UpdaterPublisherConfig;
-import com.cue.daymark.updater.UpdaterRecoveryStore;
+import com.abrar.daymark.updater.AndroidApkVerifier;
+import com.abrar.daymark.updater.GitHubApkDownloader;
+import com.abrar.daymark.updater.GitHubReleaseClient;
+import com.abrar.daymark.updater.PendingSaveTransaction;
+import com.abrar.daymark.updater.SafApkSaver;
+import com.abrar.daymark.updater.UpdaterActivityResultRouter;
+import com.abrar.daymark.updater.UpdaterCore;
+import com.abrar.daymark.updater.UpdaterPublisherConfig;
+import com.abrar.daymark.updater.UpdaterRecoveryStore;
 
 // Browser workspace + task workspace share one Activity but never share visible controls.
 public final class MainActivity extends Activity {

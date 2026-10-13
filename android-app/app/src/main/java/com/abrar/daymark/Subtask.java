@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** One checklist item inside a task. Pure data; validation lives in TaskLogic. */
 final class Subtask {
