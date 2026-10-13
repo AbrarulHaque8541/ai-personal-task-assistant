@@ -4,9 +4,9 @@
     <string name="app_description">Private, local-first task planning</string>
     <string name="shortcut_new_task_short">New task</string>
     <string name="shortcut_new_task_long">Start a new task</string>
-    <string name="shortcut_task_details_short">Task details</string>
-    <string name="shortcut_task_details_long">Create a task with details</string>
-    <string name="shortcut_open_browser_short">Open browser</string>
+    <string name="shortcut_task_details_short">Details</string>
+    <string name="shortcut_task_details_long">Create task with details</string>
+    <string name="shortcut_open_browser_short">Browser</string>
     <string name="shortcut_open_browser_long">Open Daymark browser</string>
     <string name="shortcut_disabled_message">Open Daymark to use this shortcut.</string>
 </resources>
