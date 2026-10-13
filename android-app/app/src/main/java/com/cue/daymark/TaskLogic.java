@@ -66,6 +66,11 @@ final class TaskLogic {
         if (task.reminderLeadMinutes != null && !isReminderLead(task.reminderLeadMinutes)) return false;
         if (task.repeatRule != null
                 && (task.dueDate == null || !isRepeatRule(task.repeatRule))) return false;
+        if (REPEAT_MONTHLY.equals(task.repeatRule)) {
+            if (!isValidRepeatDayOfMonth(task.repeatDayOfMonth)) return false;
+        } else if (task.repeatDayOfMonth != null) {
+            return false;
+        }
         if (task.reminderShownFire != null) {
             try {
                 Instant.parse(task.reminderShownFire);
@@ -109,6 +114,10 @@ final class TaskLogic {
         return REPEAT_DAILY.equals(rule) || REPEAT_WEEKLY.equals(rule) || REPEAT_MONTHLY.equals(rule);
     }
 
+    static boolean isValidRepeatDayOfMonth(Integer dayOfMonth) {
+        return dayOfMonth != null && dayOfMonth >= 1 && dayOfMonth <= 31;
+    }
+
     /** A tag is lowercase alphanumerics, hyphens, or underscores; 1-24 characters. */
     static boolean isTag(String tag) {
         return tag != null && tag.matches("[a-z0-9][a-z0-9_-]{0,23}");
@@ -145,15 +154,26 @@ final class TaskLogic {
         return Collections.unmodifiableList(normalized);
     }
 
-    /** Next occurrence date for a repeating task; monthly rules follow calendar months. */
+    /** Next occurrence date for a repeating task; the two-argument form anchors monthly rules to this date. */
     static String nextDueDate(String dueDate, String rule) {
+        Integer repeatDayOfMonth = REPEAT_MONTHLY.equals(rule) && isDateOnly(dueDate)
+                ? Integer.valueOf(dueDate.substring(8)) : null;
+        return nextDueDate(dueDate, rule, repeatDayOfMonth);
+    }
+
+    /** Monthly rules clamp in short months while retaining their original day-of-month anchor. */
+    static String nextDueDate(String dueDate, String rule, Integer repeatDayOfMonth) {
         if (!isDateOnly(dueDate) || !isRepeatRule(rule)) {
             throw new IllegalArgumentException("Choose a valid repeat rule.");
         }
         LocalDate date = LocalDate.parse(dueDate);
         if (REPEAT_DAILY.equals(rule)) return date.plusDays(1).toString();
         if (REPEAT_WEEKLY.equals(rule)) return date.plusWeeks(1).toString();
-        return date.plusMonths(1).toString();
+        if (!isValidRepeatDayOfMonth(repeatDayOfMonth)) {
+            throw new IllegalArgumentException("Choose a valid monthly repeat date.");
+        }
+        LocalDate nextMonth = date.plusMonths(1);
+        return nextMonth.withDayOfMonth(Math.min(repeatDayOfMonth, nextMonth.lengthOfMonth())).toString();
     }
 
     static boolean isValidTaskList(List<Task> tasks) {
@@ -353,7 +373,7 @@ final class TaskLogic {
         while (!dueMoment.isAfter(now)) {
             steps++;
             if (steps > 3660) return task; // bounded: ten years of daily repeats
-            date = LocalDate.parse(nextDueDate(date.toString(), task.repeatRule));
+            date = LocalDate.parse(nextDueDate(date.toString(), task.repeatRule, task.repeatDayOfMonth));
             dueMoment = LocalDateTime.of(date, time).atZone(zone).toInstant();
         }
         return task.withRepeatAdvanced(date.toString(), Instant.now().toString());

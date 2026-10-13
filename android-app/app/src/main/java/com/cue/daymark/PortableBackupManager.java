@@ -307,7 +307,8 @@ final class PortableBackupManager {
                         additions.add(new Task(taskId, portable.title, portable.dueDate, portable.priority,
                                 portable.completed, portable.createdAt, portable.updatedAt, references,
                                 portable.notes, portable.dueTime, portable.reminderLeadMinutes,
-                                portable.reminderShownFire, restoredSubtasks));
+                                portable.reminderShownFire, portable.repeatRule,
+                                portable.repeatDayOfMonth, restoredSubtasks, portable.tags));
                     }
                     List<Task> combined = new ArrayList<>(latest.size() + additions.size());
                     combined.addAll(latest);

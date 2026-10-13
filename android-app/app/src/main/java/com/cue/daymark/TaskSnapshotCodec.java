@@ -8,18 +8,19 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pure-Java codec for the encrypted task snapshot document (schema v1–v4).
+ * Pure-Java codec for the encrypted task snapshot document (schema v1–v5).
  *
  * Extracted from EncryptedTaskStore so the encode/decode and migration rules are
  * host-testable without Android classes. Backward compatibility is a hard contract:
- * v1 (no attachments), v2 (attachments), and v3 (templates) documents must keep
- * loading; new fields default to empty for older schemas. Encoding always writes v4.
+ * v1 (no attachments), v2 (attachments), v3 (templates), and v4 (extended task
+ * fields including tags) documents must keep loading. New fields default for older
+ * schemas. Encoding always writes v5.
  *
  * The codec depends only on StrictJsonParser and a small internal writer, so the
  * whole migration surface runs in host tests without org.json on the classpath.
  */
 final class TaskSnapshotCodec {
-    static final int CURRENT_VERSION = 4;
+    static final int CURRENT_VERSION = 5;
 
     private TaskSnapshotCodec() { }
 
@@ -55,6 +56,7 @@ final class TaskSnapshotCodec {
             out.name("reminderLeadMinutes").nullableValue(task.reminderLeadMinutes);
             out.name("reminderShownFire").nullableValue(task.reminderShownFire);
             out.name("repeatRule").nullableValue(task.repeatRule);
+            out.name("repeatDayOfMonth").nullableValue(task.repeatDayOfMonth);
             out.name("tags").beginArray();
             for (String tag : task.tags) {
                 out.value(tag);
@@ -109,9 +111,10 @@ final class TaskSnapshotCodec {
             throw new IOException("Task data schema version is not supported.");
         }
         boolean versionFour = TaskSnapshotSchema.isVersionFour(version);
+        boolean versionFive = TaskSnapshotSchema.isVersionFive(version);
         boolean hasAttachments = TaskSnapshotSchema.isVersionTwo(version)
                 || TaskSnapshotSchema.isVersionThree(version)
-                || versionFour;
+                || versionFour || versionFive;
         Object tasksValue = document.get("tasks");
         if (tasksValue == null) throw new IOException("Task data is missing its task list.");
         List<Object> taskArray = StrictJsonParser.array(tasksValue, "Task list");
@@ -131,25 +134,41 @@ final class TaskSnapshotCodec {
             String repeatRule = null;
             List<Subtask> subtasks = new ArrayList<>();
             boolean hasNotesKey = object.containsKey("notes");
-            if (versionFour || hasNotesKey) {
+            if (versionFour || versionFive || hasNotesKey) {
                 Object notesValue = object.get("notes");
                 if (!(notesValue instanceof String)) throw new IOException("Task notes are malformed.");
                 notes = (String) notesValue;
             }
-            if (versionFour || object.containsKey("dueTime")) {
+            if (versionFour || versionFive || object.containsKey("dueTime")) {
                 dueTime = optionalString(object, "dueTime", "Task due time");
             }
-            if (versionFour || object.containsKey("reminderLeadMinutes")) {
+            if (versionFour || versionFive || object.containsKey("reminderLeadMinutes")) {
                 reminderLeadMinutes = optionalInteger(object, "reminderLeadMinutes");
             }
-            if (versionFour || object.containsKey("reminderShownFire")) {
+            if (versionFour || versionFive || object.containsKey("reminderShownFire")) {
                 reminderShownFire = optionalString(object, "reminderShownFire", "Task reminder state");
             }
-            // Key-presence read: v4 snapshots written before repeat rules load with a null rule.
-            if (object.containsKey("repeatRule")) {
+            // v4 snapshots written before repeat rules default to no repeat.
+            if (versionFive && !object.containsKey("repeatRule")) {
+                throw new IOException("Task repeat rule is malformed.");
+            }
+            if (versionFive || object.containsKey("repeatRule")) {
                 repeatRule = optionalString(object, "repeatRule", "Task repeat rule");
             }
+            Integer repeatDayOfMonth = null;
+            if (versionFive && !object.containsKey("repeatDayOfMonth")) {
+                throw new IOException("Task repeat date is malformed.");
+            }
+            if (versionFive || object.containsKey("repeatDayOfMonth")) {
+                repeatDayOfMonth = optionalInteger(object, "repeatDayOfMonth");
+            } else if (TaskLogic.REPEAT_MONTHLY.equals(repeatRule) && TaskLogic.isDateOnly(dueDate)) {
+                // v4 monthly rules predate the persisted anchor; use their current due-date day.
+                repeatDayOfMonth = Integer.valueOf(dueDate.substring(8));
+            }
             // Key-presence read: v4 snapshots written before tags load with no tags.
+            if (versionFive && !object.containsKey("tags")) {
+                throw new IOException("Task tag list is malformed.");
+            }
             List<String> tags = new ArrayList<>();
             if (object.containsKey("tags")) {
                 Object tagsValue = object.get("tags");
@@ -162,7 +181,7 @@ final class TaskSnapshotCodec {
                     }
                 }
             }
-            if (versionFour || object.containsKey("subtasks")) {
+            if (versionFour || versionFive || object.containsKey("subtasks")) {
                 Object subtaskValue = object.get("subtasks");
                 if (subtaskValue == null) throw new IOException("Task subtask list is malformed.");
                 List<Object> subtaskArray = StrictJsonParser.array(subtaskValue, "Task subtask list");
@@ -204,13 +223,14 @@ final class TaskSnapshotCodec {
                     requiredString(object, "priority"), completed,
                     requiredString(object, "createdAt"),
                     requiredString(object, "updatedAt"), attachments,
-                    notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule, subtasks,
+                    notes, dueTime, reminderLeadMinutes, reminderShownFire, repeatRule,
+                    repeatDayOfMonth, subtasks,
                     TaskLogic.normalizeTags(tags));
             result.add(task);
         }
         if (!TaskLogic.isValidTaskList(result)) throw new IOException("Task data failed validation.");
         List<TaskTemplate> templates = new ArrayList<>();
-        if (TaskSnapshotSchema.isVersionThree(version) || versionFour) {
+        if (TaskSnapshotSchema.isVersionThree(version) || versionFour || versionFive) {
             Object templateValue = document.get("templates");
             if (templateValue == null) throw new IOException("Task template list is malformed.");
             List<Object> templateArray = StrictJsonParser.array(templateValue, "Task template list");
@@ -248,11 +268,11 @@ final class TaskSnapshotCodec {
         if (!object.containsKey(key) || object.get(key) == null) return null;
         Object value = object.get(key);
         if (!(value instanceof BigInteger)) {
-            throw new IOException("Task reminder is malformed.");
+            throw new IOException("A task integer field is malformed.");
         }
         BigInteger number = (BigInteger) value;
         if (number.bitLength() > 31) {
-            throw new IOException("Task reminder is malformed.");
+            throw new IOException("A task integer field is malformed.");
         }
         return number.intValue();
     }

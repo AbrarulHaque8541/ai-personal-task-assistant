@@ -32,7 +32,8 @@ assert "TaskSnapshotSchema.isVersionTwo(version)" in codec and "TaskSnapshotSche
     "schemas v2 and v3 decode attachment metadata"
 assert "TaskSnapshotSchema.isVersionThree(version)" in codec and "TaskSnapshotSchema.isVersionFour(version)" in codec, \
     "schemas v3 and v4 decode template and extended task metadata"
-assert "TaskSnapshotSchema.isVersionFour(version)" in codec, "schema v4 decodes notes, due time, reminders, and subtasks"
+assert "TaskSnapshotSchema.isVersionFour(version)" in codec and "TaskSnapshotSchema.isVersionFive(version)" in codec, \
+    "schemas v4 and v5 decode notes, due time, reminders, subtasks, and repeat anchors"
 assert "TaskTemplateLogic.isValidList(templates)" in codec, "template snapshots use shared validation"
 assert 'requiredString(object, "title")' in codec, "legacy scalar decoding must remain strict"
 assert "if (!TaskLogic.isValidTaskList(result))" in codec, "imported snapshots must pass shared task-list validation"

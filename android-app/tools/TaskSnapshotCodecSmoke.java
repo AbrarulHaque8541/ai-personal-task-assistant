@@ -9,14 +9,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/** Host-side tests for the encrypted task snapshot codec: v4 round-trip and v1-v3 migration. */
+/** Host-side tests for the encrypted task snapshot codec: v5 round-trip and v1-v4 migration. */
 public final class TaskSnapshotCodecSmoke {
     private static int assertions;
 
     private TaskSnapshotCodecSmoke() { }
 
     public static void main(String[] args) throws Exception {
-        versionFourRoundTripsEveryField();
+        versionFiveRoundTripsEveryField();
         repeatRuleRoundTrips();
         legacyV1SnapshotMigratesWithDefaults();
         legacyV2SnapshotKeepsAttachmentsAndDefaults();
@@ -29,7 +29,7 @@ public final class TaskSnapshotCodecSmoke {
         System.out.println("PASS task snapshot codec smoke tests: " + assertions + " assertions");
     }
 
-    private static void versionFourRoundTripsEveryField() throws Exception {
+    private static void versionFiveRoundTripsEveryField() throws Exception {
         Task task = new Task("task-1", "Write report", "2026-10-05", "high", false,
                 "2026-10-01T08:00:00Z", "2026-10-02T09:30:00Z",
                 Collections.singletonList(new AttachmentRef(UUID.randomUUID().toString(), "notes.pdf", "application/pdf", 42)),
@@ -40,7 +40,7 @@ public final class TaskSnapshotCodecSmoke {
         TaskTemplate template = new TaskTemplate(UUID.randomUUID().toString(), "Weekly review", "2026-10-12", "medium");
         byte[] encoded = TaskSnapshotCodec.encode(Arrays.asList(task), Arrays.asList(template));
         String json = new String(encoded, StandardCharsets.UTF_8);
-        check(json.contains("\"version\":4"), "encoded snapshot declares schema v4");
+        check(json.contains("\"version\":5"), "encoded snapshot declares schema v5");
         check(json.contains("\"reminderLeadMinutes\":60"), "reminder lead is encoded as a JSON integer");
         check(json.contains("\"dueTime\":\"14:30\""), "due time is encoded as a JSON string");
 
@@ -61,7 +61,7 @@ public final class TaskSnapshotCodecSmoke {
         check("sub-1".equals(restored.subtasks.get(0).id) && restored.subtasks.get(0).done
                 && "sub-2".equals(restored.subtasks.get(1).id) && !restored.subtasks.get(1).done,
                 "subtask identity and completion round-trip");
-        check(TaskLogic.isValidTaskList(decoded.tasks), "decoded v4 tasks pass shared validation");
+        check(TaskLogic.isValidTaskList(decoded.tasks), "decoded v5 tasks pass shared validation");
         TaskTemplate restoredTemplate = decoded.templates.get(0);
         check(template.id.equals(restoredTemplate.id) && "2026-10-12".equals(restoredTemplate.dueDate),
                 "templates round-trip");
@@ -173,7 +173,7 @@ public final class TaskSnapshotCodecSmoke {
     }
 
     private static void codecRejectsUnsupportedAndBrokenDocuments() {
-        expectDecodeFailure("{\"version\":5,\"tasks\":[],\"templates\":[]}", "unsupported future schema is rejected");
+        expectDecodeFailure("{\"version\":6,\"tasks\":[],\"templates\":[]}", "unsupported future schema is rejected");
         expectDecodeFailure("{\"version\":\"4\",\"tasks\":[],\"templates\":[]}", "string schema version is rejected");
         expectDecodeFailure("{\"version\":4,\"templates\":[]}", "missing task list is rejected");
         expectDecodeFailure("{\"version\":4,\"tasks\":[],\"templates\":[]} trailing", "trailing JSON data is rejected");
@@ -222,9 +222,32 @@ public final class TaskSnapshotCodecSmoke {
         TaskSnapshotCodec.Snapshot decoded = TaskSnapshotCodec.decode(encoded);
         check(TaskLogic.REPEAT_DAILY.equals(decoded.tasks.get(0).repeatRule),
                 "the repeat rule round-trips through the encrypted snapshot");
+        check(decoded.tasks.get(0).repeatDayOfMonth == null,
+                "non-monthly snapshot tasks do not carry a monthly anchor");
         check(TaskLogic.isValidTaskList(decoded.tasks), "decoded repeating tasks pass shared validation");
         byte[] reencoded = TaskSnapshotCodec.encode(decoded.tasks, decoded.templates);
         check(Arrays.equals(encoded, reencoded), "repeat rule encoding is byte-stable");
+        Task monthly = new Task("repeat-monthly", "Pay rent", "2026-01-31", "medium", false,
+                "2026-01-01T08:00:00Z", "2026-01-01T08:00:00Z",
+                Collections.<AttachmentRef>emptyList(), "", null, null, null,
+                TaskLogic.REPEAT_MONTHLY, Integer.valueOf(31), Collections.<Subtask>emptyList(),
+                Arrays.asList("bills", "home"));
+        byte[] monthlyEncoded = TaskSnapshotCodec.encode(Collections.singletonList(monthly),
+                Collections.<TaskTemplate>emptyList());
+        String monthlyJson = new String(monthlyEncoded, StandardCharsets.UTF_8);
+        check(monthlyJson.contains("\"repeatDayOfMonth\":31"), "monthly anchor is written as an integer");
+        Task monthlyDecoded = TaskSnapshotCodec.decode(monthlyEncoded).tasks.get(0);
+        check(TaskLogic.REPEAT_MONTHLY.equals(monthlyDecoded.repeatRule)
+                        && Integer.valueOf(31).equals(monthlyDecoded.repeatDayOfMonth),
+                "monthly rule and anchor round-trip through the encrypted snapshot");
+        check(Arrays.asList("bills", "home").equals(monthlyDecoded.tags),
+                "task tags round-trip through the encrypted snapshot");
+        expectDecodeFailure(monthlyJson.replace("\"repeatDayOfMonth\":31", "\"repeatDayOfMonth\":32"),
+                "monthly anchor above 31 is rejected");
+        expectDecodeFailure(monthlyJson.replace(",\"repeatDayOfMonth\":31", ""),
+                "v5 snapshot missing its monthly anchor is rejected");
+        expectDecodeFailure(monthlyJson.replace(",\"tags\":[\"bills\",\"home\"]", ""),
+                "v5 snapshot missing its tags field is rejected");
 
         String legacyV4 = "{\"version\":4,\"tasks\":[{"
                 + "\"id\":\"old-v4\",\"title\":\"Old task\",\"dueDate\":\"2026-10-06\",\"priority\":\"high\","
@@ -235,6 +258,10 @@ public final class TaskSnapshotCodecSmoke {
                 TaskSnapshotCodec.decode(legacyV4.getBytes(StandardCharsets.UTF_8));
         check(legacyDecoded.tasks.get(0).repeatRule == null,
                 "v4 snapshots written before repeat rules load with no repeat");
+        String legacyV4Monthly = legacyV4.replace("\"subtasks\":[]", "\"subtasks\":[],\"repeatRule\":\"monthly\"");
+        Task legacyMonthly = TaskSnapshotCodec.decode(legacyV4Monthly.getBytes(StandardCharsets.UTF_8)).tasks.get(0);
+        check(Integer.valueOf(6).equals(legacyMonthly.repeatDayOfMonth),
+                "v4 monthly tasks migrate with their current due-date day as the anchor");
         expectDecodeFailure(legacyV4.replace("\"dueDate\":\"2026-10-06\"", "\"dueDate\":null")
                         .replace("\"subtasks\":[]", "\"subtasks\":[],\"repeatRule\":\"daily\""),
                 "v4 repeat rule without a due date is rejected");

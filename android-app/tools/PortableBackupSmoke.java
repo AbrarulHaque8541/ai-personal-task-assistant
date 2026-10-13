@@ -32,8 +32,10 @@ public final class PortableBackupSmoke {
     public static void main(String[] args) throws Exception {
         recoveryKeyEncodingRoundTripsAndChecksErrors();
         archiveRoundTripsWithoutExposingTaskData();
-        manifestV2RoundTripsExtendedTaskFields();
+        manifestV3RoundTripsExtendedTaskFieldsAndRepeatAnchor();
         legacyV1ManifestStillDecodesWithDefaults();
+        legacyV2ManifestStillDecodesWithDefaults();
+        manifestV3RejectsMalformedRepeatFields();
         manifestV2RejectsMalformedExtendedFields();
         rejectsWrongKeyTamperAndMalformedFraming();
         rejectsUnsupportedFormatsBoundsDuplicatesAndCancellation();
@@ -363,7 +365,8 @@ public final class PortableBackupSmoke {
                     "maximum-metadata archive fixture respects all task and attachment schema limits");
             long expectedManifestBytes = 8L
                     + (long) PortableBackupCodec.MAX_TASKS * (16 + 4 + 480 + 1 + 4 + 10 + 1 + 1 + 4 + 41 + 4 + 41 + 1
-                            + 4 + 1 + 1 + 1 + 1) // v2 extension: empty notes, due-time/reminder flags, subtask count
+                            + 4 + 1 + 1 + 1 + 1 + 1 + 1 + 1
+                            + TaskLogic.MAX_TAGS * (4 + TaskLogic.MAX_TAG_CHARS)) // DMM2/DMM3 fields plus max tags
                     + (long) AttachmentLogic.MAX_TOTAL_COUNT * (16 + 8 + 4 + 360 + 4 + 129);
             try (OutputStream output = new java.io.FileOutputStream(archive)) {
                 PortableBackupCodec.writeArchive(output, key, tasks,
@@ -650,6 +653,8 @@ public final class PortableBackupSmoke {
         String timestamp = "+999999999-12-31T23:59:59.999999999+18:00";
         String dueDate = "9999-12-31";
         long attachmentSize = AttachmentLogic.MAX_TOTAL_BYTES / AttachmentLogic.MAX_TOTAL_COUNT;
+        List<String> maximumTags = Arrays.asList("a".repeat(20) + "0000", "a".repeat(20) + "0001",
+                "a".repeat(20) + "0002", "a".repeat(20) + "0003", "a".repeat(20) + "0004");
         for (int taskIndex = 0; taskIndex < PortableBackupCodec.MAX_TASKS; taskIndex++) {
             List<AttachmentRef> references = new ArrayList<>();
             if (taskIndex < AttachmentLogic.MAX_TOTAL_COUNT / AttachmentLogic.MAX_PER_TASK) {
@@ -659,7 +664,8 @@ public final class PortableBackupSmoke {
                 }
             }
             tasks.add(new Task(UUID.randomUUID().toString(), title, dueDate, "medium",
-                    false, timestamp, timestamp, references));
+                    false, timestamp, timestamp, references, "", null, null, null,
+                    null, null, Collections.<Subtask>emptyList(), maximumTags));
         }
         return tasks;
     }
@@ -791,17 +797,18 @@ public final class PortableBackupSmoke {
         }
     }
 
-    private static void manifestV2RoundTripsExtendedTaskFields() throws Exception {
+    private static void manifestV3RoundTripsExtendedTaskFieldsAndRepeatAnchor() throws Exception {
         byte[] key = PortableBackupCodec.newRecoveryKey(new SecureRandom());
         String taskId = UUID.randomUUID().toString();
         String attachmentId = UUID.randomUUID().toString();
         byte[] payload = "extended field payload".getBytes(StandardCharsets.UTF_8);
-        Task task = new Task(taskId, "Extended task", "2026-10-06", "high", false,
-                "2026-10-05T10:15:30Z", "2026-10-05T10:15:30Z",
+        Task task = new Task(taskId, "Extended task", "2026-01-31", "high", false,
+                "2026-01-01T10:15:30Z", "2026-01-01T10:15:30Z",
                 Collections.singletonList(new AttachmentRef(attachmentId, "notes.txt", "text/plain", payload.length)),
                 "Remember the \"umbrella\" — café ☕",
-                "14:30", 60, "2026-10-06T13:30:00Z",
-                Arrays.asList(new Subtask("s1", "Book venue", true), new Subtask("s2", "Send invites", false)));
+                "14:30", 60, "2026-01-31T13:30:00Z", TaskLogic.REPEAT_MONTHLY, Integer.valueOf(31),
+                Arrays.asList(new Subtask("s1", "Book venue", true), new Subtask("s2", "Send invites", false)),
+                Arrays.asList("bills", "home"));
         ByteArrayOutputStream archiveBytes = new ByteArrayOutputStream();
         String backupId = PortableBackupCodec.writeArchive(archiveBytes, key,
                 Collections.singletonList(task), (sourceTask, reference) -> new ByteArrayInputStream(payload),
@@ -810,22 +817,27 @@ public final class PortableBackupSmoke {
         check(!contains(archive, "Remember the".getBytes(StandardCharsets.UTF_8)), "task notes are encrypted in the archive");
         check(!contains(archive, "Book venue".getBytes(StandardCharsets.UTF_8)), "subtask titles are encrypted in the archive");
         check(!contains(archive, "14:30".getBytes(StandardCharsets.UTF_8)), "due times are encrypted in the archive");
+        check(!contains(archive, "bills".getBytes(StandardCharsets.UTF_8)), "task tags are encrypted in the archive");
 
-        File stage = Files.createTempDirectory("portable-backup-v2-roundtrip").toFile();
+        File stage = Files.createTempDirectory("portable-backup-v3-roundtrip").toFile();
         PortableBackupCodec.VerifiedArchive opened = PortableBackupCodec.readArchive(
                 new ByteArrayInputStream(archive), key, stage, id -> { }, () -> false);
-        check(opened.tasks.size() == 1, "v2 manifest restores the task");
+        check(opened.tasks.size() == 1, "v3 manifest restores the task");
         PortableBackupCodec.PortableTask openedTask = opened.tasks.get(0);
-        check("Extended task".equals(openedTask.title), "v2 task title round-trips");
+        check("Extended task".equals(openedTask.title), "v3 task title round-trips");
         check("Remember the \"umbrella\" — café ☕".equals(openedTask.notes), "notes round-trip exactly");
         check("14:30".equals(openedTask.dueTime), "due time round-trips");
         check(Integer.valueOf(60).equals(openedTask.reminderLeadMinutes), "reminder lead round-trips");
-        check("2026-10-06T13:30:00Z".equals(openedTask.reminderShownFire), "reminder shown state round-trips");
+        check("2026-01-31T13:30:00Z".equals(openedTask.reminderShownFire), "reminder shown state round-trips");
         check(openedTask.subtasks.size() == 2, "subtasks round-trip");
         check("Book venue".equals(openedTask.subtasks.get(0).title) && openedTask.subtasks.get(0).done
                 && "Send invites".equals(openedTask.subtasks.get(1).title) && !openedTask.subtasks.get(1).done,
                 "subtask titles and states round-trip");
-        check(openedTask.attachments.size() == 1, "attachments still round-trip in v2");
+        check(TaskLogic.REPEAT_MONTHLY.equals(openedTask.repeatRule)
+                        && Integer.valueOf(31).equals(openedTask.repeatDayOfMonth),
+                "monthly repeat rule and anchor round-trip in DMM3");
+        check(Arrays.asList("bills", "home").equals(openedTask.tags), "tags round-trip in DMM3");
+        check(openedTask.attachments.size() == 1, "attachments still round-trip in v3");
         opened.clearStagedPlaintext();
         deleteTree(stage);
         PortableBackupCodec.clear(key);
@@ -856,8 +868,57 @@ public final class PortableBackupSmoke {
         check("Legacy task".equals(task.title) && "2026-10-06".equals(task.dueDate),
                 "legacy manifest fields are preserved");
         check("".equals(task.notes) && task.dueTime == null && task.reminderLeadMinutes == null
-                && task.reminderShownFire == null && task.subtasks.isEmpty(),
+                && task.reminderShownFire == null && task.repeatRule == null
+                && task.repeatDayOfMonth == null && task.subtasks.isEmpty() && task.tags.isEmpty(),
                 "legacy DMM1 tasks gain empty defaults for v2 fields");
+    }
+
+    private static void legacyV2ManifestStillDecodesWithDefaults() throws Exception {
+        PortableBackupCodec.Manifest manifest = PortableBackupCodec.decodeManifest(
+                buildV2Manifest(null), randomToken(), 1, "backup-dmm2");
+        PortableBackupCodec.PortableTask task = manifest.tasks.get(0);
+        check("note".equals(task.notes) && task.repeatRule == null && task.repeatDayOfMonth == null
+                        && task.tags.isEmpty(),
+                "legacy DMM2 keeps its extended fields and defaults recurrence to no repeat");
+    }
+
+    private static void manifestV3RejectsMalformedRepeatFields() throws Exception {
+        expectManifestFailure(buildV3Manifest(4, 0), "unknown DMM3 repeat code is rejected");
+        expectManifestFailure(buildV3Manifest(3, 0), "monthly DMM3 repeat without an anchor is rejected");
+        expectManifestFailure(buildV3Manifest(3, 32), "monthly DMM3 anchor above 31 is rejected");
+        expectManifestFailure(buildV3Manifest(0, 1), "DMM3 anchor without a monthly rule is rejected");
+        expectManifestFailure(buildV3Manifest(0, 0, "BadTag"), "noncanonical DMM3 tags are rejected");
+        expectManifestFailure(buildV3Manifest(0, 0, "same", "same"), "duplicate DMM3 tags are rejected");
+        expectManifestFailure(buildV3Manifest(0, 0, "a", "b", "c", "d", "e", "f"),
+                "DMM3 tag count above the limit is rejected");
+    }
+
+    private static byte[] buildV3Manifest(int repeatCode, int repeatDayOfMonth, String... tags) throws IOException {
+        byte[] taskToken = randomToken();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeInt(0x444d4d33); // DMM3
+        out.writeInt(1);
+        out.write(taskToken);
+        writeManifestString(out, "Manifest task");
+        out.writeByte(1);
+        writeManifestString(out, "2026-10-06");
+        out.writeByte(1); // medium
+        out.writeByte(0); // open
+        writeManifestString(out, "2026-10-01T00:00:00Z");
+        writeManifestString(out, "2026-10-02T00:00:00Z");
+        out.writeByte(0); // no attachments
+        writeManifestString(out, "note");
+        out.writeByte(0); // no due time
+        out.writeByte(0); // no reminder
+        out.writeByte(0); // no reminder shown
+        out.writeByte(0); // no subtasks
+        out.writeByte(repeatCode);
+        out.writeByte(repeatDayOfMonth);
+        out.writeByte(tags.length);
+        for (String tag : tags) writeManifestString(out, tag);
+        out.flush();
+        return bytes.toByteArray();
     }
 
     private static void manifestV2RejectsMalformedExtendedFields() throws Exception {
