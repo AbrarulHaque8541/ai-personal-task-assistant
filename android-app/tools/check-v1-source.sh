@@ -177,8 +177,8 @@ for expected in (
     "view.postVisualStateCallback(SystemClock.uptimeMillis()",
     "BrowserLogPolicy.redactedOrigin(url)",
     '"visual state ready origin="',
-    '"attached="',
-    '"visible="',
+    '" attached="',
+    '" visible="',
 ):
     assert expected in webview, f"missing privacy-safe WebView visual-state diagnostic: {expected}"
 media_policy = (main / "java/com/abrar/daymark/BrowserMediaPolicy.java").read_text(encoding="utf-8")
