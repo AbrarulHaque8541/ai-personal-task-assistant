@@ -4,11 +4,11 @@ import sys
 import xml.etree.ElementTree as ET
 
 root = pathlib.Path(sys.argv[1])
-main = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
-store = (root / "app/src/main/java/com/cue/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
-blob = (root / "app/src/main/java/com/cue/daymark/AttachmentBlobStore.java").read_text(encoding="utf-8")
-logic = (root / "app/src/main/java/com/cue/daymark/AttachmentLogic.java").read_text(encoding="utf-8")
-provider = (root / "app/src/main/java/com/cue/daymark/AttachmentContentProvider.java").read_text(encoding="utf-8")
+main = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
+store = (root / "app/src/main/java/com/abrar/daymark/AndroidAttachmentStore.java").read_text(encoding="utf-8")
+blob = (root / "app/src/main/java/com/abrar/daymark/AttachmentBlobStore.java").read_text(encoding="utf-8")
+logic = (root / "app/src/main/java/com/abrar/daymark/AttachmentLogic.java").read_text(encoding="utf-8")
+provider = (root / "app/src/main/java/com/abrar/daymark/AttachmentContentProvider.java").read_text(encoding="utf-8")
 manifest = ET.parse(root / "app/src/main/AndroidManifest.xml").getroot()
 android = "{http://schemas.android.com/apk/res/android}"
 

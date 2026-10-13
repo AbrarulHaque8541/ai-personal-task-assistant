@@ -4,8 +4,8 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1])
-activity = (root / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
-diagnostics = (root / "app/src/main/java/com/cue/daymark/BrowserDiagnostics.java").read_text(encoding="utf-8")
+activity = (root / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
+diagnostics = (root / "app/src/main/java/com/abrar/daymark/BrowserDiagnostics.java").read_text(encoding="utf-8")
 smoke = (root / "tools/BrowserDiagnosticsSmoke.java").read_text(encoding="utf-8")
 
 menu = activity.split("private void showBrowserOverflowMenu", 1)[1].split(
