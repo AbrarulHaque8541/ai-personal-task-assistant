@@ -2,18 +2,16 @@
 
 **Daymark** is a local-first Android task assistant with an HTTPS-only embedded browser, encrypted local task storage, attachments, portable encrypted backups, and a lightweight page-local extension system.
 
-- **Android application ID:** `com.abrar.daymark` (fresh app identity; previous app installations remain separate)
+- **Android application ID:** `com.abrar.daymark` (owner-approved fresh identity; previous app installations remain separate)
 - **Architecture:** native Java Activity + Android System WebView; no third-party runtime dependencies
 - **Task data:** encrypted on-device; no account, cloud task sync, analytics, or telemetry
 - **Source version:** see `android-app/app/build.gradle.kts` (`versionName` / `versionCode`)
 
 ## Download
 
-**Latest production build:** [GitHub Releases — latest](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/latest)
+**Production downloads:** [GitHub Releases](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases)
 
-Install the APK attached to the new `v1.0` release for application ID `com.abrar.daymark`. This is a fresh app identity, not an in-place update of previous app installations; Android keeps it as a separate app and old local data is not migrated. The existing production signing key remains pinned and required.
-
-Previous releases remain available on the [full releases page](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases).
+Before installing, confirm the release is actually published and that its APK package ID, version, and signer match the release notes. Do not assume a version mentioned in a PR or source tree has been published. The `com.abrar.daymark` identity is a fresh app identity, not an in-place update of the previous app; Android keeps it separate and old local data is not automatically migrated. The production signing key remains pinned and required.
 
 ## What it does
 
@@ -25,22 +23,22 @@ Previous releases remain available on the [full releases page](https://github.co
 
 ## Agents & contributors
 
-Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** first.
+Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** first. Then read the [agent status index](docs/AGENT_STATUS.md) and verify its linked snapshot against live GitHub.
 
 - Production signing secrets are already in GitHub Actions — **do not ask the owner for keystore files**.
-- Publish only by tagging `v` + exact `versionName` on `main` (initial fresh release tag: `v1.0`) so `.github/workflows/android-production-release.yml` runs.
-- Verify live Releases, Issues, and PRs instead of trusting outdated “candidate” sentences in old audit notes.
+- Publish only through the production workflow with a tag exactly matching `v` + the source `versionName` on `main`, after all release gates pass.
+- Verify live Releases, Issues, PRs, and Actions instead of trusting old “candidate” sentences in dated audits.
 
 ## Build and test
 
 From the repository root:
 
-```bash
+```sh
 sh android-app/tools/check-v1-source.sh
 npm test
 ```
 
-For Android SDK setup, both debug-flavor build commands, measured artifact metadata, and the device-test caveats, see [`android-app/README.md`](android-app/README.md).
+For Android SDK setup, build commands, measured artifact metadata, and device-test caveats, see [`android-app/README.md`](android-app/README.md).
 
 ## License
 
