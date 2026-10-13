@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Encrypted task-snapshot metadata for one app-owned attachment payload. */
 final class AttachmentRef {

@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;

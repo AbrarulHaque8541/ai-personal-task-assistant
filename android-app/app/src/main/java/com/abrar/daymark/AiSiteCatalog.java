@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /**
  * HTTPS-only AI website shortcuts for the embedded browser home panel.

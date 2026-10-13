@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 import java.net.URI;
 import java.net.URLEncoder;
