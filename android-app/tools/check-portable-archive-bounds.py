@@ -17,10 +17,10 @@ MAX_ARCHIVE_BYTES = 110 * 1024 * 1024
 MAX_STORE_BYTES = 10 * 1024 * 1024
 STORE_CRYPTO_OVERHEAD_BYTES = 4 + 12 + 16
 
-codec_source = (ROOT / "app/src/main/java/com/cue/daymark/PortableBackupCodec.java").read_text()
-logic_source = (ROOT / "app/src/main/java/com/cue/daymark/AttachmentLogic.java").read_text()
-store_source = (ROOT / "app/src/main/java/com/cue/daymark/EncryptedBlobStore.java").read_text()
-task_logic_source = (ROOT / "app/src/main/java/com/cue/daymark/TaskLogic.java").read_text()
+codec_source = (ROOT / "app/src/main/java/com/abrar/daymark/PortableBackupCodec.java").read_text()
+logic_source = (ROOT / "app/src/main/java/com/abrar/daymark/AttachmentLogic.java").read_text()
+store_source = (ROOT / "app/src/main/java/com/abrar/daymark/EncryptedBlobStore.java").read_text()
+task_logic_source = (ROOT / "app/src/main/java/com/abrar/daymark/TaskLogic.java").read_text()
 assert "MAX_ARCHIVE_BYTES = 110L * 1024L * 1024L" in codec_source
 assert "MAX_MANIFEST_BYTES = 8 * 1024 * 1024" in codec_source
 assert "MAX_TASKS = 10_000" in codec_source

@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** Host smoke tests for origin-only browser Logcat redaction. */
 public final class BrowserLogPolicySmoke {

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+SOURCE = (ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
 
 def section(start: str, end: str) -> str:
     i = SOURCE.index(start)

@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;

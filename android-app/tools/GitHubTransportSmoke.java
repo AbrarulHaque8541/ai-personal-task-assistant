@@ -1,6 +1,6 @@
-package com.cue.daymark.updater;
+package com.abrar.daymark.updater;
 
-import com.cue.daymark.StrictJsonParser;
+import com.abrar.daymark.StrictJsonParser;
 
 import android.content.Context;
 
@@ -64,7 +64,7 @@ public final class GitHubTransportSmoke {
 
     private static void parserAcceptsRealisticReleaseFixture() throws Exception {
         UpdaterCore.Release release = GitHubReleaseClient.parseRelease(fixture(false, false,
-                "{\"applicationId\":\"com.cue.daymark\",\"versionCode\":2,\"minSdkVersion\":26,"
+                "{\"applicationId\":\"com.abrar.daymark\",\"versionCode\":2,\"minSdkVersion\":26,"
                         + "\"signerCertificateSha256\":\"" + SIGNER + "\"}", APK.length,
                 "sha256:" + sha256(APK), assetUrl(), false));
         check("v1.2.3".equals(release.tag), "release tag is parsed from GitHub JSON");
@@ -105,7 +105,7 @@ public final class GitHubTransportSmoke {
     }
 
     private static void parserRejectsMalformedOrAmbiguousMetadata() throws Exception {
-        String publisher = "{\"applicationId\":\"com.cue.daymark\",\"versionCode\":2,\"minSdkVersion\":26,"
+        String publisher = "{\"applicationId\":\"com.abrar.daymark\",\"versionCode\":2,\"minSdkVersion\":26,"
                 + "\"signerCertificateSha256\":\"" + SIGNER + "\"}";
         String good = fixture(false, false, publisher, APK.length, "sha256:" + sha256(APK), assetUrl(), false);
         expectFailure(UpdaterCore.Failure.INVALID_METADATA,
@@ -147,7 +147,7 @@ public final class GitHubTransportSmoke {
 
     private static void releaseClientConstrainsRequestAndClassifiesResponses() throws Exception {
         FakeHttpConnection success = response(HttpURLConnection.HTTP_OK, fixture(false, false,
-                "{\"applicationId\":\"com.cue.daymark\",\"versionCode\":2,\"minSdkVersion\":26,"
+                "{\"applicationId\":\"com.abrar.daymark\",\"versionCode\":2,\"minSdkVersion\":26,"
                         + "\"signerCertificateSha256\":\"" + SIGNER + "\"}", APK.length,
                 "sha256:" + sha256(APK), assetUrl(), false).getBytes(StandardCharsets.UTF_8));
         List<String> requested = new ArrayList<>();

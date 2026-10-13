@@ -18,7 +18,7 @@ Google Play requires new app submissions and app updates to target Android 16 / 
 ## Acceptance before production release
 
 - Android CI and both sideload/Play flavor lint/unit tests pass on the exact PR head.
-- Signed artifact verification confirms package ID `com.cue.daymark`, pinned signer, monotonic versionCode and updater metadata. No production signer, package ID, or release tag is changed by this PR.
+- Signed artifact verification must confirm application ID `com.abrar.daymark`, pinned signer, monotonic versionCode and updater metadata. This approved identity reset intentionally creates a separate app from previous installations; tag `v1.0` must match `versionName 1.0`.
 - API 36 device/emulator: test Back gesture/buttons, WebView history, tab navigation, fullscreen exit, keyboard/insets, navigation modes, cutout and bottom navigation.
 - Also test notifications, SAF downloads, task/attachment retention, portable backup/restore, HTTPS/WebView paint/navigation and upgrade from previous production-signed release.
 - Record device model/API, Android WebView provider/version, build SHA/APK SHA, and PASS/FAIL/NOT TESTED for each scenario.

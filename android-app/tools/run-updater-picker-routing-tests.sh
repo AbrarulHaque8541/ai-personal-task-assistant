@@ -4,6 +4,6 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/daymark-updater-routing-tests.XXXXXX")
 trap 'rm -rf "$BUILD_DIR"' EXIT HUP INT TERM
 javac -encoding UTF-8 --release 17 -d "$BUILD_DIR" \
-  "$ROOT/app/src/main/java/com/cue/daymark/updater/UpdaterActivityResultRouter.java" \
+  "$ROOT/app/src/main/java/com/abrar/daymark/updater/UpdaterActivityResultRouter.java" \
   "$ROOT/tools/UpdaterActivityResultRouterSmoke.java"
-java -ea -cp "$BUILD_DIR" com.cue.daymark.updater.UpdaterActivityResultRouterSmoke
+java -ea -cp "$BUILD_DIR" com.abrar.daymark.updater.UpdaterActivityResultRouterSmoke

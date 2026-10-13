@@ -1,7 +1,7 @@
-diff --git a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+diff --git a/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java b/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
 index 5227818..8a4c03d 100644
---- a/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
-+++ b/android-app/app/src/main/java/com/cue/daymark/MainActivity.java
+--- a/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
++++ b/android-app/app/src/main/java/com/abrar/daymark/MainActivity.java
 @@ -1316,7 +1316,10 @@ public final class MainActivity extends Activity {
          root.setOnApplyWindowInsetsListener((view, insets) -> {
              if (Build.VERSION.SDK_INT >= 30) {

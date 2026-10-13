@@ -12,7 +12,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-ACTIVITY = (ROOT / "app/src/main/java/com/cue/daymark/MainActivity.java").read_text(encoding="utf-8")
+ACTIVITY = (ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text(encoding="utf-8")
 checks = 0
 
 

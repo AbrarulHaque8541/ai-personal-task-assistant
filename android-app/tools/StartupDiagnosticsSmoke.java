@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only checks for the non-fatal failure diagnostics recorder. */
 public final class StartupDiagnosticsSmoke {

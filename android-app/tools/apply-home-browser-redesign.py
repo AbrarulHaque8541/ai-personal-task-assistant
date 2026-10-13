@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
-ma_path = root / "app/src/main/java/com/cue/daymark/MainActivity.java"
+ma_path = root / "app/src/main/java/com/abrar/daymark/MainActivity.java"
 ma = ma_path.read_text(encoding="utf-8")
 changed = False
 

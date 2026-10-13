@@ -5,7 +5,7 @@ import sys
 
 root = Path(sys.argv[1]).resolve()
 activity = (
-    root / "app/src/main/java/com/cue/daymark/MainActivity.java"
+    root / "app/src/main/java/com/abrar/daymark/MainActivity.java"
 ).read_text(encoding="utf-8")
 browser_screen = activity.split("private LinearLayout buildBrowserScreen()", 1)[1].split(
     "private void selectSearchEngine(", 1

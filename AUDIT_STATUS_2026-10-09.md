@@ -8,7 +8,7 @@ This report supersedes the older audit snapshot below. It reflects a live GitHub
 - Latest published GitHub Release: [v1.0.4](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/tag/v1.0.4), with APK and AAB assets.
 - Source candidate: v1.0.5 / versionCode 6. The exact `v1.0.5` tag had not been created; therefore v1.0.5 was not published.
 - Main CI run #314: [run 37942559451](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/37942559451) passed. It validated protected signing secrets, restored the keystore, built signed candidate APK/AAB artifacts, and verified the APK certificate against the pinned publisher certificate.
-- Package ID remains `com.cue.daymark`; pinned production signer SHA-256 remains `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
+- Package ID remains `legacy application ID`; pinned production signer SHA-256 remains `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
 - Android Gradle target is API 35. API 36 migration/edge-to-edge/predictive-Back qualification is still needed before claiming Google Play submission readiness.
 - The repository searches returned no open PRs or issues at the start of the follow-up audit. Recheck live state before release.
 
@@ -54,7 +54,7 @@ Scope note: this report reflects a live GitHub source/metadata/CI audit, not a c
 
 ## Release blocker — not changed
 - The latest published stable release remains v1.0.2 (`Daymark-v1.0.2.apk`). Stable v1.0.3 does not exist in Releases yet.
-- Source is configured as `applicationId=com.cue.daymark`, `versionName=1.0.3`, `versionCode=4`.
+- Source is configured as `applicationId=legacy application ID`, `versionName=1.0.3`, `versionCode=4`.
 - Existing issue #145 reports current production keystore/signing setup does not match the v1.0.2 pinned production certificate `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
 - Do not publish v1.0.3 or change/rotate secrets until signer continuity is restored and confirmed.
 
