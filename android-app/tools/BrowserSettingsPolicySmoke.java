@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only checks for the separate local Safe Browsing setting. */
 public final class BrowserSettingsPolicySmoke {

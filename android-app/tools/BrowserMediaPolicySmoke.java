@@ -1,4 +1,4 @@
-package com.cue.daymark;
+package com.abrar.daymark;
 
 /** JDK-only regression tests for the in-player media download handoff. */
 public final class BrowserMediaPolicySmoke {
