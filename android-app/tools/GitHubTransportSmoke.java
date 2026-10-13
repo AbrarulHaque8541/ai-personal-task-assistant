@@ -1,6 +1,6 @@
-package com.cue.daymark.updater;
+package com.abrar.daymark.updater;
 
-import com.cue.daymark.StrictJsonParser;
+import com.abrar.daymark.StrictJsonParser;
 
 import android.content.Context;
 
