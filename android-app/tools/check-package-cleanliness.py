@@ -55,7 +55,7 @@ for source_root in source_roots:
         relative = java_file.relative_to(source_root.parent.parent.parent.parent)
         expected_package = ".".join(relative.parts[1:-1])
         import re
-        match = re.search(r"^package\\s+([A-Za-z0-9_.]+)\\s*;", java_file.read_text(encoding="utf-8"), re.MULTILINE)
+        match = re.search(r"^package\s+([A-Za-z0-9_.]+)\s*;", java_file.read_text(encoding="utf-8"), re.MULTILINE)
         if not match or match.group(1) != expected_package:
             print(f"FAIL package identity: {java_file.relative_to(repo)} expected package {expected_package}")
             raise SystemExit(1)
