@@ -7831,19 +7831,6 @@ public final class MainActivity extends Activity {
                 warning = highContrast ? Color.rgb(120, 70, 15) : Color.rgb(148, 88, 30);
                 danger = highContrast ? Color.rgb(140, 38, 30) : Color.rgb(168, 62, 56);
                 dangerSoft = highContrast ? Color.rgb(255, 231, 228) : Color.rgb(251, 238, 237);
-            } else {
-                background = Color.rgb(246, 247, 244);
-                surface = Color.WHITE;
-                surfaceAlt = Color.rgb(239, 244, 238);
-                suggestionSurface = Color.rgb(239, 245, 238);
-                text = highContrast ? Color.BLACK : Color.rgb(32, 41, 35);
-                muted = highContrast ? Color.rgb(48, 55, 50) : Color.rgb(91, 104, 94);
-                line = highContrast ? Color.rgb(101, 112, 103) : Color.rgb(226, 233, 226);
-                accent = highContrast ? Color.rgb(17, 64, 39) : Color.rgb(49, 91, 70);
-                accentSoft = highContrast ? Color.rgb(224, 239, 225) : Color.rgb(232, 241, 232);
-                warning = highContrast ? Color.rgb(109, 62, 12) : Color.rgb(151, 84, 53);
-                danger = highContrast ? Color.rgb(129, 35, 26) : Color.rgb(167, 71, 71);
-                dangerSoft = highContrast ? Color.rgb(255, 232, 227) : Color.rgb(251, 239, 236);
             }
         }
 
