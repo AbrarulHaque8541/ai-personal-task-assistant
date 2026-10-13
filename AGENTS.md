@@ -86,7 +86,7 @@ Release rules:
 | Durable agent policy | This file: `AGENTS.md` |
 | Current blockers, PR heads, CI and device-test status | [Agent status index](docs/AGENT_STATUS.md), then re-check live GitHub |
 | App identity/version in source | `android-app/app/build.gradle.kts` |
-| Published builds | Live [GitHub Releases](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases) |
+| Published builds | Live [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases) |
 | Signing configuration/policy | `RELEASE_SIGNING.md` |
 | Project plan | `PROJECT_PLAN.md` |
 

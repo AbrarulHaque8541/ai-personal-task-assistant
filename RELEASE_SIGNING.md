@@ -36,7 +36,7 @@ The current owner-approved application identity is separate from the previously 
 
 A prior device reported Android's “App not installed as package conflicts with an existing package” error when a production-signed build was installed over a build signed with a different certificate (for example, a debug build). For the same application ID, the signing mismatch is an Android install/update constraint, not evidence that a new production key should be generated.
 
-The original recovery note referred to backing up, uninstalling that specific older install, then installing [v1.0.2](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases/download/v1.0.2/Daymark-v1.0.2.apk) and restoring. That is **historical, device-specific guidance**, not a general update path. Do not tell a user to uninstall as a routine fix; uninstall can remove the encrypted task file and its device-held key. Confirm a usable backup/recovery plan before any user chooses to remove an installation.
+The original recovery note referred to backing up, uninstalling that specific older install, then installing [v1.0.2](https://github.com/AbrarulHaque8541/daymark/releases/download/v1.0.2/Daymark-v1.0.2.apk) and restoring. That is **historical, device-specific guidance**, not a general update path. Do not tell a user to uninstall as a routine fix; uninstall can remove the encrypted task file and its device-held key. Confirm a usable backup/recovery plan before any user chooses to remove an installation.
 
 After a clean install, a later build can update in place only when it has the same application ID, the accepted signer continuity, and a higher `versionCode`. A different application ID installs alongside the earlier app and does not migrate its data automatically.
 

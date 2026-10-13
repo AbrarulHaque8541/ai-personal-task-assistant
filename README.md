@@ -9,7 +9,7 @@
 
 ## Download
 
-**Production downloads:** [GitHub Releases](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/releases)
+**Production downloads:** [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases)
 
 Before installing, confirm the release is actually published and that its APK package ID, version, and signer match the release notes. Do not assume a version mentioned in a PR or source tree has been published. The `com.abrar.daymark` identity is a fresh app identity, not an in-place update of the previous app; Android keeps it separate and old local data is not automatically migrated. The production signing key remains pinned and required.
 
