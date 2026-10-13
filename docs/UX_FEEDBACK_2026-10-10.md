@@ -1,5 +1,7 @@
 # UX feedback (2026-10-10) — status
 
+**Snapshot note (2026-10-13):** The reminder row below records the 2026-10-10 state. Current `main` now includes best-effort Android reminder notifications and Daily/Weekly/Monthly repeat rules; actual device delivery remains unverified (see [`TASK_REMINDERS.md`](TASK_REMINDERS.md)).
+
 ## Browser (screenshot)
 
 | Issue | Status |
@@ -17,7 +19,7 @@
 |-------|--------|
 | Today/Tomorrow/High/Details always visible | **Patch:** collapse under one toggle |
 | Templates / secondary rows clutter | Follow-up: move into editor / toggle |
-| Reminders, time-of-day, ringtone | **Not implemented** — backlog (needs alarm permission design) |
+| Reminders, time-of-day, ringtone | **Not implemented at this 2026-10-10 snapshot**; current `main` has source support, while device notification behavior remains unverified |
 | Task/Web tabs large | Follow-up: slightly smaller tabs |
 | Date “SATURDAY, OCT 10” | Uses device local date; at 01:43 IST on Oct 10 it **is** Saturday |
 
