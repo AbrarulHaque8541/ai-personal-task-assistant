@@ -1,13 +1,15 @@
-# Daymark — Add Task: shipped in v1.0.3
+# Daymark — Add Task: v1.0.3 historical snapshot
 
 Status of the task capture / Add task details flow after the v1.0.3 task-system work
 (now schema v5, local encrypted store, portable backup manifest v3).
+
+> The gap table below describes the v1.0.3 baseline only; it is not the current backlog. Later reminder, recurrence, tags, and natural-language quick-add work is summarized below. Current source is not the published v1.0.5 release.
 
 ## What works
 
 | Feature | Where |
 |---------|--------|
-| Quick add (title only, smart tokens: today/tomorrow/next week, high/urgent/important, low) | `addQuickTask()` → `parseSmartTaskDraft` |
+| Quick add (current source: supported dates, due times, priorities, and `#tags`; unknown words stay in the title) | `addQuickTask()` → `NaturalLanguageTaskParse`; see [`NL_QUICK_ADD.md`](NL_QUICK_ADD.md) |
 | Add with details dialog | `showTaskEditor` — title, **notes**, due date, **due time**, priority, **reminder**, **subtasks** |
 | Due date picker + Today / Tomorrow / Next week chips | `TaskDuePresets` + editor quick dates |
 | Optional due time (HH:mm, requires a due date) | `TaskDuePresets.isTimeOnly`; shown in due labels; same-date ordering |
@@ -24,7 +26,7 @@ Status of the task capture / Add task details flow after the v1.0.3 task-system 
 | Encrypted local save | AtomicFile + Android Keystore, schema v5 (v1–v4 migrate) |
 | Portable backup | Manifest v3 (DMM3) carries notes/due time/reminder/subtasks/tags/repeat rule/monthly anchor; DMM1/DMM2 backups remain importable with their historical defaults |
 
-## Deliberately not in v1.0.3
+## Gaps at the v1.0.3 baseline (historical)
 
 | Gap | Reason |
 |-----|--------|
@@ -49,3 +51,9 @@ Two of the v1.0.3 gaps above are addressed by the v1.0.6 task-reminders work (se
 
 - **System notifications / alarms**: best-effort OS notifications through a non-exported boot receiver; `POST_NOTIFICATIONS` is requested only when a reminder is enabled. The minimal-permission, no-services policy is preserved and the v1 source guards were updated to assert it.
 - **Recurring tasks**: daily / weekly / monthly repeat rules on tasks with a due date, advanced on app open or when the reminder is shown. Monthly tasks retain their original day-of-month when shorter months clamp; current DMM3 backups preserve the rule, anchor, and tags, while DMM1/DMM2 imports keep their historical defaults.
+
+## Update — natural-language quick add in current main
+
+[PR #292](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/292) merged natural-language quick add on 2026-10-13. `NaturalLanguageTaskParse` supports today/tomorrow/next week and weekdays; `4pm`, `4:30pm`, and 24-hour times; high/urgent/important/medium/low priority tokens; and `#tag` tokens. Unknown words remain in the task title, and the regular task editor is unchanged. The parser smoke test passed 16 assertions on the exact PR head; see [`NL_QUICK_ADD.md`](NL_QUICK_ADD.md) for examples.
+
+This is current-source functionality, not proof that it exists in the published v1.0.5 APK or that device UX has been accepted. Current status is in [`AGENT_STATUS.md`](AGENT_STATUS.md); source identity/version is in `android-app/app/build.gradle.kts`.

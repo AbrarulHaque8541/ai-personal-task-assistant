@@ -8,6 +8,8 @@ This document describes durable release rules plus a dated source/release snapsh
 - The latest published release is **v1.0.5**; its APK targets API 35 and belongs to a separate, older application identity. The current `1.0` source line is not published and installs separately from that older line. There is no automatic task-data migration between the apps.
 - Do not infer publication from Gradle values or CI. The live Releases page is the source of truth for published assets; the current source values are in [`android-app/app/build.gradle.kts`](android-app/app/build.gradle.kts).
 
+PR #295 prepared future links under `AbrarulHaque8541/daymark`, but the actual GitHub repository slug remained `AbrarulHaque8541/ai-personal-task-assistant` at the 2026-10-13 review. The owner has not applied the rename; prepared future-name links may not resolve until then. This review does not rename the repository.
+
 ## Immutable identity and signer
 
 | Field | Current value | Rule |
@@ -66,4 +68,4 @@ Before a user voluntarily removes an installation, advise them to use **More →
 Work by: Cue
 Model: not disclosed by runtime
 Tooling: GitHub connector CLI, git, local source/workflow/documentation review
-Timestamp (UTC): 2026-10-13T14:42:14Z
+Timestamp (UTC): 2026-10-13T17:59:30Z

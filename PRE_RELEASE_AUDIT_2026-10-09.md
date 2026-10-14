@@ -1,6 +1,8 @@
-> **ARCHIVED — PRE_RELEASE_AUDIT_2026-10-09.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (the retired pre-v1.0 application ID, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, targetSdk 36, and the repository is now `AbrarulHaque8541/daymark`. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note added 2026-10-13.)*
+> **ARCHIVED — PRE_RELEASE_AUDIT_2026-10-09.md (historical, 2026-10-09/13 era).** This document is a dated historical audit/handoff for the pre-v1.0 identity line (the retired pre-v1.0 application ID, published release v1.0.5, API 35). It is **not current**: current `main` uses application ID `com.abrar.daymark`, versionName `1.0`, versionCode 7, and targetSdk 36, while the actual repository slug remains `AbrarulHaque8541/ai-personal-task-assistant`. PR #295 prepared future `AbrarulHaque8541/daymark` links; the owner has not applied the separate rename. Do not treat any claim here as current state. For current status see `docs/AGENT_STATUS.md`, `README.md`, and live GitHub. Retained for history only. *(Archive note reconciled 2026-10-13.)*
 
 # Daymark pre-release audit — 2026-10-09
+
+> **Archived snapshot.** This audit records repository and release state as it was checked on 2026-10-09. Its v1.0.4/API35/no-open-PR claims were later superseded. Preserve the dated evidence below, but do not use its old “current” statements as instructions; start from [`docs/AGENT_STATUS.md`](docs/AGENT_STATUS.md), verify live GitHub, and use [`API36_MIGRATION_READINESS.md`](API36_MIGRATION_READINESS.md) for current release gates.
 
 ## Scope and honesty
 

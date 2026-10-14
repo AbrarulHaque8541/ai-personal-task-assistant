@@ -13,12 +13,16 @@
 
 Before installing, confirm the release is actually published and that its APK package ID, version, and signer match the release notes. Do not assume a version mentioned in a PR or source tree has been published. The `com.abrar.daymark` identity is a fresh app identity, not an in-place update of the previous app; Android keeps it separate and old local data is not automatically migrated. The production signing key remains pinned and required.
 
+**Repository URL transition:** PR #295 prepared the future `AbrarulHaque8541/daymark` URL, but the actual GitHub slug remained `AbrarulHaque8541/ai-personal-task-assistant` at the 2026-10-13 review. The owner has not applied the rename, so the prepared link may not resolve until then. This review does not rename the repository.
+
 ## What it does
 
-- Local task capture, edit, completion, delete/undo, notes, due date/time, priority, subtasks, attachments, templates
+> This inventory describes current source capabilities. The latest published v1.0.5 release uses the previous application identity and predates some current-main work; check each release's notes/assets rather than assuming every source feature is in the downloadable APK.
+
+- Local task capture with natural-language date/time, priority, and `#tag` quick add; edit, completion, delete/undo, notes, due date/time, tags, subtasks, attachments, and templates
 - Task reminders: in-app dialog plus best-effort OS notifications, daily/weekly/monthly repeat rules, custom notification sound — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md) for the honest limits
 - Encrypted portable backup / restore
-- HTTPS-only in-app browser: starts Offline; first remote navigation requires an explicit disclosure and opt-in. Search engines, AI site shortcuts, tabs, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
+- HTTPS-only in-app browser: starts Offline; first remote navigation requires an explicit disclosure and opt-in. Search engines, AI site shortcuts, tabs, HTTPS-origin bookmarks, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
 - Optional in-app update check against signed GitHub Releases (sideload flavor)
 
 ## Agents & contributors

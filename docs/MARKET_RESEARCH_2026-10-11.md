@@ -114,8 +114,10 @@ This is an addendum, not a rewrite of the 2026-10-11 competitor snapshot. It was
 - Privacy-safe WebView visual-state/lifecycle log breadcrumbs are present via merged PR [#291](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/pull/291); they are not a user-facing diagnostics/export screen and do not prove that a page visibly renders.
 - Issues [#221](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/221), [#222](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/222), [#160](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/160), and [#257](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/issues/257) were still open at review time. Browser, release, and Android 16 device acceptance remain **NOT TESTED / NOT COMPLETE**; check the live status index before using these issue labels.
 
+**Follow-up verification — 2026-10-13T18:08:39Z:** live `main` advanced to `a36bf7467b5cbe4c0b5162cec68412680447c33d`; merged PR #297 updated the web prototype's visual palette. The documented Android/browser capability boundaries above were rechecked and remain unchanged. Current-main Android CI `build` run [38438713728](https://github.com/AbrarulHaque8541/ai-personal-task-assistant/actions/runs/38438713728) passed on that exact SHA; this does not establish rendered-device behavior or release readiness. Issue states should still be refreshed before acting.
+
 ---
 Work by: Cue
 Model: not disclosed by runtime
 Tooling: GitHub connector CLI and local source review
-Timestamp (UTC): 2026-10-13T14:42:14Z
+Timestamp (UTC): 2026-10-13T18:08:39Z

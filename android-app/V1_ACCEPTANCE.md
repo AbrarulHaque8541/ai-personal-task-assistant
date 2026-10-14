@@ -2,7 +2,7 @@
 
 This is a release checklist, not a claim that every device-level item has already passed. Source-only status is distinguished from runtime verification.
 
-> **Current source/release snapshot checked 2026-10-13:** `main` uses application ID `com.abrar.daymark`, version `1.0`/code `7`, and target API 36. The latest published release remains v1.0.5 (API 35); current source is not published, is a separate install, and does not automatically migrate task data. No physical device/emulator acceptance was available for this review. See the [status index](../docs/AGENT_STATUS.md) and [API 36 readiness](../API36_MIGRATION_READINESS.md) for current dated evidence.
+> **Current source/release snapshot checked 2026-10-13:** `main` at `a36bf7467b5cbe4c0b5162cec68412680447c33d` uses application ID `com.abrar.daymark`, version `1.0`/code `7`, target API 36, AGP 8.12.2, and Gradle 8.13. Current-main Android CI run 38438713728 passed; API36 release-workflow checks passed on PR #290. The latest published release remains v1.0.5 (API 35); current source is not published, is a separate install, and does not automatically migrate task data. No physical-device acceptance is established. See the [status index](../docs/AGENT_STATUS.md) and [API 36 readiness](../API36_MIGRATION_READINESS.md) for current dated evidence.
 
 ## Original specification: requirement status map
 
@@ -206,6 +206,7 @@ On the review branch based on `origin/main` commit `f5c6a57f69dfbd0b15c08336e52c
 Offline Gradle builds succeeded for `:app:assembleGithubSideloadDebug` and `:app:assemblePlayDebug`; both flavor lint tasks succeeded with 118 warnings each (111 `SetTextI18n` warnings), with no findings on the edited browser-preference lines; `:app:testGithubSideloadDebugUnitTest` and `:app:testPlayDebugUnitTest` were `NO-SOURCE`. The build emitted a warning that Android Gradle Plugin 8.8.2 was tested only through compileSdk 35 while the source targets 36. Sideload debug: 305,945 bytes, SHA-256 `a75a755f013d2bd9210af79d54c3e0e36caffe0046c0eac9e63e47a78600e386`; Play debug: 304,829 bytes, SHA-256 `7bbb08d6d6af7fcb7637b3e060e3ead1513bd3facd2717fad9dcfdd963ebb295`. Both are package `com.abrar.daymark`, minSdk 26/targetSdk 36, and passed debug APK v2 signature verification. The sideload flavor adds `ACCESS_NETWORK_STATE`; Play does not. No model/weight payload was found. These debug APKs are not published.
 
 The latest published production artifact remains v1.0.5 `githubSideload`, 221,293 bytes, targetSdk 35. Its SHA-256 matches the Release metadata; its v2 signature matches the pinned production certificate; its exact-tag workflow passed. That proves the published artifact is below the `<15 MB` target, not that a future target-36 production APK will have the same size. No device/emulator was available (`adb devices -l` empty; emulator binary absent), so APK installation/launch, offline traffic behavior, font rendering, TalkBack traversal, non-English/RTL layout, API 36 edge-to-edge behavior, and device Keystore operation remain NOT TESTED. No APK was uploaded or released in this review.
+The AGP 8.8.2 warning recorded above belongs to that 2026-10-12 review and is superseded: current `main` uses AGP 8.12.2 and Gradle 8.13.
 
 
 ---
@@ -213,4 +214,4 @@ Current source/release snapshot:
 Work by: Cue
 Model: not disclosed by runtime
 Tooling: GitHub connector CLI, git, local source/workflow review
-Timestamp (UTC): 2026-10-13T14:42:14Z
+Timestamp (UTC): 2026-10-13T17:59:30Z
