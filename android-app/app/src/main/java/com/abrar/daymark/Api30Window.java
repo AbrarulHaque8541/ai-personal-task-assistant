@@ -1,24 +1,21 @@
 package com.abrar.daymark;
 
+import android.annotation.TargetApi;
 import android.graphics.Insets;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 
 /**
- * API 29/30 window calls isolated from the launcher activity.
+ * API 30 window/insets calls isolated from the launcher activity.
  *
- * <p>{@code Insets} and {@code WindowInsets.Type} do not exist before API 29/30.
- * Referencing them from a method that always runs crashes cold start on
- * Android 8 and 9. Callers must check the SDK version before loading this class.
+ * <p>{@code Insets} and {@code WindowInsets.Type} are API 30 platform types.
+ * Callers must check the SDK version before loading this class. API-29-only
+ * contrast methods live in {@link Api29Window} so API 29 never loads this class.
  */
+@TargetApi(30)
 final class Api30Window {
     private Api30Window() { }
-
-    static void relaxBarContrast(Window window) {
-        window.setStatusBarContrastEnforced(false);
-        window.setNavigationBarContrastEnforced(false);
-    }
 
     static void setDecorFits(Window window, boolean fits) {
         window.setDecorFitsSystemWindows(fits);

@@ -106,6 +106,207 @@ jobs:
           aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$apksigner" verify --verbose "$apk"
+          apk_bytes="$(stat -c%s "$apk")"
+          [[ "$apk_bytes" -ge 100000 && "$apk_bytes" -le 100000000 ]] || {
+            echo "::error::APK size outside expected bounds: $apk_bytes bytes"; exit 1;
+          }
+          unzip -tqq "$apk"
+          apk_entries="$(unzip -Z1 "$apk")"
+          grep -Fxq "AndroidManifest.xml" <<< "$apk_entries"
+          grep -Fxq "resources.arsc" <<< "$apk_entries"
+          grep -Fxq "classes.dex" <<< "$apk_entries"
+          dex_count="$(grep -Ec '^classes([0-9]+)?\.dex
+          package_line="$(grep '^package: ' <<< "$badging")"
+          package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          expected_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          expected_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/abrar/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
+          min_sdk_version="$(grep -m1 "^sdkVersion:" <<< "$badging" | sed -n "s/^sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p")"
+          echo "Package ID:       $package_id"
+          echo "Version Name:     $version_name"
+          echo "Version Code:     $version_code"
+          target_sdk_version="$(awk -F"'" '/^targetSdkVersion:/ {print $2; exit}' <<< "$badging")"
+          echo "Target SDK:       $target_sdk_version"
+          echo "Expected Name:    $expected_name"
+          echo "Expected Code:    $expected_code"
+          [[ "$package_id" == "com.abrar.daymark" ]]
+          grep -q "^launchable-activity: name='com.abrar.daymark.MainActivity'" <<< "$badging" || {
+            echo "::error::APK does not expose the expected launcher Activity"; exit 1;
+          }
+          [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
+          [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
+          [[ "${#expected_signer}" -eq 64 ]]
+          [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
+          [[ "$target_sdk_version" == "36" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
+          apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+          actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
+          if [[ -z "$actual_signer" ]]; then
+            cert_file="$RUNNER_TEMP/release-certificate.der"
+            keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" 2>/dev/null || true
+            if [[ -s "$cert_file" ]]; then
+              actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr 'A-F' 'a-f')"
+            fi
+          fi
+          echo "Expected signer: ${expected_signer,,}"
+          echo "Actual signer:   ${actual_signer}"
+          [[ "$actual_signer" == "${expected_signer,,}" ]] || { echo "::error::Release signer mismatch (expected ${expected_signer,,}, got ${actual_signer}); refusing publication."; exit 1; }
+          mkdir -p release-artifacts
+          apk_name="Daymark-v${version_name}-githubSideload.apk"
+          aab_name="Daymark-v${version_name}-githubSideload.aab"
+          cp "$apk" "release-artifacts/$apk_name"
+          cp "$aab" "release-artifacts/$aab_name"
+          (cd release-artifacts && sha256sum "$apk_name" "$aab_name" | tee SHA256SUMS.txt)
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "min_sdk_version=$min_sdk_version" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=${expected_signer,,}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+          echo "aab_name=$aab_name" >> "$GITHUB_OUTPUT"
+          echo "apk_sha=$(sha256sum "release-artifacts/$apk_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "aab_sha=$(sha256sum "release-artifacts/$aab_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cold-launch signed production APK on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            apk="android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+            test -s "$apk"
+            adb install -r "$apk"
+            adb logcat -c
+            adb shell am force-stop com.abrar.daymark || true
+            adb shell am start -W -n com.abrar.daymark/com.abrar.daymark.MainActivity
+            sleep 10
+            if [[ -z "$(adb shell pidof com.abrar.daymark | tr -d '\r')" ]]; then
+              echo "::error::Signed production APK process exited during cold launch"
+              adb logcat -d -v threadtime | tail -n 500
+              exit 1
+            fi
+            focus="$(adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' || true)"
+            if ! grep -q 'com.abrar.daymark' <<< "$focus"; then
+              echo "::error::Signed production APK MainActivity is not resumed: $focus"
+              adb logcat -d -v threadtime | tail -n 500
+              exit 1
+            fi
+            adb shell uiautomator dump /sdcard/daymark-window.xml >/dev/null
+            adb pull /sdcard/daymark-window.xml "$RUNNER_TEMP/daymark-window.xml" >/dev/null
+            if grep -q 'Daymark could not finish opening' "$RUNNER_TEMP/daymark-window.xml"; then
+              echo "::error::Signed production APK displayed its startup-failure screen"
+              cat "$RUNNER_TEMP/daymark-window.xml"
+              adb logcat -d -v threadtime | tail -n 500
+              exit 1
+            fi
+            echo "PASS: signed production APK cold-launched on API 36 emulator."
+
+      - name: Upload verified release payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daymark-v${{ steps.verify.outputs.version_name }}-production-release
+          path: |
+            android-app/release-artifacts/Daymark-v${{ steps.verify.outputs.version_name }}-githubSideload.apk
+            android-app/release-artifacts/Daymark-v${{ steps.verify.outputs.version_name }}-githubSideload.aab
+            android-app/release-artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish verified production release without clobbering
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION_NAME: ${{ steps.verify.outputs.version_name }}
+          VERSION_CODE: ${{ steps.verify.outputs.version_code }}
+          MIN_SDK_VERSION: ${{ steps.verify.outputs.min_sdk_version }}
+          SIGNER_SHA256: ${{ steps.verify.outputs.signer_sha256 }}
+          APK_NAME: ${{ steps.verify.outputs.apk_name }}
+          AAB_NAME: ${{ steps.verify.outputs.aab_name }}
+          APK_SHA: ${{ steps.verify.outputs.apk_sha }}
+          AAB_SHA: ${{ steps.verify.outputs.aab_sha }}
+        shell: bash
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          apk="release-artifacts/$APK_NAME"
+          aab="release-artifacts/$AAB_NAME"
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "## Daymark v$VERSION_NAME"
+            echo
+            echo 'Download **only** this one file: `'"$APK_NAME"'`.'
+            echo
+            echo 'The release attaches a single APK. The Play App Bundle (.aab) is kept as a build artifact and is not a download, so tapping the APK no longer saves a second package.'
+            echo
+            echo 'Safety: Play Protect may label a sideloaded APK as unrecognized. That alone is not a malware verdict, but a warning that explicitly says the app is harmful must not be bypassed. Stop installation, verify the APK SHA-256, package ID, version, and signer against this release, and do not install if the harmful warning persists.'
+            echo
+            echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'.'
+            echo
+            echo "- APK: $APK_NAME"
+            echo "- APK SHA-256: $APK_SHA"
+            echo
+            echo "<!-- daymark-updater-v1"
+            printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
+            echo "-->"
+          } > "$notes"
+          release_json="$RUNNER_TEMP/release.json"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then
+            jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == false and .prerelease == false' "$release_json" >/dev/null
+            # Only the APK is a user download. The AAB stays in the workflow artifact
+            # so the release page cannot offer a second package next to the APK.
+            for pair in "$APK_NAME:$APK_SHA:$apk"; do
+              name="${pair%%:*}"
+              remainder="${pair#*:}"
+              expected="${remainder%%:*}"
+              local_path="${remainder#*:}"
+              asset="$(jq -c --arg name "$name" '[.assets[] | select(.name == $name)] | .[0] // empty' "$release_json")"
+              if [[ -n "$asset" ]]; then
+                url="$(jq -r '.browser_download_url' <<<"$asset")"
+                downloaded="$RUNNER_TEMP/$name"
+                curl --fail --location --silent --show-error "$url" --output "$downloaded"
+                actual="$(sha256sum "$downloaded" | awk '{print $1}')"
+                [[ "$actual" == "$expected" ]] || { echo "::error::Existing $name differs; refusing overwrite."; exit 1; }
+              else
+                gh release upload "$TAG" "$local_path" --repo "$GITHUB_REPOSITORY" --clobber=false
+              fi
+            done
+            # Repair notes even when the release already exists; this publishes the updater metadata.
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest
+            # Read back the actual published body and fail if the updater block was not persisted.
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+            actual_body="$(jq -r '.body // ""' "$release_json")"
+            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
+            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
+            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
+            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
+          else
+            grep -Fq 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
+            gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest --verify-tag
+            # Read back and validate the newly published release body too.
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+            actual_body="$(jq -r '.body // ""' "$release_json")"
+            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
+            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
+            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
+            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
+          fi
+
+      - name: Remove production keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/daymark-release.keystore" "$RUNNER_TEMP/release-certificate.der"
+ <<< "$apk_entries")"
+          [[ "$dex_count" -ge 1 ]] || { echo "::error::APK has no DEX bytecode"; exit 1; }
+          dex_bytes="$(unzip -p "$apk" classes.dex | wc -c)"
+          [[ "$dex_bytes" -ge 50000 ]] || { echo "::error::APK DEX is unexpectedly small: $dex_bytes bytes"; exit 1; }
           badging="$( "$aapt" dump badging "$apk" )"
           package_line="$(grep '^package: ' <<< "$badging")"
           package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
