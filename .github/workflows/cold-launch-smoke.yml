@@ -43,14 +43,14 @@ jobs:
       - name: Build sideload APK
         run: ./gradlew --no-daemon --console=plain assembleGithubSideloadDebug
 
-      - name: Cold-launch on emulator (API 34)
+      - name: Cold-launch on emulator (API 30 ATD)
         uses: reactivecircus/android-emulator-runner@v2
         env:
           API_LEVEL: 34
         with:
-          api-level: 34
+          api-level: 30
           arch: x86_64
-          target: default
+          target: aosp_atd
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
@@ -71,16 +71,18 @@ jobs:
             exit 0
 
       - name: Write and commit smoke result
+        if: always()
         working-directory: ${{ github.workspace }}
         run: |
           set -uo pipefail
           mkdir -p smoke
           {
-            echo "# Cold-launch smoke result (API 34, githubSideloadDebug)"
+            echo "# Cold-launch smoke result (API 30 ATD, githubSideloadDebug)"
             echo
             echo "- Run: ${{ github.run_id }}"
             echo "- Head: ${{ github.sha }}"
             echo
+            if [ ! -f /tmp/smoke/am_start.txt ]; then echo "(emulator script did not reach launch — likely boot failure)"; fi
             echo "## Install"
             echo '~~~'
             cat /tmp/smoke/install.txt 2>/dev/null || echo "(missing)"
@@ -111,10 +113,10 @@ jobs:
             else
               echo "## Verdict: LAUNCH SURVIVED (no FATAL EXCEPTION in logcat)"
             fi
-          } > smoke/result-api34.md
+          } > smoke/result-api30.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add smoke/result-api34.md
+          git add smoke/result-api30.md
           git commit -m "test: record cold-launch smoke result (API 34)" -m "Work by: Vibe | Model: GLM (glm-5-latest-short) | Tooling: GitHub MCP tools | Timestamp (UTC): ${{ env.TS }}" || true
           git push origin HEAD:test/cold-launch-smoke-v1
         env:
