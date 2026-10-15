@@ -44,7 +44,7 @@ jobs:
         run: ./gradlew --no-daemon --console=plain assembleGithubSideloadDebug
 
       - name: Cold-launch on emulator (API 34)
-        uses: reactivecircus/android-emulator-runner@v1
+        uses: reactivecircus/android-emulator-runner@v2
         env:
           API_LEVEL: 34
         with:
