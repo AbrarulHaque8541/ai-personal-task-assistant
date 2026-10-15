@@ -42,6 +42,10 @@ jobs:
 
       - name: Build sideload APK
         run: ./gradlew --no-daemon --console=plain assembleGithubSideloadDebug
+      - name: List APK outputs
+        working-directory: ${{ github.workspace }}
+        run: |
+          find ${{ github.workspace }} -name "*.apk" -type f -not -path "*/.git/*" | tee /tmp/smoke-apk-list.txt
 
       - name: Cold-launch on emulator (API 30 ATD)
         uses: reactivecircus/android-emulator-runner@v2
@@ -58,7 +62,7 @@ jobs:
             set -u
             mkdir -p /tmp/smoke
             adb devices
-            APK=`ls ${{ github.workspace }}/android-app/app/build/outputs/apk/githubSideload/debug/*.apk | head -n1`
+            APK=`find ${{ github.workspace }} -name "*.apk" -type f -not -path "*/.git/*" | head -n1`
             echo "APK=$APK" | tee /tmp/smoke/apk.txt
             adb install -r "$APK" > /tmp/smoke/install.txt 2>&1
             cat /tmp/smoke/install.txt
@@ -83,6 +87,15 @@ jobs:
             echo "- Head: ${{ github.sha }}"
             echo
             if [ ! -f /tmp/smoke/am_start.txt ]; then echo "(emulator script did not reach launch — likely boot failure)"; fi
+            echo "## Chosen APK"
+            echo '~~~'
+            cat /tmp/smoke/apk.txt 2>/dev/null || echo "(missing)"
+            echo '~~~'
+            echo
+            echo "## All APK files"
+            echo '~~~'
+            cat /tmp/smoke-apk-list.txt 2>/dev/null || echo "(missing)"
+            echo '~~~'
             echo "## Install"
             echo '~~~'
             cat /tmp/smoke/install.txt 2>/dev/null || echo "(missing)"
