@@ -127,7 +127,7 @@ jobs:
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
           [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
-          [[ "$target_sdk_version" == "36" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
+          [[ "$target_sdk_version" == "35" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
           apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
           actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
           if [[ -z "$actual_signer" ]]; then

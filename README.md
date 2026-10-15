@@ -9,17 +9,26 @@
 
 ## Download
 
-**Production download (one APK only):** [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases/latest)
+- **Production Download (latest APK):** [Daymark Latest Release](https://github.com/AbrarulHaque8541/daymark/releases/latest)
+- **All Releases:** [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases)
 
-Download the single file whose name ends in `.apk`. Do not download a `.aab` — that is not an installable app, and saving both is what made the download appear twice. Chrome and Android show a "harmful" warning for every app installed outside the Play Store; Daymark is not malware. Choose **Download anyway**, then **Install anyway**.
+### Sideload Installation Guide
 
-Before installing, confirm the release is actually published and that its APK package ID, version, and signer match the release notes. Do not assume a version mentioned in a PR or source tree has been published. The `com.abrar.daymark` identity is a fresh app identity, not an in-place update of the previous app; Android keeps it separate and old local data is not automatically migrated. The production signing key remains pinned and required.
+1. Open the [Latest Release](https://github.com/AbrarulHaque8541/daymark/releases/latest) on GitHub.
+2. Under **Assets**, download the single file whose name ends in `.apk` (e.g. `Daymark-v...-githubSideload.apk`).
+   - **Important:** Do **not** download a `.aab` file — that is an Android App Bundle intended for Google Play Store upload, not for direct installation on phones. Downloading both is what made the download appear duplicated.
+3. Open the downloaded `.apk` file on your device and follow the prompts to install.
+4. **App identity & safety notes:**
+   - **Application ID:** `com.abrar.daymark`. This is a fresh app identity, separate from previous app installations. Android keeps it separate and legacy local data is not automatically migrated (use encrypted backup/restore).
+   - **Target SDK:** Locked to **API 35 (Android 15)** with `minSdk = 26` (Android 8.0+) for broad OEM and runtime stability.
+   - **Play Protect warning:** Chrome and Android show an "unrecognized app" or "harmful" warning for apps sideloaded outside the Google Play Store; Daymark is open-source and not malware. Choose **Download anyway**, then tap **More details** -> **Install anyway** after verifying the SHA-256 matches the release notes.
+   - **Signing key:** The production signing certificate remains pinned to `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580`.
 
-**Repository URL transition:** PR #295 prepared the future `AbrarulHaque8541/daymark` URL, but the actual GitHub slug remained `AbrarulHaque8541/ai-personal-task-assistant` at the 2026-10-13 review. The owner has not applied the rename, so the prepared link may not resolve until then. This review does not rename the repository.
+**Repository URL:** The repository is located at [AbrarulHaque8541/daymark](https://github.com/AbrarulHaque8541/daymark). Legacy links pointing to `AbrarulHaque8541/ai-personal-task-assistant` automatically redirect here.
 
 ## What it does
 
-> This inventory describes current source capabilities. The latest published v1.0.5 release uses the previous application identity and predates some current-main work; check each release's notes/assets rather than assuming every source feature is in the downloadable APK.
+> This inventory describes current source capabilities. The latest published production releases (v1.0 and v1.1) use the new `com.abrar.daymark` identity. Check each release's notes/assets rather than assuming every unreleased source feature is in the downloadable APK.
 
 - Local task capture with natural-language date/time, priority, and `#tag` quick add; edit, completion, delete/undo, notes, due date/time, tags, subtasks, attachments, and templates
 - Task reminders: in-app dialog plus best-effort OS notifications, daily/weekly/monthly repeat rules, custom notification sound — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md) for the honest limits

@@ -1,6 +1,6 @@
 # Android 16 / API 36 target and release readiness
 
-> **Checked 2026-10-13 against `main` `a36bf7467b5cbe4c0b5162cec68412680447c33d`.** Current source uses application ID/namespace `com.abrar.daymark`, `versionName = 1.0`, `versionCode = 7`, `compileSdk = 36`, `targetSdk = 36`, AGP 8.12.2, and Gradle 8.13. The latest published release remains v1.0.5 (API 35, previous app identity); current source has not been published and installs separately with no automatic task-data migration. API 36 CI gates are present, but a signed current-identity production artifact and physical-device acceptance remain **NOT TESTED / NOT COMPLETE**.
+> **Checked 2026-10-13 against `main` `a36bf7467b5cbe4c0b5162cec68412680447c33d`.** Current source uses application ID/namespace `com.abrar.daymark`, `versionName = 1.0`, `versionCode = 7`, `compileSdk = 36`, `targetSdk = 35` (targetSdk locked to API 35 for device runtime stability), AGP 8.12.2, and Gradle 8.13. The latest published release remains v1.0.5 (API 35, previous app identity); current source has not been published and installs separately with no automatic task-data migration. API 36 CI gates are present, but a signed current-identity production artifact and physical-device acceptance remain **NOT TESTED / NOT COMPLETE**.
 
 ## Repository-name transition
 
