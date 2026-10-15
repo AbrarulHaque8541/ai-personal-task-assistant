@@ -189,12 +189,12 @@ jobs:
           {
             echo "## Daymark v$VERSION_NAME"
             echo
-            echo "Production build. Package: `com.abrar.daymark`. Version code: `$VERSION_CODE`."
+            echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'.'
             echo
-            echo "- APK: `$APK_NAME`"
-            echo "- APK SHA-256: `$APK_SHA`"
-            echo "- AAB: `$AAB_NAME`"
-            echo "- AAB SHA-256: `$AAB_SHA`"
+            echo "- APK: $APK_NAME"
+            echo "- APK SHA-256: $APK_SHA"
+            echo "- AAB: $AAB_NAME"
+            echo "- AAB SHA-256: $AAB_SHA"
             echo
             echo "<!-- daymark-updater-v1"
             printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
