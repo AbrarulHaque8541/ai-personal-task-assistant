@@ -1,12 +1,11 @@
 # Cold-launch smoke result (API 30 ATD, githubSideloadDebug)
 
-- Run: 38793929594
-- Head: 6ff7b7fd203876d531111c8fec7335bd8836d08e
+- Run: 38794477535
+- Head: 2dc8b8bdc665902105eb0b3ff7989b70de822da6
 
 ## Chosen APK
 ~~~
-APK=
-NO APK PATH RECEIVED
+APK=/home/runner/work/daymark/daymark/android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk
 ~~~
 
 ## All APK files
@@ -15,18 +14,24 @@ NO APK PATH RECEIVED
 ~~~
 ## Install
 ~~~
-(missing)
+Performing Streamed Install
+Success
 ~~~
 
 ## am start -W
 ~~~
 Starting: Intent { cmp=com.abrar.daymark/.MainActivity }
-Error type 3
-Error: Activity class {com.abrar.daymark/com.abrar.daymark.MainActivity} does not exist.
+Status: ok
+LaunchState: COLD
+Activity: com.abrar.daymark/.MainActivity
+TotalTime: 334
+WaitTime: 337
+Complete
 ~~~
 
 ## Process alive after 25s
 ~~~
+1614
 ~~~
 
 ## Verdict: LAUNCH SURVIVED (no FATAL EXCEPTION in logcat)
