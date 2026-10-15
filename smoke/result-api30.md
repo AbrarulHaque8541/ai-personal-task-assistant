@@ -1,7 +1,7 @@
 # Cold-launch smoke result (API 30 ATD, githubSideloadDebug)
 
-- Run: 38793490165
-- Head: b0f334de6978a6598c3eddd6d6d6d3f440bc98fc
+- Run: 38793929594
+- Head: 6ff7b7fd203876d531111c8fec7335bd8836d08e
 
 ## Chosen APK
 ~~~
