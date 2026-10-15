@@ -1,5 +1,6 @@
 package com.abrar.daymark;
 
+import android.annotation.SuppressLint;
 import android.graphics.Insets;
 import android.view.View;
 import android.view.Window;
@@ -12,6 +13,7 @@ import android.view.WindowInsets;
  * Referencing them from a method that always runs crashes cold start on
  * Android 8 and 9. Callers must check the SDK version before loading this class.
  */
+@SuppressLint("NewApi")
 final class Api30Window {
     private Api30Window() { }
 
