@@ -84,7 +84,9 @@ jobs:
             debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
             release_apk="$RUNNER_TEMP/Daymark-v1.1-githubSideload.apk"
             test -s "$debug_apk"
-            curl --fail --location --silent --show-error "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.1/Daymark-v1.1-githubSideload.apk" --output "$release_apk"
+            echo "::notice::Downloading pinned v1.1 production APK"
+            curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.1/Daymark-v1.1-githubSideload.apk" --output "$release_apk"
+            echo "::notice::Downloaded v1.1 APK; checking pinned SHA-256"
             echo "d0a6556582698d2a972249f68400118777422316c3b05f38fe62a946540156ed  $release_apk" | sha256sum --check
             release_bytes="$(stat -c%s "$release_apk")"
             [[ "$release_bytes" -ge 100000 ]] || { echo "::error::Published v1.1 APK unexpectedly small: $release_bytes bytes"; exit 1; }
@@ -95,11 +97,14 @@ jobs:
             launch_and_check() {
               local label="$1" apk="$2"
               echo "::group::Cold launch: $label"
+              echo "::notice::Installing $label"
               if ! timeout 60s adb install -r "$apk"; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
               adb logcat -c
+              echo "::notice::Starting $label MainActivity"
               if ! timeout 45s adb shell am start -W -n com.abrar.daymark/com.abrar.daymark.MainActivity; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
               sleep 8
-              if [[ -z "$(adb shell pidof com.abrar.daymark | tr -d '\r')" ]]; then
+              pid="$(timeout 15s adb shell pidof com.abrar.daymark | tr -d '\r' || true)"
+              if [[ -z "$pid" ]]; then
                 echo "::error::$label process exited during cold launch"
                 adb logcat -d -v threadtime | tail -n 500
                 return 1
@@ -123,7 +128,8 @@ jobs:
               echo "::endgroup::"
             }
             launch_and_check "published v1.1 signed APK" "$release_apk"
-            adb uninstall com.abrar.daymark
+            echo "::notice::Removing production-signed v1.1 APK before installing debug-signed candidate"
+            timeout 30s adb uninstall com.abrar.daymark
             launch_and_check "current PR debug APK" "$debug_apk"
             echo "PASS: exact published v1.1 APK and current debug APK cold-launched on Android 16 emulator."
       - name: Validate production signing secrets

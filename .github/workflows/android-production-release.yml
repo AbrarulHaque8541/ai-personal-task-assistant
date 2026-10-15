@@ -190,12 +190,15 @@ jobs:
             set -euo pipefail
             apk="android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
             test -s "$apk"
+            echo "::notice::Installing signed production candidate"
             timeout 60s adb install -r "$apk"
             adb logcat -c
-            adb shell am force-stop com.abrar.daymark || true
+            timeout 15s adb shell am force-stop com.abrar.daymark || true
+            echo "::notice::Starting signed production candidate MainActivity"
             timeout 45s adb shell am start -W -n com.abrar.daymark/com.abrar.daymark.MainActivity
             sleep 10
-            if [[ -z "$(adb shell pidof com.abrar.daymark | tr -d '\r')" ]]; then
+            pid="$(timeout 15s adb shell pidof com.abrar.daymark | tr -d '\r' || true)"
+            if [[ -z "$pid" ]]; then
               echo "::error::Signed production APK process exited during cold launch"
               adb logcat -d -v threadtime | tail -n 500
               exit 1
