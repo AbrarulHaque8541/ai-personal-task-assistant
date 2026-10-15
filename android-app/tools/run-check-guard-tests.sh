@@ -30,7 +30,7 @@ PY
 }
 
 expect_fail_after_removal check-text-scale.py "TextScalePolicy.combined("
-expect_fail_after_removal check-window-insets.py "WindowInsets.Type.ime()"
+expect_fail_after_removal check-window-insets.py "Api30Window.applyInsets(root, insets, dp(8))"
 expect_fail_after_removal check-web-mode-state.py "STATE_WEB_MODE"
 expect_fail_after_removal check-silent-catch.py "StartupDiagnostics.record("
 
