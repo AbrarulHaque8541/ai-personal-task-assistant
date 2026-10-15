@@ -1,0 +1,47 @@
+name: Create v1.0 release tag
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/tag-v1-0-release.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-v1-0-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create v1.0 tag on the previous main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/v1.0" >/dev/null; then
+            echo "Tag v1.0 already exists; nothing to do."
+            exit 0
+          fi
+          TARGET="$(git rev-parse HEAD^)"
+          echo "Tagging $TARGET as v1.0"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a v1.0 -m "Daymark v1.0 production release tag" "$TARGET"
+          git push origin refs/tags/v1.0
+
+      - name: Remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/tag-v1-0-release.yml
+          git commit -m "chore: remove one-shot v1.0 tagging workflow" -m "Work by: Vibe\nModel: GLM (glm-5-latest-short)\nTooling: GitHub MCP tools\nTimestamp (UTC): 2026-10-15T18:49:23.051Z"
+          git push origin main
