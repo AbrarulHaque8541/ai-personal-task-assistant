@@ -62,22 +62,8 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
-          script: |
-            set -u
-            mkdir -p /tmp/smoke
-            adb devices || true
-            APK="$(cat /tmp/smoke-apk-path.txt 2>/dev/null || true)"
-            echo "raw path file: [$(cat /tmp/smoke-apk-path.txt 2>/dev/null || echo MISSING)]" | tee -a /tmp/smoke/apk.txt
-            echo "APK=$APK" | tee /tmp/smoke/apk.txt
-            if [ -z "$APK" ]; then echo "NO APK PATH RECEIVED" | tee -a /tmp/smoke/apk.txt; fi
-            if [ -n "$APK" ]; then adb install -r "$APK" > /tmp/smoke/install.txt 2>&1 || true; cat /tmp/smoke/install.txt || true; fi
-            adb shell am start -W -n com.abrar.daymark/.MainActivity > /tmp/smoke/am_start.txt 2>&1 || true
-            cat /tmp/smoke/am_start.txt || true
-            sleep 25
-            adb shell pidof com.abrar.daymark > /tmp/smoke/pid.txt 2>&1 || true
-            echo "pidof: $(cat /tmp/smoke/pid.txt)" || true
-            adb logcat -d > /tmp/smoke/logcat.txt 2>&1 || true
-            exit 0
+          script: >-
+            APK="$(cat /tmp/smoke-apk-path.txt 2>/dev/null || true)"; echo "APK=$APK" > /tmp/smoke/apk.txt 2>&1; [ -n "$APK" ] && adb install -r "$APK" > /tmp/smoke/install.txt 2>&1 || true; adb shell am start -W -n com.abrar.daymark/.MainActivity > /tmp/smoke/am_start.txt 2>&1 || true; sleep 25; adb shell pidof com.abrar.daymark > /tmp/smoke/pid.txt 2>&1 || true; adb logcat -d > /tmp/smoke/logcat.txt 2>&1 || true; exit 0
       - name: Write and commit smoke result
         if: always()
         working-directory: ${{ github.workspace }}
