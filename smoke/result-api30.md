@@ -1,12 +1,12 @@
 # Cold-launch smoke result (API 30 ATD, githubSideloadDebug)
 
-- Run: 38793016099
-- Head: 35e3942a5b6b4c5e602cd99d8f4a7a0c2369c29d
+- Run: 38793490165
+- Head: b0f334de6978a6598c3eddd6d6d6d3f440bc98fc
 
-(emulator script did not reach launch — likely boot failure)
 ## Chosen APK
 ~~~
 APK=
+NO APK PATH RECEIVED
 ~~~
 
 ## All APK files
@@ -15,18 +15,18 @@ APK=
 ~~~
 ## Install
 ~~~
-Performing Streamed Install
-adb: filename doesn't end .apk or .apex: 
+(missing)
 ~~~
 
 ## am start -W
 ~~~
-(missing)
+Starting: Intent { cmp=com.abrar.daymark/.MainActivity }
+Error type 3
+Error: Activity class {com.abrar.daymark/com.abrar.daymark.MainActivity} does not exist.
 ~~~
 
 ## Process alive after 25s
 ~~~
-(no pid)
 ~~~
 
 ## Verdict: LAUNCH SURVIVED (no FATAL EXCEPTION in logcat)
