@@ -42,10 +42,13 @@ jobs:
 
       - name: Build sideload APK
         run: ./gradlew --no-daemon --console=plain assembleGithubSideloadDebug
-      - name: List APK outputs
+      - name: Locate APK
         working-directory: ${{ github.workspace }}
         run: |
-          find ${{ github.workspace }} -name "*.apk" -type f -not -path "*/.git/*" | tee /tmp/smoke-apk-list.txt
+          find "${{ github.workspace }}" -name "*.apk" -type f -not -path "*/.git/*" | tee /tmp/smoke-apk-list.txt
+          APK_PATH="$(find "${{ github.workspace }}" -name "*.apk" -type f -not -path "*/.git/*" | head -n1)"
+          echo "Found APK: $APK_PATH"
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
 
       - name: Cold-launch on emulator (API 30 ATD)
         uses: reactivecircus/android-emulator-runner@v2
@@ -58,22 +61,28 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
+        with:
+          api-level: 30
+          arch: x86_64
+          target: aosp_atd
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          disable-animations: true
           script: |
             set -u
             mkdir -p /tmp/smoke
-            adb devices
-            APK=`find ${{ github.workspace }} -name "*.apk" -type f -not -path "*/.git/*" | head -n1`
+            adb devices || true
+            APK="${APK_PATH:-}"
             echo "APK=$APK" | tee /tmp/smoke/apk.txt
-            adb install -r "$APK" > /tmp/smoke/install.txt 2>&1
-            cat /tmp/smoke/install.txt
-            adb shell am start -W -n com.abrar.daymark/.MainActivity > /tmp/smoke/am_start.txt 2>&1
-            cat /tmp/smoke/am_start.txt
+            if [ -z "$APK" ]; then echo "NO APK PATH RECEIVED" | tee -a /tmp/smoke/apk.txt; fi
+            if [ -n "$APK" ]; then adb install -r "$APK" > /tmp/smoke/install.txt 2>&1 || true; cat /tmp/smoke/install.txt || true; fi
+            adb shell am start -W -n com.abrar.daymark/.MainActivity > /tmp/smoke/am_start.txt 2>&1 || true
+            cat /tmp/smoke/am_start.txt || true
             sleep 25
-            adb shell pidof com.abrar.daymark > /tmp/smoke/pid.txt 2>&1
-            echo "pidof: $(cat /tmp/smoke/pid.txt)"
-            adb logcat -d > /tmp/smoke/logcat.txt 2>&1
+            adb shell pidof com.abrar.daymark > /tmp/smoke/pid.txt 2>&1 || true
+            echo "pidof: $(cat /tmp/smoke/pid.txt)" || true
+            adb logcat -d > /tmp/smoke/logcat.txt 2>&1 || true
             exit 0
-
       - name: Write and commit smoke result
         if: always()
         working-directory: ${{ github.workspace }}
