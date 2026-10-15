@@ -61,13 +61,6 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
-        with:
-          api-level: 30
-          arch: x86_64
-          target: aosp_atd
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          disable-animations: true
           script: |
             set -u
             mkdir -p /tmp/smoke
