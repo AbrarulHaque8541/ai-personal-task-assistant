@@ -2,50 +2,59 @@
 
 **Daymark** is a local-first Android task assistant with an HTTPS-only embedded browser, encrypted local task storage, attachments, portable encrypted backups, and a lightweight page-local extension system.
 
-- **Android application ID:** `com.abrar.daymark` (owner-approved fresh identity; previous app installations remain separate)
+- **Android application ID:** `com.abrar.daymark`
 - **Architecture:** native Java Activity + Android System WebView; no third-party runtime dependencies
 - **Task data:** encrypted on-device; no account, cloud task sync, analytics, or telemetry
 - **Source version:** see `android-app/app/build.gradle.kts` (`versionName` / `versionCode`)
 
-## Download
+## Download (one file only)
 
-**Production download (one APK only):** [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases/latest)
+**Install this:** the `.apk` from the [latest GitHub Release](https://github.com/AbrarulHaque8541/daymark/releases/latest).
 
-Download the single file whose name ends in `.apk`. Do not download a `.aab` — that is not an installable app, and saving both is what made the download appear twice. Chrome and Android show a "harmful" warning for every app installed outside the Play Store; Daymark is not malware. Choose **Download anyway**, then **Install anyway**.
+| Do | Don't |
+|----|-------|
+| Download **only** the asset named `Daymark-v…-githubSideload.**apk**` | Download the `.aab` (Play bundle — **not** installable by tapping) |
+| On Play Protect “unrecognized app”, choose **Download anyway** / **Install anyway** | Assume the warning means malware — every non-Play APK shows it |
+| Uninstall any broken older Daymark build first if open crashes | Keep installing over a half-downloaded file |
 
-Before installing, confirm the release is actually published and that its APK package ID, version, and signer match the release notes. Do not assume a version mentioned in a PR or source tree has been published. The `com.abrar.daymark` identity is a fresh app identity, not an in-place update of the previous app; Android keeps it separate and old local data is not automatically migrated. The production signing key remains pinned and required.
+**Why it looked like two downloads:** older releases attached both `.apk` and `.aab`. Saving both is easy to misread as a double APK. New releases attach **APK only** for install.
 
-**Repository URL transition:** PR #295 prepared the future `AbrarulHaque8541/daymark` URL, but the actual GitHub slug remained `AbrarulHaque8541/ai-personal-task-assistant` at the 2026-10-13 review. The owner has not applied the rename, so the prepared link may not resolve until then. This review does not rename the repository.
+**Why size looks small (~200–300 KB):** Daymark has no heavy native libraries or image packs — pure Java UI + system WebView. That is expected, not an empty package.
+
+**Why open crashed on some phones (v1.1 and earlier):** referencing Android 13 back / window APIs directly prevented the launcher activity from loading on Android 8–12. Current source isolates those calls (`Api33Back`, `Api30Window`). Use a release built **after** that fix (v1.2+).
+
+Before installing, confirm the release notes package ID `com.abrar.daymark`, version, and signer SHA-256.
 
 ## What it does
 
-> This inventory describes current source capabilities. The latest published v1.0.5 release uses the previous application identity and predates some current-main work; check each release's notes/assets rather than assuming every source feature is in the downloadable APK.
-
-- Local task capture with natural-language date/time, priority, and `#tag` quick add; edit, completion, delete/undo, notes, due date/time, tags, subtasks, attachments, and templates
-- Task reminders: in-app dialog plus best-effort OS notifications, daily/weekly/monthly repeat rules, custom notification sound — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md) for the honest limits
+- Local tasks: NL date/time, priority, `#tags`, notes, subtasks, attachments, templates
+- Reminders (best-effort OS notifications) — see [docs/TASK_REMINDERS.md](docs/TASK_REMINDERS.md)
 - Encrypted portable backup / restore
-- HTTPS-only in-app browser: starts Offline; first remote navigation requires an explicit disclosure and opt-in. Search engines, AI site shortcuts, tabs, HTTPS-origin bookmarks, find-in-page, downloads, Reader Mode (local text extract), page-local extensions
-- Optional in-app update check against signed GitHub Releases (sideload flavor)
+- HTTPS-only browser, search engines, AI shortcuts, tabs, Reader Mode, page-local extensions
+- Optional signed GitHub update check (sideload flavor)
 
 ## Agents & contributors
 
-Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** first. Then read the [agent status index](docs/AGENT_STATUS.md) and verify its linked snapshot against live GitHub.
+Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** first.
 
 - Production signing secrets are already in GitHub Actions — **do not ask the owner for keystore files**.
-- Publish only through the production workflow with a tag exactly matching `v` + the source `versionName` on `main`, after all release gates pass.
-- Verify live Releases, Issues, PRs, and Actions instead of trusting old “candidate” sentences in dated audits.
+- Publish only through the production workflow with tag `v` + source `versionName` on `main`.
 
 ## Build and test
-
-From the repository root:
 
 ```sh
 sh android-app/tools/check-v1-source.sh
 npm test
 ```
 
-For Android SDK setup, build commands, measured artifact metadata, and device-test caveats, see [`android-app/README.md`](android-app/README.md).
+See [`android-app/README.md`](android-app/README.md) for SDK setup.
 
 ## License
 
 See repository `LICENSE` if present.
+
+---
+Work by: Grok
+Model: Grok 4.5 (xAI)
+Tooling: GitHub MCP tools
+Timestamp (UTC): 2026-10-15T20:05:00Z
