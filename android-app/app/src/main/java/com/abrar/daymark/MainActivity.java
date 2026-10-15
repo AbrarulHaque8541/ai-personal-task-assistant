@@ -314,8 +314,100 @@ public final class MainActivity extends Activity {
     private static final String BROWSER_LOG_TAG = "DaymarkBrowser";
     private static final long BROWSER_LOAD_WATCHDOG_MS = 20000L;
 
+    private static final String STARTUP_CRASH_LOG_NAME = "startup-crash-log.txt";
+    private static final int STARTUP_CRASH_REPORT_MAX_CHARS = 12000;
+
+    // v1.1: capture cold-launch crashes to a file so the owner can report them.
+    private void installStartupCrashCapture() {
+        final Thread.UncaughtExceptionHandler previousHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread crashedThread, Throwable throwable) {
+                try {
+                    StringBuilder crashReport = new StringBuilder();
+                    crashReport.append("app: ").append(BuildConfig.VERSION_NAME)
+                            .append(" (").append(BuildConfig.VERSION_CODE).append(")\n");
+                    crashReport.append("android: ").append(Build.VERSION.RELEASE)
+                            .append(" sdk ").append(Build.VERSION.SDK_INT).append("\n");
+                    crashReport.append("device: ").append(Build.MANUFACTURER)
+                            .append(" ").append(Build.MODEL).append("\n");
+                    crashReport.append("thread: ").append(crashedThread.getName()).append("\n");
+                    java.io.StringWriter stackWriter = new java.io.StringWriter();
+                    throwable.printStackTrace(new java.io.PrintWriter(stackWriter));
+                    crashReport.append(stackWriter.toString());
+                    File crashLogFile = new File(getNoBackupFilesDir(), STARTUP_CRASH_LOG_NAME);
+                    try (OutputStream crashLogOut = new FileOutputStream(crashLogFile, false)) {
+                        crashLogOut.write(crashReport.toString().getBytes("UTF-8"));
+                        crashLogOut.flush();
+                    }
+                } catch (Throwable reportCaptureFailure) {
+                    Log.e("DaymarkStartup", "failed to persist startup crash report", reportCaptureFailure);
+                } finally {
+                    if (previousHandler != null) {
+                        previousHandler.uncaughtException(crashedThread, throwable);
+                    }
+                }
+            }
+        });
+    }
+
+    // v1.1: if the previous launch crashed, surface the captured report to the user.
+    private void showPendingStartupCrashReportIfAny() {
+        File crashLogFile = new File(getNoBackupFilesDir(), STARTUP_CRASH_LOG_NAME);
+        if (!crashLogFile.exists()) {
+            return;
+        }
+        String reportText = "";
+        try {
+            ByteArrayOutputStream reportBuffer = new ByteArrayOutputStream();
+            try (InputStream reportIn = new FileInputStream(crashLogFile)) {
+                byte[] chunk = new byte[4096];
+                int read;
+                while ((read = reportIn.read(chunk)) > 0) {
+                    reportBuffer.write(chunk, 0, read);
+                }
+            }
+            reportText = new String(reportBuffer.toByteArray(), "UTF-8").trim();
+        } catch (IOException reportReadFailure) {
+            reportText = "Previous crash report could not be read: " + reportReadFailure;
+            Log.e("DaymarkStartup", "failed to read startup crash report", reportReadFailure);
+        }
+        if (!crashLogFile.delete()) {
+            Log.w("DaymarkStartup", "startup crash report file was not deleted");
+        }
+        if (reportText.isEmpty()) {
+            return;
+        }
+        if (reportText.length() > STARTUP_CRASH_REPORT_MAX_CHARS) {
+            reportText = reportText.substring(0, STARTUP_CRASH_REPORT_MAX_CHARS) + "\n... (report truncated)";
+        }
+        final String copyableReport = reportText;
+        new AlertDialog.Builder(this)
+                .setTitle("Previous launch crashed")
+                .setMessage(copyableReport)
+                .setPositiveButton("Copy report", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        try {
+                            ClipboardManager clipboard = (ClipboardManager)
+                                    getSystemService(Context.CLIPBOARD_SERVICE);
+                            if (clipboard != null) {
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Daymark crash report", copyableReport));
+                                Toast.makeText(getApplicationContext(), "Crash report copied", Toast.LENGTH_SHORT).show();
+                            }
+                        } catch (Throwable copyFailure) {
+                            Log.e("DaymarkStartup", "failed to copy crash report", copyFailure);
+                        }
+                    }
+                })
+                .setNegativeButton("Close", null)
+                .setCancelable(true)
+                .show();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        installStartupCrashCapture();
         SharedPreferences preferences = getApplicationContext()
                 .getSharedPreferences(PREFERENCES, MODE_PRIVATE);
         themeMode = Math.max(THEME_SYSTEM, Math.min(THEME_DARK, preferences.getInt(THEME_KEY, THEME_SYSTEM)));
@@ -327,6 +419,7 @@ public final class MainActivity extends Activity {
         highContrast = preferences.getBoolean(HIGH_CONTRAST_KEY, false);
         setTheme(themeResource(themeMode));
         super.onCreate(savedInstanceState);
+        showPendingStartupCrashReportIfAny();
 
         GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
         updaterRecoveryStore = new UpdaterRecoveryStore(getNoBackupFilesDir());
