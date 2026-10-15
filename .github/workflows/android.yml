@@ -95,26 +95,25 @@ jobs:
             launch_and_check() {
               local label="$1" apk="$2"
               echo "::group::Cold launch: $label"
-              if ! adb install -r "$apk"; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
+              if ! timeout 60s adb install -r "$apk"; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
               adb logcat -c
-              if ! adb shell am start -W -n com.abrar.daymark/com.abrar.daymark.MainActivity; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
+              if ! timeout 45s adb shell am start -W -n com.abrar.daymark/com.abrar.daymark.MainActivity; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
               sleep 8
               if [[ -z "$(adb shell pidof com.abrar.daymark | tr -d '\r')" ]]; then
                 echo "::error::$label process exited during cold launch"
                 adb logcat -d -v threadtime | tail -n 500
                 return 1
               fi
-              focus="$(adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' || true)"
+              focus="$(timeout 15s adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' || true)"
               if ! grep -q 'com.abrar.daymark' <<< "$focus"; then
                 echo "::error::$label MainActivity is not resumed: $focus"
                 adb logcat -d -v threadtime | tail -n 500
                 return 1
               fi
-              if ! adb shell uiautomator dump /sdcard/daymark-window.xml >/dev/null; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
-              if ! adb pull /sdcard/daymark-window.xml "$RUNNER_TEMP/daymark-window.xml" >/dev/null; then adb logcat -d -v threadtime | tail -n 500; return 1; fi
-              if grep -q 'Daymark could not finish opening' "$RUNNER_TEMP/daymark-window.xml"; then
+              startup_failure="$(adb logcat -d -v threadtime | grep -F 'DaymarkStartup: cold start failed' || true)"
+              if [[ -n "$startup_failure" ]]; then
                 echo "::error::$label displayed the startup-failure screen"
-                cat "$RUNNER_TEMP/daymark-window.xml"
+                echo "$startup_failure"
                 adb logcat -d -v threadtime | tail -n 500
                 return 1
               fi
