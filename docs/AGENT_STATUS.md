@@ -4,6 +4,7 @@
 
 ## Latest reviewed snapshot
 
+- [Daymark release-integrity / cold-start snapshot — 2026-10-15 2008 UTC](CURRENT_STATUS_2026-10-15_2008Z.md)
 - [Daymark status snapshot — 2026-10-13 1813 UTC](CURRENT_STATUS_2026-10-13_1813Z.md)
 
 - [Daymark status snapshot — 2026-10-13 1635 UTC](CURRENT_STATUS_2026-10-13_1635Z.md)

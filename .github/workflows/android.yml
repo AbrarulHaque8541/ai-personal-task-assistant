@@ -52,10 +52,18 @@ jobs:
           assemblePlayDebug
           lintGithubSideloadDebug
           lintPlayDebug
+          lintGithubSideloadRelease
           testGithubSideloadDebugUnitTest
+          testGithubSideloadReleaseUnitTest
           testPlayDebugUnitTest
           compileGithubSideloadDebugAndroidTestJavaWithJavac
           compilePlayDebugAndroidTestJavaWithJavac
+
+      - name: Print lint reports on PR build failure
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          find app/build -type f \( -name 'lint-results*.txt' -o -name 'lint-report*.txt' \) -print -exec cat {} \; || true
 
       - name: Cold-launch debug APK on Android 16 emulator
         if: github.event_name == 'pull_request'
