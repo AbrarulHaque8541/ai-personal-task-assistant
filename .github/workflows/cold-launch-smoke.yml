@@ -48,6 +48,7 @@ jobs:
           find "${{ github.workspace }}" -name "*.apk" -type f -not -path "*/.git/*" | tee /tmp/smoke-apk-list.txt
           APK_PATH="$(find "${{ github.workspace }}" -name "*.apk" -type f -not -path "*/.git/*" | head -n1)"
           echo "Found APK: $APK_PATH"
+          echo "$APK_PATH" > /tmp/smoke-apk-path.txt
           echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
 
       - name: Cold-launch on emulator (API 30 ATD)
@@ -65,7 +66,8 @@ jobs:
             set -u
             mkdir -p /tmp/smoke
             adb devices || true
-            APK="${APK_PATH:-}"
+            APK="$(cat /tmp/smoke-apk-path.txt 2>/dev/null || true)"
+            echo "raw path file: [$(cat /tmp/smoke-apk-path.txt 2>/dev/null || echo MISSING)]" | tee -a /tmp/smoke/apk.txt
             echo "APK=$APK" | tee /tmp/smoke/apk.txt
             if [ -z "$APK" ]; then echo "NO APK PATH RECEIVED" | tee -a /tmp/smoke/apk.txt; fi
             if [ -n "$APK" ]; then adb install -r "$APK" > /tmp/smoke/install.txt 2>&1 || true; cat /tmp/smoke/install.txt || true; fi
