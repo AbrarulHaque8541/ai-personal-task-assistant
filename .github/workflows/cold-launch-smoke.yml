@@ -52,14 +52,14 @@ jobs:
           echo "$APK_PATH" > /tmp/smoke-apk-path.txt
           echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
 
-      - name: Cold-launch on emulator (API 30 ATD)
+      - name: Cold-launch on emulator (API 34)
         uses: reactivecircus/android-emulator-runner@v2
         env:
           API_LEVEL: 34
         with:
-          api-level: 30
+          api-level: 34
           arch: x86_64
-          target: aosp_atd
+          target: default
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
@@ -72,7 +72,7 @@ jobs:
           set -uo pipefail
           mkdir -p smoke
           {
-            echo "# Cold-launch smoke result (API 30 ATD, githubSideloadDebug)"
+            echo "# Cold-launch smoke result (API 34, githubSideloadDebug)"
             echo
             echo "- Run: ${{ github.run_id }}"
             echo "- Head: ${{ github.sha }}"
@@ -117,10 +117,10 @@ jobs:
             else
               echo "## Verdict: LAUNCH SURVIVED (no FATAL EXCEPTION in logcat)"
             fi
-          } > smoke/result-api30.md
+          } > smoke/result-api34.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add smoke/result-api30.md
+          git add smoke/result-api34.md
           git commit -m "test: record cold-launch smoke result (API 34)" -m "Work by: Vibe | Model: GLM (glm-5-latest-short) | Tooling: GitHub MCP tools | Timestamp (UTC): ${{ env.TS }}" || true
           git push origin HEAD:test/cold-launch-smoke-v1
         env:
