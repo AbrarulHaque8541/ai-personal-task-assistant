@@ -189,12 +189,16 @@ jobs:
           {
             echo "## Daymark v$VERSION_NAME"
             echo
+            echo 'Download **only** this one file: `'"$APK_NAME"'`.'
+            echo
+            echo 'The release attaches a single APK. The Play App Bundle (.aab) is kept as a build artifact and is not a download, so tapping the APK no longer saves a second package.'
+            echo
+            echo 'Chrome and Android show a "harmful" warning for every app installed outside the Play Store. Daymark is not malware. Choose **Download anyway**, then **Install anyway**.'
+            echo
             echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'.'
             echo
             echo "- APK: $APK_NAME"
             echo "- APK SHA-256: $APK_SHA"
-            echo "- AAB: $AAB_NAME"
-            echo "- AAB SHA-256: $AAB_SHA"
             echo
             echo "<!-- daymark-updater-v1"
             printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
@@ -203,8 +207,9 @@ jobs:
           release_json="$RUNNER_TEMP/release.json"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then
             jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == false and .prerelease == false' "$release_json" >/dev/null
-            # Verify existing assets and upload only missing assets. Never replace a published binary.
-            for pair in "$APK_NAME:$APK_SHA:$apk" "$AAB_NAME:$AAB_SHA:$aab"; do
+            # Only the APK is a user download. The AAB stays in the workflow artifact
+            # so the release page cannot offer a second package next to the APK.
+            for pair in "$APK_NAME:$APK_SHA:$apk"; do
               name="${pair%%:*}"
               remainder="${pair#*:}"
               expected="${remainder%%:*}"
@@ -232,7 +237,7 @@ jobs:
             grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
           else
             grep -Fq 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
-            gh release create "$TAG" "$apk" "$aab" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest --verify-tag
+            gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest --verify-tag
             # Read back and validate the newly published release body too.
             gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
             actual_body="$(jq -r '.body // ""' "$release_json")"

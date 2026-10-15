@@ -17,7 +17,6 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Color;
-import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -38,7 +37,6 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.widget.ArrayAdapter;
@@ -60,8 +58,6 @@ import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.URLUtil;
 import android.annotation.SuppressLint;
-import android.window.OnBackInvokedCallback;
-import android.window.OnBackInvokedDispatcher;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -147,7 +143,8 @@ public final class MainActivity extends Activity {
     private final List<View> powerOnlyViews = new ArrayList<>();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ActivityCallbackGate activityCallbackGate = new ActivityCallbackGate();
-    private OnBackInvokedCallback daymarkBackCallback;
+    // API 33 callback lives in Api33Back. A framework type here crashes Android 8–12 at class load.
+    private Object daymarkBackHandle;
     private final TaskListRenderGate taskListRenderGate = TaskListRenderGate.create();
     private Runnable searchDebounceRunnable;
 
@@ -419,55 +416,74 @@ public final class MainActivity extends Activity {
         highContrast = preferences.getBoolean(HIGH_CONTRAST_KEY, false);
         setTheme(themeResource(themeMode));
         super.onCreate(savedInstanceState);
-        showPendingStartupCrashReportIfAny();
-
-        GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
-        updaterRecoveryStore = new UpdaterRecoveryStore(getNoBackupFilesDir());
-        restorePendingSaveTransaction(savedInstanceState);
-        palette = Palette.from(this, themeMode, highContrast);
-        storageExecutor = Executors.newSingleThreadExecutor();
-        updaterExecutor = Executors.newSingleThreadExecutor();
-        taskStore = new EncryptedTaskStore(this);
-        attachmentStore = new AndroidAttachmentStore(getApplicationContext());
-        extensionRuntime = ExtensionRuntime.create(this);
-        portableBackupManager = new PortableBackupManager(getApplicationContext());
-        if (savedInstanceState != null) {
-            pendingAttachmentTaskId = savedInstanceState.getString(STATE_PENDING_ATTACHMENT_TASK);
-            String savedDraft = savedInstanceState.getString(STATE_TASK_DRAFT);
-            if (savedDraft != null) {
-                taskDraft = savedDraft;
-            }
-            String savedPortableUri = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_URI);
-            String savedPortableToken = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_TOKEN);
-            if (savedPortableUri != null || savedPortableToken != null) {
-                try {
-                    PortableImportGrantRecovery.Selection restored = portableBackupManager
-                            .restorePendingPortableImportSelection(savedPortableUri, savedPortableToken);
-                    if (restored != null) {
-                        pendingPortableImportUri = Uri.parse(restored.uri);
-                        pendingPortableImportOperationToken = restored.operationToken;
-                    } else {
+        try {
+            showPendingStartupCrashReportIfAny();
+            GitHubApkDownloader.cleanupPartialDownloads(getApplicationContext());
+            updaterRecoveryStore = new UpdaterRecoveryStore(getNoBackupFilesDir());
+            restorePendingSaveTransaction(savedInstanceState);
+            palette = Palette.from(this, themeMode, highContrast);
+            storageExecutor = Executors.newSingleThreadExecutor();
+            updaterExecutor = Executors.newSingleThreadExecutor();
+            taskStore = new EncryptedTaskStore(this);
+            attachmentStore = new AndroidAttachmentStore(getApplicationContext());
+            extensionRuntime = ExtensionRuntime.create(this);
+            portableBackupManager = new PortableBackupManager(getApplicationContext());
+            if (savedInstanceState != null) {
+                pendingAttachmentTaskId = savedInstanceState.getString(STATE_PENDING_ATTACHMENT_TASK);
+                String savedDraft = savedInstanceState.getString(STATE_TASK_DRAFT);
+                if (savedDraft != null) {
+                    taskDraft = savedDraft;
+                }
+                String savedPortableUri = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_URI);
+                String savedPortableToken = savedInstanceState.getString(STATE_PENDING_PORTABLE_IMPORT_TOKEN);
+                if (savedPortableUri != null || savedPortableToken != null) {
+                    try {
+                        PortableImportGrantRecovery.Selection restored = portableBackupManager
+                                .restorePendingPortableImportSelection(savedPortableUri, savedPortableToken);
+                        if (restored != null) {
+                            pendingPortableImportUri = Uri.parse(restored.uri);
+                            pendingPortableImportOperationToken = restored.operationToken;
+                        } else {
+                            pendingPortableImportNeedsRepick = true;
+                        }
+                    } catch (IOException invalidSavedSelection) {
                         pendingPortableImportNeedsRepick = true;
                     }
-                } catch (IOException invalidSavedSelection) {
-                    pendingPortableImportNeedsRepick = true;
                 }
+                webMode = WebModeState.restore(savedInstanceState.getBoolean(STATE_WEB_MODE, false));
             }
-            webMode = WebModeState.restore(savedInstanceState.getBoolean(STATE_WEB_MODE, false));
+            browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
+            searchEngine = BrowserAddress.SearchEngine.fromName(
+                    browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
+            browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
+            browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
+            registerDaymarkBackCallback();
+            browserImagesBlocked = readBrowserImagesBlockedPreference();
+            browserDesktopDefault = readBrowserDesktopDefaultPreference();
+            sanitizeStoredBrowserHistory();
+            buildInterface();
+            loadEncryptedTasks();
+            handleShareInIntent(getIntent());
+            handleShortcutIntent(getIntent());
+        } catch (Throwable startupFailure) {
+            Log.e("DaymarkStartup", "cold start failed", startupFailure);
+            showStartupFailureScreen(startupFailure);
         }
-        browserPreferences = getSharedPreferences(BROWSER_PREFERENCES, MODE_PRIVATE);
-        searchEngine = BrowserAddress.SearchEngine.fromName(
-                browserPreferences.getString(SEARCH_ENGINE_KEY, BrowserAddress.SearchEngine.DUCKDUCKGO.name()));
-        browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());
-        browserSettingsPolicy = new BrowserSettingsPolicy(readSafeBrowsingPreference());
-        registerDaymarkBackCallback();
-        browserImagesBlocked = readBrowserImagesBlockedPreference();
-        browserDesktopDefault = readBrowserDesktopDefaultPreference();
-        sanitizeStoredBrowserHistory();
-        buildInterface();
-        loadEncryptedTasks();
-        handleShareInIntent(getIntent());
-        handleShortcutIntent(getIntent());
+    }
+
+    /** Keeps the process open with the real error instead of an instant close. */
+    private void showStartupFailureScreen(Throwable startupFailure) {
+        java.io.StringWriter stackWriter = new java.io.StringWriter();
+        startupFailure.printStackTrace(new java.io.PrintWriter(stackWriter));
+        String report = "Daymark could not finish opening.\n\n" + stackWriter;
+        ScrollView scroll = new ScrollView(this);
+        TextView message = new TextView(this);
+        int pad = Math.round(18 * getResources().getDisplayMetrics().density);
+        message.setPadding(pad, pad, pad, pad);
+        message.setText(report);
+        message.setTextIsSelectable(true);
+        scroll.addView(message);
+        setContentView(scroll);
     }
 
     @Override
@@ -650,16 +666,14 @@ public final class MainActivity extends Activity {
     }
 
     private void registerDaymarkBackCallback() {
-        if (Build.VERSION.SDK_INT < 33 || daymarkBackCallback != null) return;
-        daymarkBackCallback = this::handleDaymarkBackNavigation;
-        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
-                OnBackInvokedDispatcher.PRIORITY_DEFAULT, daymarkBackCallback);
+        if (Build.VERSION.SDK_INT < 33 || daymarkBackHandle != null) return;
+        daymarkBackHandle = Api33Back.register(this, this::handleDaymarkBackNavigation);
     }
 
     private void unregisterDaymarkBackCallback() {
-        if (Build.VERSION.SDK_INT < 33 || daymarkBackCallback == null) return;
-        getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(daymarkBackCallback);
-        daymarkBackCallback = null;
+        if (Build.VERSION.SDK_INT < 33 || daymarkBackHandle == null) return;
+        Api33Back.unregister(this, daymarkBackHandle);
+        daymarkBackHandle = null;
     }
 
     private void handleDaymarkBackNavigation() {
@@ -4109,21 +4123,16 @@ public final class MainActivity extends Activity {
         window.setStatusBarColor(palette.background);
         window.setNavigationBarColor(palette.background);
         if (Build.VERSION.SDK_INT >= 29) {
-            window.setStatusBarContrastEnforced(false);
-            window.setNavigationBarContrastEnforced(false);
+            Api30Window.relaxBarContrast(window);
         }
         int flags = palette.dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         if (Build.VERSION.SDK_INT >= 26 && !palette.dark) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         window.getDecorView().setSystemUiVisibility(flags);
-        if (Build.VERSION.SDK_INT >= 30) window.setDecorFitsSystemWindows(false);
+        if (Build.VERSION.SDK_INT >= 30) Api30Window.setDecorFits(window, WindowInsetsPolicy.DECOR_FITS_SYSTEM_WINDOWS);
 
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
-                Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                int imeBottom = WindowInsetsPolicy.CONSUME_IME_INSETS
-                        ? insets.getInsets(WindowInsets.Type.ime()).bottom : 0;
-                root.setPadding(dp(8) + bars.left, bars.top, dp(8) + bars.right,
-                        WindowInsetsPolicy.bottomPadding(bars.bottom, imeBottom));
+                Api30Window.applyInsets(root, insets, dp(8));
             } else {
                 // API 26-29: the decor view still fits the system windows by
                 // default, so content is already positioned below the status bar.

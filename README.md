@@ -9,7 +9,9 @@
 
 ## Download
 
-**Production downloads:** [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases)
+**Production download (one APK only):** [GitHub Releases](https://github.com/AbrarulHaque8541/daymark/releases/latest)
+
+Download the single file whose name ends in `.apk`. Do not download a `.aab` — that is not an installable app, and saving both is what made the download appear twice. Chrome and Android show a "harmful" warning for every app installed outside the Play Store; Daymark is not malware. Choose **Download anyway**, then **Install anyway**.
 
 Before installing, confirm the release is actually published and that its APK package ID, version, and signer match the release notes. Do not assume a version mentioned in a PR or source tree has been published. The `com.abrar.daymark` identity is a fresh app identity, not an in-place update of the previous app; Android keeps it separate and old local data is not automatically migrated. The production signing key remains pinned and required.
 
