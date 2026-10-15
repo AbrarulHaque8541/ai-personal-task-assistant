@@ -45,6 +45,7 @@ jobs:
       - name: Locate APK
         working-directory: ${{ github.workspace }}
         run: |
+          mkdir -p /tmp/smoke
           find "${{ github.workspace }}" -name "*.apk" -type f -not -path "*/.git/*" | tee /tmp/smoke-apk-list.txt
           APK_PATH="$(find "${{ github.workspace }}" -name "*.apk" -type f -not -path "*/.git/*" | head -n1)"
           echo "Found APK: $APK_PATH"
