@@ -1,0 +1,103 @@
+name: Diagnose PR 312 head check failures (one-shot)
+
+# One-shot diagnostic: runs each host/source check separately against the
+# exact PR #312 merge head, captures full output with markers, and pushes the
+# log to the diag/pr312-head-checks branch so it can be inspected outside the
+# (authenticated) Actions log UI.
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: oneshot-diagnose-pr312-head
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out the exact PR 312 merge head
+        uses: actions/checkout@v5
+        with:
+          ref: 25af26681310375e3ab46370326835d1a4dab884
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
+      - name: Run each check with markers
+        shell: bash
+        run: |
+          set +e
+          {
+            echo "### node $(node --version)"
+            echo "### CHECK-START npm-test"
+            npm test
+            echo "### CHECK-EXIT npm-test:$?"
+            cd android-app
+            echo "### CHECK-START run-core-tests"
+            sh ./tools/run-core-tests.sh
+            echo "### CHECK-EXIT run-core-tests:$?"
+            echo "### CHECK-START run-updater-picker-routing-tests"
+            sh ./tools/run-updater-picker-routing-tests.sh
+            echo "### CHECK-EXIT run-updater-picker-routing-tests:$?"
+            echo "### CHECK-START run-attachment-tests"
+            sh ./tools/run-attachment-tests.sh
+            echo "### CHECK-EXIT run-attachment-tests:$?"
+            echo "### CHECK-START run-storage-recovery-tests"
+            sh ./tools/run-storage-recovery-tests.sh
+            echo "### CHECK-EXIT run-storage-recovery-tests:$?"
+            echo "### CHECK-START run-portable-backup-tests"
+            sh ./tools/run-portable-backup-tests.sh
+            echo "### CHECK-EXIT run-portable-backup-tests:$?"
+            echo "### CHECK-START check-v1-source"
+            sh ./tools/check-v1-source.sh
+            echo "### CHECK-EXIT check-v1-source:$?"
+            echo "### CHECK-START check-accessibility-contrast"
+            python3 ./tools/check-accessibility-contrast.py
+            echo "### CHECK-EXIT check-accessibility-contrast:$?"
+            echo "### CHECK-START check-attachment-source"
+            python3 ./tools/check-attachment-source.py "$PWD"
+            echo "### CHECK-EXIT check-attachment-source:$?"
+            echo "### CHECK-START check-backup-rules"
+            python3 ./tools/check-backup-rules.py
+            echo "### CHECK-EXIT check-backup-rules:$?"
+            echo "### CHECK-START check-portable-archive-bounds"
+            python3 ./tools/check-portable-archive-bounds.py
+            echo "### CHECK-EXIT check-portable-archive-bounds:$?"
+            echo "### CHECK-START check-schema-v1-fixture"
+            python3 ./tools/check-schema-v1-fixture.py "$PWD"
+            echo "### CHECK-EXIT check-schema-v1-fixture:$?"
+            echo "### CHECK-START check-storage-failure-ui"
+            python3 ./tools/check-storage-failure-ui.py
+            echo "### CHECK-EXIT check-storage-failure-ui:$?"
+            echo "### CHECK-START check-task-template-source"
+            python3 ./tools/check-task-template-source.py "$PWD"
+            echo "### CHECK-EXIT check-task-template-source:$?"
+            echo "### ALL-DONE"
+          } > /tmp/diag.log 2>&1
+
+      - name: Publish diagnostics branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "daymark-ci-bot"
+          git config user.email "actions@github.com"
+          git checkout -B diag/pr312-head-checks
+          cp /tmp/diag.log ./diag-pr312-checks.log
+          git add ./diag-pr312-checks.log
+          git commit -m "diag: capture per-check results for PR 312 merge head 25af26681310375e3ab46370326835d1a4dab884"
+          git push --force origin HEAD:diag/pr312-head-checks
