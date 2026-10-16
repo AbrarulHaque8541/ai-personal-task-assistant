@@ -217,6 +217,9 @@ public final class MainActivity extends Activity {
     private Runnable undoDismissal;
     private Palette palette;
 
+    private int[] scrollThemeStops;
+    private int appliedScrollThemeStep = Integer.MIN_VALUE;
+
     private LinearLayout root;
     private View appTopBar;
     private View sharedComposer;
@@ -1057,6 +1060,7 @@ public final class MainActivity extends Activity {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(palette.background);
+        scrollThemeStops = highContrast ? null : ScrollColorBlend.stopsFor(palette.dark);
         root.setClipToPadding(false);
 
         appTopBar = buildTopBar();
@@ -1068,8 +1072,10 @@ public final class MainActivity extends Activity {
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(false);
         scrollView.setClipToPadding(false);
+        scrollView.setBackgroundColor(palette.background);
         taskScrollView = scrollView;
         scrollView.setOnScrollChangeListener((View view, int x, int y, int oldX, int oldY) -> {
+            updateScrollTheme(y);
             if (webMode) return;
             int delta = y - oldY;
             if (delta > dp(3)) {
@@ -4340,6 +4346,36 @@ public final class MainActivity extends Activity {
         renderSuggestions(today);
     }
 
+    /**
+     * Blends a restrained background palette with scroll position. The effect is
+     * deterministic and reversible; it does not run a time-based animation.
+     * High-contrast and browser modes retain the exact base theme colour.
+     */
+    private void updateScrollTheme(int scrollY) {
+        if (root == null || taskScrollView == null || palette == null) return;
+
+        final int step;
+        final int color;
+        if (webMode || highContrast || scrollThemeStops == null) {
+            step = -1;
+            color = palette.background;
+        } else {
+            View content = taskScrollView.getChildAt(0);
+            int contentHeight = content == null ? 0 : content.getHeight();
+            int scrollRange = Math.max(0, contentHeight - taskScrollView.getHeight());
+            float progress = ScrollColorBlend.progress(scrollY, scrollRange);
+            step = Math.round(progress * ScrollColorBlend.MAX_STEPS);
+            color = ScrollColorBlend.colorAt(
+                    scrollThemeStops, step / (float) ScrollColorBlend.MAX_STEPS);
+        }
+
+        // At most 25 updates across a complete scroll, not a drawable allocation per frame.
+        if (appliedScrollThemeStep == step) return;
+        appliedScrollThemeStep = step;
+        root.setBackgroundColor(color);
+        taskScrollView.setBackgroundColor(color);
+    }
+
     private void setTaskChromeHidden(boolean hidden) {
         if (webMode || appTopBar == null || sharedComposer == null) return;
         if (taskChromeHidden == hidden) return;
@@ -4400,6 +4436,7 @@ public final class MainActivity extends Activity {
             else if (pendingDeletedTask != null) undoBar.setVisibility(View.VISIBLE);
         }
         syncBrowserButtons();
+        updateScrollTheme(taskScrollView == null ? 0 : taskScrollView.getScrollY());
     }
 
     private void setWebMode(boolean enabled) {
