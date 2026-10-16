@@ -90,6 +90,12 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon assembleGithubSideloadRelease bundleGithubSideloadRelease lintGithubSideloadRelease testGithubSideloadReleaseUnitTest
 
+      - name: Print complete release lint report on build failure
+        if: failure()
+        shell: bash
+        run: |
+          find app/build -type f \( -name 'lint-results*.txt' -o -name 'lint-report*.txt' \) -print -exec cat {} \; || true
+
       - name: Verify package, version, and signing identity
         id: verify
         shell: bash
@@ -106,6 +112,19 @@ jobs:
           aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$apksigner" verify --verbose "$apk"
+          apk_bytes="$(stat -c%s "$apk")"
+          [[ "$apk_bytes" -ge 100000 && "$apk_bytes" -le 100000000 ]] || {
+            echo "::error::APK size outside expected bounds: $apk_bytes bytes"; exit 1;
+          }
+          unzip -tqq "$apk"
+          apk_entries="$(unzip -Z1 "$apk")"
+          grep -Fxq "AndroidManifest.xml" <<< "$apk_entries"
+          grep -Fxq "resources.arsc" <<< "$apk_entries"
+          grep -Fxq "classes.dex" <<< "$apk_entries"
+          dex_count="$(grep -Ec '^classes([0-9]+)?\.dex$' <<< "$apk_entries")"
+          [[ "$dex_count" -ge 1 ]] || { echo "::error::APK has no DEX bytecode"; exit 1; }
+          dex_bytes="$(unzip -p "$apk" classes.dex | wc -c)"
+          [[ "$dex_bytes" -ge 50000 ]] || { echo "::error::APK DEX is unexpectedly small: $dex_bytes bytes"; exit 1; }
           badging="$( "$aapt" dump badging "$apk" )"
           package_line="$(grep '^package: ' <<< "$badging")"
           package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
@@ -123,11 +142,14 @@ jobs:
           echo "Expected Name:    $expected_name"
           echo "Expected Code:    $expected_code"
           [[ "$package_id" == "com.abrar.daymark" ]]
+          grep -q "^launchable-activity: name='com.abrar.daymark.MainActivity'" <<< "$badging" || {
+            echo "::error::APK does not expose the expected launcher Activity"; exit 1;
+          }
           [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
           [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
-          [[ "$target_sdk_version" == "35" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
+          [[ "$target_sdk_version" == "36" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
           apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
           actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
           if [[ -z "$actual_signer" ]]; then
@@ -154,6 +176,32 @@ jobs:
           echo "aab_name=$aab_name" >> "$GITHUB_OUTPUT"
           echo "apk_sha=$(sha256sum "release-artifacts/$apk_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "aab_sha=$(sha256sum "release-artifacts/$aab_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cold-launch signed production APK on Android 10 (API 29) emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -eu
+            bash android-app/tools/cold-launch-apk.sh "signed production candidate on API 29" "android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+
+      - name: Cold-launch signed production APK on Android 16 (API 36) emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -eu
+            bash android-app/tools/cold-launch-apk.sh "signed production candidate on API 36" "android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
 
       - name: Upload verified release payload
         uses: actions/upload-artifact@v4
@@ -193,7 +241,7 @@ jobs:
             echo
             echo 'The release attaches a single APK. The Play App Bundle (.aab) is kept as a build artifact and is not a download, so tapping the APK no longer saves a second package.'
             echo
-            echo 'Chrome and Android show a "harmful" warning for every app installed outside the Play Store. Daymark is not malware. Choose **Download anyway**, then **Install anyway**.'
+            echo 'Safety: Play Protect may label a sideloaded APK as unrecognized. That alone is not a malware verdict, but a warning that explicitly says the app is harmful must not be bypassed. Stop installation, verify the APK SHA-256, package ID, version, and signer against this release, and do not install if the harmful warning persists.'
             echo
             echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'.'
             echo
