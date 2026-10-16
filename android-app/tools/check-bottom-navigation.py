@@ -46,7 +46,7 @@ check("if (y <= dp(24) || delta < -dp(10))" in ACTIVITY, "Header restores at top
 check("y > dp(120) && delta > dp(8)" in ACTIVITY, "Header collapses only after meaningful downward scroll")
 check("mainHandler.postDelayed(taskChromeRestoreRunnable, 700L)" not in ACTIVITY, "Header must not auto-restore and flicker during a pause")
 check('Button moreButton = plainButton("More")' not in ACTIVITY, "No duplicate More button remains in header")
-check('compactButton("ⓘ", 18' not in ACTIVITY, "Browser privacy icon uses a text view, not a button factory")
+check('browserPrivacyButton = text("ⓘ", 18' in ACTIVITY, "Browser privacy disclosure must be a compact info icon")
 check('Button chooseProvider = compactButton("Choose search provider"' not in ACTIVITY, "Browser home must not show redundant provider CTA")
 check("Arrays.asList(browserHomeButton, browserTabButton, browserOverflowButton)" in ACTIVITY, "Browser toolbar should keep only essential compact controls")
 check('"Save page as task", "Back", "Forward", "Reload"' in ACTIVITY, "Navigation controls must remain reachable in overflow")
