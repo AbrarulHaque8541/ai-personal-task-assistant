@@ -4123,7 +4123,7 @@ public final class MainActivity extends Activity {
         window.setStatusBarColor(palette.background);
         window.setNavigationBarColor(palette.background);
         if (Build.VERSION.SDK_INT >= 29) {
-            Api30Window.relaxBarContrast(window);
+            Api29Window.relaxBarContrast(window);
         }
         int flags = palette.dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         if (Build.VERSION.SDK_INT >= 26 && !palette.dark) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
