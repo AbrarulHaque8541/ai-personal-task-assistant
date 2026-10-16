@@ -109,7 +109,7 @@ jobs:
           [[ "$application_id" == "com.abrar.daymark" ]]
           [[ "$version_name" == "$EXPECTED_VERSION" ]]
           [[ "$min_sdk" == "26" ]]
-          [[ "$target_sdk" == "35" ]]
+          [[ "$target_sdk" == "36" ]]
 
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           if [[ -z "$sdk_root" ]]; then

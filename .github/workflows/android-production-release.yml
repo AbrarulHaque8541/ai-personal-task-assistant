@@ -13,10 +13,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-verify-publish:
+  build-verify-draft:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: write
     defaults:
@@ -90,6 +90,12 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon assembleGithubSideloadRelease bundleGithubSideloadRelease lintGithubSideloadRelease testGithubSideloadReleaseUnitTest
 
+      - name: Print complete release lint report on build failure
+        if: failure()
+        shell: bash
+        run: |
+          find app/build -type f \( -name 'lint-results*.txt' -o -name 'lint-report*.txt' \) -print -exec cat {} \; || true
+
       - name: Verify package, version, and signing identity
         id: verify
         shell: bash
@@ -106,6 +112,19 @@ jobs:
           aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           "$apksigner" verify --verbose "$apk"
+          apk_bytes="$(stat -c%s "$apk")"
+          [[ "$apk_bytes" -ge 100000 && "$apk_bytes" -le 100000000 ]] || {
+            echo "::error::APK size outside expected bounds: $apk_bytes bytes"; exit 1;
+          }
+          unzip -tqq "$apk"
+          apk_entries="$(unzip -Z1 "$apk")"
+          grep -Fxq "AndroidManifest.xml" <<< "$apk_entries"
+          grep -Fxq "resources.arsc" <<< "$apk_entries"
+          grep -Fxq "classes.dex" <<< "$apk_entries"
+          dex_count="$(grep -Ec '^classes([0-9]+)?\.dex$' <<< "$apk_entries")"
+          [[ "$dex_count" -ge 1 ]] || { echo "::error::APK has no DEX bytecode"; exit 1; }
+          dex_bytes="$(unzip -p "$apk" classes.dex | wc -c)"
+          [[ "$dex_bytes" -ge 50000 ]] || { echo "::error::APK DEX is unexpectedly small: $dex_bytes bytes"; exit 1; }
           badging="$( "$aapt" dump badging "$apk" )"
           package_line="$(grep '^package: ' <<< "$badging")"
           package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
@@ -123,11 +142,14 @@ jobs:
           echo "Expected Name:    $expected_name"
           echo "Expected Code:    $expected_code"
           [[ "$package_id" == "com.abrar.daymark" ]]
+          grep -q "^launchable-activity: name='com.abrar.daymark.MainActivity'" <<< "$badging" || {
+            echo "::error::APK does not expose the expected launcher Activity"; exit 1;
+          }
           [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
           [[ "$GITHUB_REF_NAME" == "v${version_name}" ]]
           [[ "${#expected_signer}" -eq 64 ]]
           [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
-          [[ "$target_sdk_version" == "35" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
+          [[ "$target_sdk_version" == "36" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
           apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
           actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
           if [[ -z "$actual_signer" ]]; then
@@ -155,6 +177,119 @@ jobs:
           echo "apk_sha=$(sha256sum "release-artifacts/$apk_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "aab_sha=$(sha256sum "release-artifacts/$aab_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
+      - name: Enable KVM acceleration for emulator cold-launch gates
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # ubuntu-24.04 runners do not ship libpulse.so.0, which qemu-system-x86_64 (bundled with the Android emulator) links against.
+          sudo apt-get install -y libpulse0 || { sudo apt-get update && sudo apt-get install -y libpulse0; }
+
+      - name: Provision Android 10 (API 29) emulator image
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
+          export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_USER_HOME/avd}"
+          cd "${{ github.workspace }}"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          test -x "$sdkmanager" || { echo "::error::sdkmanager not found at $sdkmanager"; exit 1; }
+          # 'yes' into sdkmanager --licenses receives SIGPIPE under pipefail; a nonzero exit is expected and non-fatal.
+          if ! yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null; then
+          echo "::warning::sdkmanager --licenses exited nonzero (expected: 'yes' gets SIGPIPE under pipefail); continuing, install step surfaces real license problems"
+          fi
+          "$sdkmanager" --install "system-images;android-29;google_apis;x86_64" "emulator" "platform-tools" >/dev/null
+          echo "no" | "$avdmanager" create avd -n ci29 -k "system-images;android-29;google_apis;x86_64" -d pixel_2 --force >/dev/null
+          # avdmanager writes under ANDROID_AVD_HOME; the emulator only discovers AVDs there when the variable is exported.
+          ls -l "$ANDROID_AVD_HOME"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+
+      - name: Cold-launch signed production APK on Android 10 (API 29) emulator
+        id: api29
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
+          export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_USER_HOME/avd}"
+          cd "${{ github.workspace }}"
+          adb="$ANDROID_HOME/platform-tools/adb"
+          test -x "$adb" || { echo "::error::API-29 gate: adb not found: $adb"; exit 1; }
+          "$ANDROID_HOME/emulator/emulator" -avd ci29 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics > "$RUNNER_TEMP/emulator29.log" 2>&1 &
+          emu_pid=$!
+          timeout 300s "$adb" wait-for-device || { tail -n 80 "$RUNNER_TEMP/emulator29.log"; "$adb" devices; echo "::error::API-29 gate: adb wait-for-device timed out or failed"; exit 1; }
+          boot=""
+          for i in $(seq 1 200); do
+            boot="$(\"$adb\" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$boot" = "1" ]; then echo "BOOT COMPLETED (poll $i)"; break; fi
+            if ! kill -0 "$emu_pid" 2>/dev/null; then tail -n 80 "$RUNNER_TEMP/emulator29.log"; echo "::error::API-29 gate: emulator process exited during boot"; exit 1; fi
+            sleep 5
+          done
+          [ "$boot" = "1" ] || { tail -n 80 "$RUNNER_TEMP/emulator29.log"; "$adb" devices; echo "::error::API-29 gate: emulator failed to boot in 1000s"; exit 1; }
+          "$adb" devices
+          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "signed production candidate on API 29" "android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+          kill "$emu_pid" 2>/dev/null || true
+          echo "API29 PRODUCTION GATE: ALL PASS"
+
+      - name: Provision Android 16 (API 36) emulator image
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
+          export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_USER_HOME/avd}"
+          cd "${{ github.workspace }}"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          test -x "$sdkmanager" || { echo "::error::sdkmanager not found at $sdkmanager"; exit 1; }
+          # 'yes' into sdkmanager --licenses receives SIGPIPE under pipefail; a nonzero exit is expected and non-fatal.
+          if ! yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null; then
+          echo "::warning::sdkmanager --licenses exited nonzero (expected: 'yes' gets SIGPIPE under pipefail); continuing, install step surfaces real license problems"
+          fi
+          "$sdkmanager" --install "platforms;android-36" "system-images;android-36;google_apis;x86_64" "emulator" "platform-tools" >/dev/null
+          echo "no" | "$avdmanager" create avd -n ci36 -k "system-images;android-36;google_apis;x86_64" -d pixel_2 --force >/dev/null
+          # avdmanager writes under ANDROID_AVD_HOME; the emulator only discovers AVDs there when the variable is exported.
+          ls -l "$ANDROID_AVD_HOME"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+
+      - name: Cold-launch signed production APK on Android 16 (API 36) emulator
+        id: api36
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$HOME/.android}"
+          export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_USER_HOME/avd}"
+          cd "${{ github.workspace }}"
+          adb="$ANDROID_HOME/platform-tools/adb"
+          test -x "$adb" || { echo "::error::API-36 gate: adb not found: $adb"; exit 1; }
+          "$ANDROID_HOME/emulator/emulator" -avd ci36 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics > "$RUNNER_TEMP/emulator36.log" 2>&1 &
+          emu_pid=$!
+          timeout 300s "$adb" wait-for-device || { tail -n 80 "$RUNNER_TEMP/emulator36.log"; "$adb" devices; echo "::error::API-36 gate: adb wait-for-device timed out or failed"; exit 1; }
+          boot=""
+          for i in $(seq 1 200); do
+            boot="$(\"$adb\" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$boot" = "1" ]; then echo "BOOT COMPLETED (poll $i)"; break; fi
+            if ! kill -0 "$emu_pid" 2>/dev/null; then tail -n 80 "$RUNNER_TEMP/emulator36.log"; echo "::error::API-36 gate: emulator process exited during boot"; exit 1; fi
+            sleep 5
+          done
+          [ "$boot" = "1" ] || { tail -n 80 "$RUNNER_TEMP/emulator36.log"; "$adb" devices; echo "::error::API-36 gate: emulator failed to boot in 1000s"; exit 1; }
+          "$adb" devices
+          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "signed production candidate on API 36" "android-app/app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+          kill "$emu_pid" 2>/dev/null || true
+          echo "API36 PRODUCTION GATE: ALL PASS"
+
       - name: Upload verified release payload
         uses: actions/upload-artifact@v4
         with:
@@ -167,7 +302,7 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      - name: Publish verified production release without clobbering
+      - name: Create or verify draft release for owner-device acceptance
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -184,16 +319,16 @@ jobs:
         run: |
           set -euo pipefail
           apk="release-artifacts/$APK_NAME"
-          aab="release-artifacts/$AAB_NAME"
           notes="$RUNNER_TEMP/release-notes.md"
+          release_json="$RUNNER_TEMP/release.json"
           {
             echo "## Daymark v$VERSION_NAME"
             echo
             echo 'Download **only** this one file: `'"$APK_NAME"'`.'
             echo
-            echo 'The release attaches a single APK. The Play App Bundle (.aab) is kept as a build artifact and is not a download, so tapping the APK no longer saves a second package.'
+            echo 'The release attaches a single APK. The Play App Bundle (.aab) is retained as a build artifact and is not a download.'
             echo
-            echo 'Chrome and Android show a "harmful" warning for every app installed outside the Play Store. Daymark is not malware. Choose **Download anyway**, then **Install anyway**.'
+            echo 'Safety: Play Protect may label a sideloaded APK as unrecognized. That alone is not a malware verdict, but a warning that explicitly says the app is harmful must not be bypassed. Stop installation, verify the APK SHA-256, package ID, version, and signer against this release, and do not install if the harmful warning persists.'
             echo
             echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'.'
             echo
@@ -204,50 +339,48 @@ jobs:
             printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
             echo "-->"
           } > "$notes"
-          release_json="$RUNNER_TEMP/release.json"
-          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then
-            jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == false and .prerelease == false' "$release_json" >/dev/null
-            # Only the APK is a user download. The AAB stays in the workflow artifact
-            # so the release page cannot offer a second package next to the APK.
-            for pair in "$APK_NAME:$APK_SHA:$apk"; do
-              name="${pair%%:*}"
-              remainder="${pair#*:}"
-              expected="${remainder%%:*}"
-              local_path="${remainder#*:}"
-              asset="$(jq -c --arg name "$name" '[.assets[] | select(.name == $name)] | .[0] // empty' "$release_json")"
-              if [[ -n "$asset" ]]; then
-                url="$(jq -r '.browser_download_url' <<<"$asset")"
-                downloaded="$RUNNER_TEMP/$name"
-                curl --fail --location --silent --show-error "$url" --output "$downloaded"
-                actual="$(sha256sum "$downloaded" | awk '{print $1}')"
-                [[ "$actual" == "$expected" ]] || { echo "::error::Existing $name differs; refusing overwrite."; exit 1; }
-              else
-                gh release upload "$TAG" "$local_path" --repo "$GITHUB_REPOSITORY" --clobber=false
-              fi
-            done
-            # Repair notes even when the release already exists; this publishes the updater metadata.
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest
-            # Read back the actual published body and fail if the updater block was not persisted.
+
+          verify_draft_release() {
             gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+            jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == true and .prerelease == false' "$release_json" >/dev/null || {
+              echo "::error::Expected a draft, non-prerelease release for $TAG; refusing public publication or mutation."
+              exit 1
+            }
             actual_body="$(jq -r '.body // ""' "$release_json")"
-            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
-            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
-            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
-            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
-            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
+            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Draft body is missing updater metadata."; exit 1; }
+            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Draft metadata has wrong/missing applicationId."; exit 1; }
+            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Draft metadata has wrong/missing versionCode."; exit 1; }
+            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Draft metadata has wrong/missing minSdkVersion."; exit 1; }
+            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Draft metadata has wrong/missing signer fingerprint."; exit 1; }
+            mkdir -p "$RUNNER_TEMP/draft-verify"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME" --dir "$RUNNER_TEMP/draft-verify"
+            downloaded="$RUNNER_TEMP/draft-verify/$APK_NAME"
+            actual_sha="$(sha256sum "$downloaded" | awk '{print $1}')"
+            [[ "$actual_sha" == "$APK_SHA" ]] || { echo "::error::Draft APK SHA-256 mismatch: expected $APK_SHA, got $actual_sha"; exit 1; }
+          }
+
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then
+            jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == true and .prerelease == false' "$release_json" >/dev/null || {
+              echo "::error::A non-draft release already exists for $TAG; refusing to overwrite or republish it."
+              exit 1
+            }
+            existing_asset="$(jq -c --arg name "$APK_NAME" '[.assets[] | select(.name == $name)][0] // empty' "$release_json")"
+            if [[ -n "$existing_asset" ]]; then
+              mkdir -p "$RUNNER_TEMP/existing-draft"
+              gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME" --dir "$RUNNER_TEMP/existing-draft"
+              existing_sha="$(sha256sum "$RUNNER_TEMP/existing-draft/$APK_NAME" | awk '{print $1}')"
+              [[ "$existing_sha" == "$APK_SHA" ]] || { echo "::error::Existing draft APK differs; refusing to overwrite it. Delete the draft explicitly before retrying."; exit 1; }
+            else
+              gh release upload "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --clobber=false
+            fi
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes"
           else
             grep -Fq 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
-            gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest --verify-tag
-            # Read back and validate the newly published release body too.
-            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
-            actual_body="$(jq -r '.body // ""' "$release_json")"
-            grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
-            grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
-            grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
-            grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
-            grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
+            gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --draft --verify-tag
           fi
 
+          verify_draft_release
+          echo "::notice::Draft release is ready and is NOT public. Owner must test this exact APK SHA-256 on the physical device, then manually publish the draft only after acceptance."
       - name: Remove production keystore
         if: always()
         shell: bash

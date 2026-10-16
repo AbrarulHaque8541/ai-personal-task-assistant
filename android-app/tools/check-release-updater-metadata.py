@@ -25,6 +25,32 @@ for marker in (
     'requiredLong(metadata, "versionCode")',
     'requiredInt(metadata, "minSdkVersion")',
     'requiredString(metadata, "signerCertificateSha256")',
+    '[{].*?[}]',
 ):
     assert marker in client, f"updater parser contract changed unexpectedly: {marker}"
-print("PASS: production release notes contain the updater metadata contract")
+# Never advise users to bypass a warning that explicitly labels the APK harmful.
+for marker in (
+    'apk_bytes="$(stat -c%s "$apk")"',
+    'unzip -tqq "$apk"',
+    'grep -Fxq "AndroidManifest.xml" <<< "$apk_entries"',
+    'grep -Fxq "resources.arsc" <<< "$apk_entries"',
+    'grep -Fxq "classes.dex" <<< "$apk_entries"',
+    'APK does not expose the expected launcher Activity',
+    'Cold-launch signed production APK on Android 10 (API 29) emulator',
+    'Cold-launch signed production APK on Android 16 (API 36) emulator',
+    'bash android-app/tools/cold-launch-apk.sh',
+    'The release attaches a single APK.',
+    'warning that explicitly says the app is harmful must not be bypassed',
+):
+    assert marker in workflow, f"release artifact safety/cold-launch gate missing: {marker}"
+assert 'Choose **Download anyway**' not in workflow, "unsafe Play Protect bypass instruction must not return"
+assert 'gh release upload "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --clobber=false' in workflow, "draft release must upload only the installable APK"
+assert 'gh release upload "$TAG" "$aab"' not in workflow, "AAB must not be attached as a second user download"
+assert 'gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME"' in workflow, "draft APK SHA-256 must be verified by downloading the actual draft asset"
+assert 'gh release create "$TAG" "$apk"' in workflow, "draft release must attach only the APK, not the AAB"
+assert '--draft --verify-tag' in workflow, "production workflow must create a draft release, not publish automatically"
+assert '.draft == true' in workflow, "workflow must verify draft status before finishing"
+assert '--latest' not in workflow, "workflow must not auto-publish or mark the draft as latest"
+assert 'Draft release is ready and is NOT public.' in workflow, "owner-device acceptance must precede public publication"
+assert (root / "tools/cold-launch-apk.sh").is_file(), "cold-launch helper script is missing"
+print("PASS: updater metadata, APK integrity, safe warning guidance, single-APK publication, and API-29/API-36 cold-launch gates")

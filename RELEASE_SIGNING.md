@@ -2,13 +2,14 @@
 
 This document describes durable release rules plus a dated source/release snapshot. Verify the live `main` branch, GitHub Releases, and exact workflow run before acting.
 
-## Current source and published release (checked 2026-10-13)
+## Current source and published release (checked 2026-10-16)
 
-- Current source on `main` uses application ID `com.abrar.daymark`, `versionName = 1.1`, `versionCode = 8`, and `targetSdk = 35`.
-- The latest published release is **v1.0.5**; its APK targets API 35 and belongs to a separate, older application identity. The current `1.0` source line is not published and installs separately from that older line. There is no automatic task-data migration between the apps.
+- Current `main` baseline (after the v1.3 release and the PR #322 merge) uses application ID `com.abrar.daymark`, `versionName = 1.3`, `versionCode = 10`, `compileSdk = 36`, and `targetSdk = 35`.
+- Latest published release is [**v1.3**](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.3). It contains one APK asset (`Daymark-v1.3-githubSideload.apk`, SHA-256 `aa69ab6f81cae22a2c0ea58ca0619682dd77da826c5d5faaefe0eb934115e585`); it targets API 35 and uses versionCode 10.
+- This release-integrity change (superseding [PR #310](https://github.com/AbrarulHaque8541/daymark/pull/310)) prepares the next candidate `versionName = 1.4`, `versionCode = 11`, `targetSdk = 36`, with API-29/API-36 emulator cold-launch gates and a draft-only production workflow. Until it merges with green exact-head CI, no `v1.4` tag exists; publication still requires owner authorization and physical-device acceptance of the exact draft APK.
 - Do not infer publication from Gradle values or CI. The live Releases page is the source of truth for published assets; the current source values are in [`android-app/app/build.gradle.kts`](android-app/app/build.gradle.kts).
 
-PR #295 prepared future links under `AbrarulHaque8541/daymark`, but the actual GitHub repository slug remained `AbrarulHaque8541/ai-personal-task-assistant` at the 2026-10-13 review. The owner has not applied the rename; prepared future-name links may not resolve until then. This review does not rename the repository.
+The canonical GitHub repository slug is now `AbrarulHaque8541/daymark`. Older documents that say the repository rename is still pending are historical and should be updated when touched.
 
 ## Immutable identity and signer
 
@@ -25,8 +26,8 @@ This repository's release and updater checks require exact production-signer con
 
 1. Keep `versionCode` strictly increasing.
 2. Keep `versionName` in `android-app/app/build.gradle.kts`; the production tag must be exactly `v` + that value.
-3. Publish only through `.github/workflows/android-production-release.yml` on the exact version tag after all required checks pass.
-4. The production workflow builds the signed APK/AAB and verifies package ID, version, target SDK 36, and signer before publication. Main Android CI is not a signed production release and does not publish assets.
+3. Push the exact version tag only after code/host checks pass; the production workflow must create a **draft**, not a public release, after signed-artifact and API-29/API-36 cold-launch gates pass.
+4. The workflow attaches only the installable APK to a draft and verifies its checksum/metadata. It must not mark the draft latest or publish it. The owner must download that exact draft APK, verify SHA-256, and cold-launch it on the physical device; only then may the owner manually publish the draft. Main Android CI is not a signed production release.
 5. The expected APK asset name is `Daymark-v{versionName}-githubSideload.apk`; verify the actual release assets and checksums before distribution.
 6. A successful CI build does not establish Android-device behavior or upgrade/data-migration compatibility.
 
@@ -48,7 +49,7 @@ After a clean install, a later build can update in place only when it has the sa
 2. Preserve `UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256` and the protected signing secrets.
 3. Complete review and merge the release change under the owner's authority.
 4. Only when the owner authorizes publication, create/push the exact `v<versionName>` tag on the intended `main` commit.
-5. Wait for the production-release workflow; verify its exact commit, package/version/target-SDK/signer assertions, signed APK/AAB, checksums, and attached release assets.
+5. Wait for the workflow to create a draft; verify exact commit, package/version/target-SDK/signer assertions and the APK SHA-256. Test the exact draft APK on the owner device before manually publishing the draft. Never treat a successful workflow alone as release approval.
 6. Describe an update as in-place only for a compatible same-application-ID installation. For the current separate identity, do not promise replacement of the older app or automatic data transfer.
 
 ## Debug vs. production
@@ -65,7 +66,7 @@ Use debug builds for development; never present one as a production release or t
 Before a user voluntarily removes an installation, advise them to use **More → Encrypted backup / restore** and confirm they have retained the recovery key separately. Restoring is an explicit user action; it is not an automatic migration, and an unavailable or lost device-held key cannot be replaced by changing the signer or application ID.
 
 ---
-Work by: Cue
-Model: not disclosed by runtime
-Tooling: GitHub connector CLI, git, local source/workflow/documentation review
-Timestamp (UTC): 2026-10-13T17:59:30Z
+Work by: Vibe
+Model: GLM (glm-5-latest-short)
+Tooling: GitHub MCP tools
+Timestamp (UTC): 2026-10-16T15:15:06Z
