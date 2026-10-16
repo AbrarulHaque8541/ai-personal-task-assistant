@@ -44,6 +44,10 @@ for marker in (
     assert marker in workflow, f"release artifact safety/cold-launch gate missing: {marker}"
 assert 'Choose **Download anyway**' not in workflow, "unsafe Play Protect bypass instruction must not return"
 assert 'for pair in "$APK_NAME:$APK_SHA:$apk"; do' in workflow, "release page must upload only the installable APK"
-assert 'gh release create "$TAG" "$apk"' in workflow, "new release must attach only the APK, not the AAB"
+assert 'gh release create "$TAG" "$apk"' in workflow, "draft release must attach only the APK, not the AAB"
+assert '--draft --verify-tag' in workflow, "production workflow must create a draft release, not publish automatically"
+assert '.draft == true' in workflow, "workflow must verify draft status before finishing"
+assert '--latest' not in workflow, "workflow must not auto-publish or mark the draft as latest"
+assert 'Draft release is ready and is NOT public.' in workflow, "owner-device acceptance must precede public publication"
 assert (root / "tools/cold-launch-apk.sh").is_file(), "cold-launch helper script is missing"
 print("PASS: updater metadata, APK integrity, safe warning guidance, single-APK publication, and API-29/API-36 cold-launch gates")

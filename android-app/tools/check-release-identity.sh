@@ -43,4 +43,9 @@ require_literal "$PRODUCTION" '[[ "$GITHUB_REF_NAME" == "v${version_name}" ]]' '
 require_literal "$RELEASE_ASSETS" 'platforms;android-36 build-tools;35.0.0' 'release-assets workflow must provision API 36'
 require_literal "$RELEASE_ASSETS" '[[ "$target_sdk" == "36" ]]' 'release asset APK must assert target SDK 36'
 
+require_literal "$PRODUCTION" '--draft --verify-tag' 'production workflow must create a draft release for physical-device acceptance'
+require_literal "$PRODUCTION" '.draft == true' 'production workflow must verify draft status before finishing'
+if grep -Fq -- '--latest' "$PRODUCTION"; then
+  fail "production workflow must not automatically publish or mark a release latest"
+fi
 echo "PASS release identity/targetSdk 36: applicationId=com.abrar.daymark versionName=$name versionCode=$code signer pin and all release workflow gates verified"
