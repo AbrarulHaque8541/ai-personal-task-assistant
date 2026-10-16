@@ -1089,6 +1089,12 @@ public final class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(18), dp(14), dp(18), dp(24));
+        // Content-sized gradient reveals a gentle color blend naturally during scrolling.
+        // It avoids per-frame allocations, timers, and changes to the existing scroll listener.
+        content.setBackground(new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                ScrollThemeColor.gradientColors(
+                        palette.background, palette.accentSoft, palette.surfaceAlt, highContrast)));
         scrollView.addView(content, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 

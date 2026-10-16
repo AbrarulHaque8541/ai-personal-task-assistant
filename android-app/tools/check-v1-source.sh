@@ -35,6 +35,7 @@ python3 ./tools/check-schema-v1-fixture.py "$ROOT"
 python3 ./tools/check-browser-site-info.py "$ROOT"
 python3 ./tools/check-browser-diagnostics.py "$ROOT"
 python3 ./tools/check-browser-log-privacy.py "$ROOT"
+python3 ./tools/check-scroll-theme.py "$ROOT"
 python3 ./tools/check-app-shortcuts.py "$ROOT"
 bash ./tools/check-release-identity.sh
 python3 ./tools/check-api36-readiness.py "$ROOT"
