@@ -1573,9 +1573,6 @@ public final class MainActivity extends Activity {
         browserToolbarScroll = toolbarScroll;
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        Button downloadsShortcut = compactButton("Downloads", false);
-        downloadsShortcut.setContentDescription("Open browser Downloads to view download status and progress");
-        downloadsShortcut.setOnClickListener(view -> showBrowserDownloadsDialog());
         browserBackButton = compactButton("‹", false);
         browserBackButton.setContentDescription("Go back one page");
         browserBackButton.setOnClickListener(view -> {
