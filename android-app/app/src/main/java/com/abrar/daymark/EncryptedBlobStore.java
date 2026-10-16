@@ -157,7 +157,7 @@ final class EncryptedBlobStore {
         verifyLoadedSnapshotUnchanged();
         // Fail closed if the current key is already unusable, before creating a replacement.
         keys.loadKeyForVersion(loadedKeyVersion);
-        KeyAccess.VersionedKey replacement = keys.createReplacementKey();
+        VersionedKey replacement = keys.createReplacementKey();
         byte[] blob = encrypt(replacement.key, replacement.version, plaintext);
         writeAtomically(blob);
         int retiredKeyVersion = loadedKeyVersion;
