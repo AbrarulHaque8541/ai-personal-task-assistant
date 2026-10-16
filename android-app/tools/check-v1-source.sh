@@ -523,6 +523,18 @@ assert "uri.getPort() == -1 || uri.getPort() == 443" in updater_core, "release a
 assert "github.com:444" in (root / "tools/UpdaterSmoke.java").read_text(encoding="utf-8"), "unusual asset port regression is required"
 assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
 
+# Browser status should not permanently consume reading viewport space.
+assert 'browserStatus = text("", 11, palette.muted, Typeface.NORMAL);' in activity, \
+    "browser must start without a persistent idle status banner"
+assert "browserStatus.setVisibility(View.GONE);" in activity, \
+    "idle browser status must be hidden"
+assert "mainHandler.postDelayed(browserStatusHideRunnable, 3500L)" in activity, \
+    "non-error browser feedback must auto-dismiss"
+assert "browserStatus.animate().alpha(0f).setDuration(180L)" in activity, \
+    "browser status must fade out instead of abruptly occupying the viewport"
+assert 'message.contains("Tap this message to retry")' in activity, \
+    "actionable failed-navigation status must remain available for retry"
+
 # One accurate summary per policy area. The previous block repeated several lines
 # verbatim and still claimed "no permissions/network" for a manifest that declares
 # INTERNET for the HTTPS-only browser (issue #45) — a stale summary that contradicted
