@@ -11,26 +11,37 @@ trap restore EXIT INT TERM
 expect_fail_after_removal() {
   checker="$1"
   marker="$2"
-  MARKER="$marker" ACTIVITY="$ACTIVITY" python3 - <<'PY'
+  target="${3:-$ACTIVITY}"
+  target_backup=$(mktemp)
+  cp "$target" "$target_backup"
+  MARKER="$marker" TARGET="$target" python3 - <<'PY'
 import os
 from pathlib import Path
-p = Path(os.environ["ACTIVITY"])
+p = Path(os.environ["TARGET"])
 s = p.read_text(encoding="utf-8")
 marker = os.environ["MARKER"]
 if marker not in s:
-    raise SystemExit(f"required marker not found in MainActivity.java: {marker}")
+    raise SystemExit(f"required marker not found in {p.name}: {marker}")
 p.write_text(s.replace(marker, "REMOVED_BY_META_TEST"), encoding="utf-8")
 PY
   if python3 "$ROOT/tools/$checker" >/dev/null 2>&1; then
+    cp "$target_backup" "$target"
+    rm -f "$target_backup"
     echo "FAIL: $checker exited 0 after removing required marker: $marker" >&2
     return 1
   fi
-  cp "$BACKUP" "$ACTIVITY"
+  cp "$target_backup" "$target"
+  rm -f "$target_backup"
   echo "PASS meta: $checker fails when marker is missing"
 }
 
 expect_fail_after_removal check-text-scale.py "TextScalePolicy.combined("
-expect_fail_after_removal check-window-insets.py "WindowInsets.Type.ime()"
+WINDOW="$ROOT/app/src/main/java/com/abrar/daymark/Api30Window.java"
+if [ -f "$WINDOW" ]; then
+  expect_fail_after_removal check-window-insets.py "WindowInsets.Type.ime()" "$WINDOW"
+else
+  expect_fail_after_removal check-window-insets.py "WindowInsets.Type.ime()"
+fi
 expect_fail_after_removal check-web-mode-state.py "STATE_WEB_MODE"
 expect_fail_after_removal check-silent-catch.py "StartupDiagnostics.record("
 

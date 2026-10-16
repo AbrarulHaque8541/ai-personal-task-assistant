@@ -12,6 +12,9 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVITY = (ROOT / "app/src/main/java/com/abrar/daymark/MainActivity.java").read_text()
+API30_WINDOW = ROOT / "app/src/main/java/com/abrar/daymark/Api30Window.java"
+WINDOW = API30_WINDOW.read_text() if API30_WINDOW.exists() else ""
+SOURCE = ACTIVITY + "\n" + WINDOW
 POLICY = (ROOT / "app/src/main/java/com/abrar/daymark/WindowInsetsPolicy.java").read_text()
 checks = 0
 
@@ -35,10 +38,10 @@ check(activity is not None, "MainActivity must be declared in the manifest")
 check(activity.get(android_ns + "windowSoftInputMode") == "adjustResize",
       "MainActivity must use adjustResize so the keyboard resizes the content area")
 
-if "WindowInsets.Type.ime()" in ACTIVITY:
-    check("WindowInsetsPolicy.bottomPadding(" in ACTIVITY,
+if "WindowInsets.Type.ime()" in SOURCE:
+    check("WindowInsetsPolicy.bottomPadding(" in SOURCE,
           "the root bottom padding must be derived from the insets policy")
-    check("WindowInsetsPolicy.CONSUME_IME_INSETS" in ACTIVITY,
+    check("WindowInsetsPolicy.CONSUME_IME_INSETS" in SOURCE,
           "the Activity must gate IME consumption on the policy")
 else:
     raise AssertionError(

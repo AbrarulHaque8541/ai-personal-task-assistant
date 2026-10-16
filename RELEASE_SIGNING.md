@@ -4,7 +4,7 @@ This document describes durable release rules plus a dated source/release snapsh
 
 ## Current source and published release (checked 2026-10-13)
 
-- Current source on `main` uses application ID `com.abrar.daymark`, `versionName = 1.0`, `versionCode = 7`, and `targetSdk = 36`.
+- Current source on `main` uses application ID `com.abrar.daymark`, `versionName = 1.1`, `versionCode = 8`, and `targetSdk = 35`.
 - The latest published release is **v1.0.5**; its APK targets API 35 and belongs to a separate, older application identity. The current `1.0` source line is not published and installs separately from that older line. There is no automatic task-data migration between the apps.
 - Do not infer publication from Gradle values or CI. The live Releases page is the source of truth for published assets; the current source values are in [`android-app/app/build.gradle.kts`](android-app/app/build.gradle.kts).
 

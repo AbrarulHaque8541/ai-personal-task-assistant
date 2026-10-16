@@ -1,5 +1,6 @@
 package com.abrar.daymark;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
@@ -12,6 +13,7 @@ import android.window.OnBackInvokedDispatcher;
  * ({@code NoClassDefFoundError}) before {@code onCreate} runs. This class is
  * loaded only after an SDK version check.
  */
+@SuppressLint("NewApi")
 final class Api33Back {
     private Api33Back() { }
 
