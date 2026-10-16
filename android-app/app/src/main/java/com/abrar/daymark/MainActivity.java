@@ -1072,14 +1072,15 @@ public final class MainActivity extends Activity {
         scrollView.setOnScrollChangeListener((View view, int x, int y, int oldX, int oldY) -> {
             if (webMode) return;
             int delta = y - oldY;
-            if (delta > dp(3)) {
-                setTaskChromeHidden(true);
-            } else if (delta < -dp(3)) {
+            // Use a meaningful threshold and no timed auto-restore: tiny scroll noise must
+            // not make the header blink in and out. Returning to the top always restores it.
+            if (y <= dp(24) || delta < -dp(10)) {
+                if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
                 setTaskChromeHidden(false);
+            } else if (y > dp(120) && delta > dp(8)) {
+                if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
+                setTaskChromeHidden(true);
             }
-            if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
-            taskChromeRestoreRunnable = () -> setTaskChromeHidden(false);
-            mainHandler.postDelayed(taskChromeRestoreRunnable, 700L);
         });
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
@@ -1099,7 +1100,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         addDashboardHeading(content);
-        addPrivacyCard(content);
+        // Persistent privacy/storage copy is available in Settings; actionable storage failures remain visible.
         // DEMO SUGGESTION home card removed (#225); ranking still available in task list.
         // addSuggestionCard(content);
         addTaskSection(content);
@@ -1139,12 +1140,10 @@ public final class MainActivity extends Activity {
 
         navTasksTab = buildNavTab("✓", "Tasks", "View your tasks and dashboard", view -> setWebMode(false));
         navWebTab = buildNavTab("🌐", "Web", "Open web browser and search", view -> setWebMode(true));
-        navTemplatesTab = buildNavTab("📑", "Templates", "Open task templates", view -> showTaskTemplatesDialog());
         navSettingsTab = buildNavTab("⚙", "Settings", "Open Daymark settings", view -> showSettingsDialog());
 
         bar.addView(navTasksTab, tabParams);
         bar.addView(navWebTab, tabParams);
-        bar.addView(navTemplatesTab, tabParams);
         bar.addView(navSettingsTab, tabParams);
 
         container.addView(bar, new LinearLayout.LayoutParams(
@@ -1214,10 +1213,6 @@ public final class MainActivity extends Activity {
         }
 
         // Templates & Settings tabs
-        if (navTemplatesIcon != null && navTemplatesLabel != null) {
-            navTemplatesIcon.setTextColor(palette.muted);
-            navTemplatesLabel.setTextColor(palette.muted);
-        }
         if (navSettingsIcon != null && navSettingsLabel != null) {
             navSettingsIcon.setTextColor(palette.muted);
             navSettingsLabel.setTextColor(palette.muted);
@@ -1254,13 +1249,7 @@ public final class MainActivity extends Activity {
         pathButton.setOnClickListener(view -> toggleExperienceMode());
         // Keep the main header focused; advanced task mode remains available from More.
         pathButton.setVisibility(View.GONE);
-        Button moreButton = plainButton("More");
-        moreButton.setContentDescription("Open appearance, accessibility, and permission settings");
-        moreButton.setOnClickListener(view -> showSettingsDialog());
-        LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        moreParams.leftMargin = dp(6);
-        bar.addView(moreButton, moreParams);
+        // Settings live in the bottom navigation; avoid a duplicate top-right More button.
         return bar;
     }
 
@@ -1328,19 +1317,26 @@ public final class MainActivity extends Activity {
         card.setBackground(shape(palette.surface, 20, palette.line));
         card.setElevation(dp(1));
 
-        LinearLayout modes = new LinearLayout(this);
-        modes.setOrientation(LinearLayout.HORIZONTAL);
-        taskModeButton = plainButton("Task");
-        taskModeButton.setContentDescription("Task mode. Typing here creates a task only after you tap Add task.");
-        taskModeButton.setOnClickListener(view -> setWebMode(false));
-        webModeButton = plainButton("Web");
-        webModeButton.setContentDescription("Web mode. Search or open a website only after you tap Go or a site link.");
-        webModeButton.setOnClickListener(view -> setWebMode(true));
-        modes.addView(taskModeButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
-        LinearLayout.LayoutParams webModeParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
-        webModeParams.leftMargin = dp(6);
-        modes.addView(webModeButton, webModeParams);
-        card.addView(modes, bottomMargin(dp(7)));
+        LinearLayout quickActions = new LinearLayout(this);
+        quickActions.setGravity(Gravity.CENTER_VERTICAL);
+        Button addTaskShortcut = compactButton("+ Task", false);
+        addTaskShortcut.setContentDescription("Open the task editor to create a task with date, priority, notes and other options");
+        addTaskShortcut.setOnClickListener(view -> showTaskEditor(null, ""));
+        quickActions.addView(addTaskShortcut, new LinearLayout.LayoutParams(0, dp(40), 1f));
+        Button searchTasksShortcut = compactButton("⌕ Search", false);
+        searchTasksShortcut.setContentDescription("Expand task search by title and words");
+        searchTasksShortcut.setOnClickListener(view -> {
+            if (searchControlView == null) return;
+            searchControlView.setVisibility(searchControlView.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+            if (searchControlView.getVisibility() == View.VISIBLE && searchInput != null) {
+                searchInput.requestFocus();
+                if (taskScrollView != null) taskScrollView.post(() -> taskScrollView.smoothScrollTo(0, searchControlView.getTop()));
+            }
+        });
+        LinearLayout.LayoutParams searchShortcutParams = new LinearLayout.LayoutParams(0, dp(40), 1f);
+        searchShortcutParams.leftMargin = dp(6);
+        quickActions.addView(searchTasksShortcut, searchShortcutParams);
+        card.addView(quickActions, bottomMargin(dp(7)));
 
         quickCaptureInput = new EditText(this);
         quickCaptureInput.setSingleLine(true);
@@ -1387,18 +1383,8 @@ public final class MainActivity extends Activity {
         });
         taskActions.addView(addTaskButton, bottomMargin(dp(5)));
 
-        LinearLayout secondaryTaskActions = new LinearLayout(this);
-        secondaryTaskActions.setOrientation(LinearLayout.HORIZONTAL);
-        // Redundant with Add task -> full editor (#225).
+        // Templates are contextual under Settings and are not shown as a permanent home action.
         addDetailsButton = null;
-        Button templatesButton = compactButton("Task templates", false);
-        templatesButton.setContentDescription("View, reuse, or create encrypted on-device task templates. Choosing one opens an editable task; it is not created until you confirm Create task.");
-        templatesButton.setOnClickListener(view -> showTaskTemplatesDialog());
-        LinearLayout.LayoutParams templatesParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
-        templatesParams.leftMargin = dp(6);
-        secondaryTaskActions.addView(templatesButton, templatesParams);
-        taskActions.addView(secondaryTaskActions, bottomMargin(dp(5)));
         captureFeedback = text(powerMode
                         ? "Power path adds search, filters, and ranked demo suggestions. It uses the same tasks."
                         : "New tasks start with no due date and medium priority. You can change both later.",
@@ -1659,14 +1645,18 @@ public final class MainActivity extends Activity {
 
         String disclosureText =
                 "Browsing is ready for explicit user-initiated navigation; no page opens until you tap Go or a site. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
-        browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
-        browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
-        browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
+        browserPrivacyButton = text("ⓘ", 18, palette.muted, Typeface.NORMAL);
+        browserPrivacyButton.setGravity(Gravity.CENTER);
+        browserPrivacyButton.setPadding(dp(4), 0, dp(4), 0);
         browserPrivacyButton.setBackground(shape(palette.surface, 18, palette.line));
+        browserPrivacyButton.setContentDescription("Open privacy and connection details");
         browserPrivacyButton.setContentDescription("Browser privacy: browsing is ready for explicit user-initiated navigation; each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. Daymark's browser network policy controls Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         browserPrivacyDisclosure = disclosureText;
-        panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
+        LinearLayout privacyRow = new LinearLayout(this);
+        privacyRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        privacyRow.addView(browserPrivacyButton, new LinearLayout.LayoutParams(dp(36), dp(30)));
+        panel.addView(privacyRow, bottomMargin(dp(2)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
         sitesScroll.setHorizontalScrollBarEnabled(false);
@@ -1962,18 +1952,11 @@ public final class MainActivity extends Activity {
         home.addView(hint, bottomMargin(dp(7)));
 
         TextView detail = text(
-                "Type a question in the address bar above, then tap a provider to search in one step. Or choose a provider first.",
+                "Enter a question or HTTPS address above, then tap Go or a provider shortcut. Choose another provider with + Add when needed.",
                 13, palette.muted, Typeface.NORMAL);
         detail.setGravity(Gravity.CENTER);
         detail.setLineSpacing(dp(3), 1f);
         home.addView(detail, bottomMargin(dp(18)));
-
-        Button chooseProvider = compactButton("Choose search provider", true);
-        chooseProvider.setOnClickListener(view -> showSearchProviderPicker());
-        LinearLayout.LayoutParams chooseParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(42));
-        chooseParams.gravity = Gravity.CENTER_HORIZONTAL;
-        home.addView(chooseProvider, chooseParams);
 
         TextView privacyHint = text("Offline until you enable Online. Privacy details are above.", 11,
                 palette.muted, Typeface.NORMAL);
@@ -4057,7 +4040,7 @@ public final class MainActivity extends Activity {
         searchRow.addView(searchClear, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
         searchControlView = searchRow;
-        powerOnlyViews.add(searchRow);
+        searchRow.setVisibility(View.GONE);
         content.addView(searchRow, bottomMargin(dp(11)));
 
         searchInput.addTextChangedListener(new TextWatcher() {
@@ -4384,23 +4367,12 @@ public final class MainActivity extends Activity {
         taskActions.setVisibility(webMode ? View.GONE : View.VISIBLE);
         webActions.setVisibility(View.GONE);
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
-        quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
+        quickCaptureInput.setHint(webMode ? "Search or enter HTTPS address" : "Task title or quick note");
         quickCaptureInput.setContentDescription(webMode
                 ? "Search the web or enter an HTTPS web address. Browsing is ready; requests are sent only after you tap Go or a provider/site shortcut."
                 : "What do you want to get done? Type a task");
         quickCaptureInput.setImeOptions(webMode ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
-        taskModeButton.setTextColor(webMode ? palette.muted : palette.accent);
-        taskModeButton.setBackground(shape(webMode ? palette.surfaceAlt : palette.accentSoft,
-                18, webMode ? palette.line : palette.accent));
-        webModeButton.setTextColor(webMode ? palette.accent : palette.muted);
-        webModeButton.setBackground(shape(webMode ? palette.accentSoft : palette.surfaceAlt,
-                18, webMode ? palette.accent : palette.line));
-        taskModeButton.setContentDescription(webMode
-                ? "Switch to Task mode. Your web search is not added to your tasks."
-                : "Task mode selected. Typing creates a task only after Add task.");
-        webModeButton.setContentDescription(webMode
-                ? "Web mode selected. Browsing is ready; requests require a separate Go or site tap."
-                : "Switch to Web mode. The current task draft stays in Daymark and is not sent to a site.");
+        // Bottom navigation is the sole Tasks/Web workspace switcher.
         if (undoBar != null) {
             if (webMode) undoBar.setVisibility(View.GONE);
             else if (pendingDeletedTask != null) undoBar.setVisibility(View.VISIBLE);
@@ -7150,6 +7122,10 @@ public final class MainActivity extends Activity {
         addSettingsRow(content, "Encrypted backup & restore", "Export or add tasks from a .dmbackup file",
                 () -> showPortableBackupDialog());
 
+        addSettingsSection(content, "TASK TOOLS");
+        addSettingsRow(content, "Task templates", "Save and reuse local encrypted task templates",
+                () -> showTaskTemplatesDialog());
+
         addSettingsSection(content, "POWER FEATURES");
         addSettingsRow(content, "Check for updates", "Check the signed sideload release channel",
                 () -> checkForUpdates(true));
@@ -7159,7 +7135,7 @@ public final class MainActivity extends Activity {
         scroll.setClipToPadding(false);
         scroll.addView(content);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("More")
+                .setTitle("Settings")
                 .setView(scroll)
                 .setNegativeButton("Done", null)
                 .create();
