@@ -1100,7 +1100,7 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         addDashboardHeading(content);
-        // Persistent privacy/storage copy is available in Settings; actionable storage failures remain visible.
+        addPrivacyCard(content);
         // DEMO SUGGESTION home card removed (#225); ranking still available in task list.
         // addSuggestionCard(content);
         addTaskSection(content);
@@ -1282,32 +1282,24 @@ public final class MainActivity extends Activity {
     }
 
     private void addPrivacyCard(LinearLayout content) {
-        LinearLayout card = new LinearLayout(this);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(13), dp(11), dp(13), dp(11));
-        card.setBackground(shape(palette.accentSoft, 16, palette.accentSoft));
+        // Keep the live storage status view attached so load/save failures remain actionable,
+        // but remove the large permanent privacy marketing banner from the dashboard.
+        LinearLayout statusRow = new LinearLayout(this);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow.setPadding(dp(8), dp(2), dp(8), dp(2));
 
-        TextView shield = text("●", 11, palette.accent, Typeface.BOLD);
-        shield.setGravity(Gravity.CENTER);
-        card.addView(shield, new LinearLayout.LayoutParams(dp(22), dp(22)));
-
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.setPadding(dp(8), 0, 0, 0);
-        copy.addView(text("Tasks are encrypted on this device", 13, palette.text, Typeface.BOLD));
-        copy.addView(text("Web requests only after your tap · no task sync", 12, palette.muted, Typeface.NORMAL));
-        card.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        storageStatus = text("Opening encrypted storage…", 12, palette.muted, Typeface.NORMAL);
-        storageStatus.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        storageStatus = text("Opening encrypted storage…", 11, palette.muted, Typeface.NORMAL);
+        storageStatus.setGravity(Gravity.CENTER_VERTICAL);
         storageStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        card.addView(storageStatus);
-        cancelAttachmentButton = compactButton("Cancel import", true);
+        statusRow.addView(storageStatus, new LinearLayout.LayoutParams(0, dp(28), 1f));
+
+        cancelAttachmentButton = compactButton("Cancel", true);
         cancelAttachmentButton.setContentDescription("Cancel the active import or backup before it is committed");
         cancelAttachmentButton.setVisibility(View.GONE);
         cancelAttachmentButton.setOnClickListener(view -> requestOperationCancel());
-        copy.addView(cancelAttachmentButton, topMargin(dp(4)));
-        content.addView(card, bottomMargin(dp(15)));
+        statusRow.addView(cancelAttachmentButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)));
+        content.addView(statusRow, bottomMargin(dp(5)));
     }
 
     private View buildSharedComposer() {
