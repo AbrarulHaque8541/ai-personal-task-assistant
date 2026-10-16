@@ -16,6 +16,7 @@ This document contains **durable rules and invariants**, not a live project dash
 
 1. Daymark is a local-first Android task app with an HTTPS-only embedded System WebView.
 2. The owner-approved installed application ID and Gradle namespace are `com.abrar.daymark`. All current source packages/paths, manifests, tests, scripts, CI and current documentation must use that identity. Do not reintroduce the retired package namespace in current tracked content. Do not change the approved identity without explicit owner approval. Historical commits and published releases are not rewritten.
+   - When an issue, PR, handoff, or audit states a different application ID, verify `android-app/app/build.gradle.kts` and the live manifest before acting; source/build identity wins over stale issue text.
 3. Preserve the production signer pin `ad6be60bd89c076c2d3985ec20c30533dd9ff10e07418d64ad1d825418030580` and existing GitHub signing secrets. Never ask the owner to send keystore files/passwords; never print or commit secrets; never embed write tokens in the APK. A signing-key or signer-pin change requires explicit owner approval and verified continuity.
 4. Keep `versionCode` monotonic. A production tag must exactly equal `v` + the current `versionName`; do not hardcode a specific release version as a permanent rule.
 5. Never silently delete, reset, or corrupt user task data on an error. No analytics/ad SDKs. No broad JavaScript bridge to untrusted pages. Preserve HTTPS-only browsing and explicit online-consent behavior.
@@ -59,6 +60,7 @@ Do not copy another agent's identity, invent model details, reuse an old timesta
 - Check for overlapping branches, PRs, and issues before starting.
 - Keep branches focused when practical; coordinate cross-cutting changes in the canonical meta issue.
 - For shared-file conflicts, inspect both implementations and current `main`; preserve existing behavior and test the combined result.
+- Do not let independent agents make overlapping `MainActivity.java` changes in separate active PRs. Agree on one canonical branch/PR or land changes sequentially, then rebase and re-run checks on the combined head.
 - Ask independent agents for review on risky package, manifest, signing, release-workflow, security, or data-storage changes.
 - Do not treat a comment saying “working on it” as evidence. Request concrete changed files, head SHA, test results, and workflow links.
 - A PR exists only after GitHub returns a real PR number/URL. Do not claim a PR, merge, release, or CI pass that did not happen.
