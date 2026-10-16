@@ -21,6 +21,9 @@ import javax.crypto.SecretKey;
 /** App-private authenticated storage; the process lock also serializes separate Activity executors. */
 final class EncryptedTaskStore {
     private static final String KEY_ALIAS = "daymark.task-store.aes-gcm.v1";
+    private static final String KEY_ALIAS_ROTATED = "daymark.task-store.aes-gcm.v2";
+    private static final int KEY_VERSION_CURRENT = 1;
+    private static final int KEY_VERSION_ROTATED = 2;
     private static final Object FILE_ACCESS_LOCK = new Object();
     private final EncryptedBlobStore encryptedStore;
     private boolean loadReady;
@@ -89,6 +92,29 @@ final class EncryptedTaskStore {
         }
     }
 
+    /**
+     * Re-encrypts the current snapshot under a fresh Keystore alias and retires the
+     * previous key version. The committed snapshot is replaced only after the new
+     * blob is written and verified; a failed rotation leaves the prior snapshot and
+     * the old key untouched.
+     */
+    void rotateKey(List<Task> tasks, List<TaskTemplate> templates) throws Exception {
+        synchronized (FILE_ACCESS_LOCK) {
+            if (!loadReady) {
+                throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
+                        "Task storage must load successfully before it can be changed.");
+            }
+            byte[] plaintext = TaskSnapshotCodec.encode(tasks, templates);
+            try {
+                encryptedStore.rotateKey(plaintext);
+                loadedTemplates = new ArrayList<>(templates);
+            } catch (EncryptedBlobStore.StorageException exception) {
+                loadReady = false;
+                throw exception;
+            }
+        }
+    }
+
     List<Task> appendAtomically(List<Task> additions) throws Exception {
         synchronized (FILE_ACCESS_LOCK) {
             if (additions == null || !TaskLogic.isValidTaskList(additions)) {
@@ -118,13 +144,14 @@ final class EncryptedTaskStore {
         }
     }
 
-    private static SecretKey existingKey(KeyStore keyStore) throws EncryptedBlobStore.StorageException {
+    private static SecretKey existingKey(KeyStore keyStore, String alias)
+            throws EncryptedBlobStore.StorageException {
         try {
-            if (!keyStore.containsAlias(KEY_ALIAS)) {
+            if (!keyStore.containsAlias(alias)) {
                 throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
                         "The saved task encryption key is missing.");
             }
-            Key key = keyStore.getKey(KEY_ALIAS, null);
+            Key key = keyStore.getKey(alias, null);
             if (key instanceof SecretKey) return (SecretKey) key;
             throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
                     "The saved task encryption key is unusable.");
@@ -136,41 +163,87 @@ final class EncryptedTaskStore {
         }
     }
 
+    private static SecretKey generateKeyForAlias(String alias)
+            throws EncryptedBlobStore.StorageException {
+        try {
+            KeyGenerator generator = KeyGenerator.getInstance(
+                    KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+            KeyGenParameterSpec specification = new KeyGenParameterSpec.Builder(
+                    alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .setRandomizedEncryptionRequired(true)
+                    .setUserAuthenticationRequired(false)
+                    .build();
+            generator.init(specification);
+            return generator.generateKey();
+        } catch (Exception exception) {
+            throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
+                    "A new task encryption key could not be created.", exception);
+        }
+    }
+
+    private static boolean keyStoreContainsAlias(KeyStore keyStore, String alias)
+            throws EncryptedBlobStore.StorageException {
+        try {
+            return keyStore.containsAlias(alias);
+        } catch (Exception exception) {
+            throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
+                    "Android Keystore could not be checked.", exception);
+        }
+    }
+
     private static final class AndroidKeyAccess implements EncryptedBlobStore.KeyAccess {
         @Override
         public SecretKey loadExistingKey() throws EncryptedBlobStore.StorageException {
-            return existingKey(loadKeyStore());
+            return existingKey(loadKeyStore(), KEY_ALIAS);
         }
 
         @Override
         public SecretKey createKeyForNewStore() throws EncryptedBlobStore.StorageException {
             KeyStore keyStore = loadKeyStore();
-            if (keyStoreContainsAlias(keyStore)) return existingKey(keyStore);
-            try {
-                KeyGenerator generator = KeyGenerator.getInstance(
-                        KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-                KeyGenParameterSpec specification = new KeyGenParameterSpec.Builder(
-                        KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                        .setKeySize(256)
-                        .setRandomizedEncryptionRequired(true)
-                        .setUserAuthenticationRequired(false)
-                        .build();
-                generator.init(specification);
-                return generator.generateKey();
-            } catch (Exception exception) {
-                throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
-                        "A new task encryption key could not be created.", exception);
-            }
+            if (keyStoreContainsAlias(keyStore, KEY_ALIAS)) return existingKey(keyStore, KEY_ALIAS);
+            return generateKeyForAlias(KEY_ALIAS);
         }
 
-        private boolean keyStoreContainsAlias(KeyStore keyStore) throws EncryptedBlobStore.StorageException {
+        @Override
+        public SecretKey loadKeyForVersion(int keyVersion)
+                throws EncryptedBlobStore.StorageException {
+            if (keyVersion == KEY_VERSION_CURRENT) return loadExistingKey();
+            if (keyVersion == KEY_VERSION_ROTATED) {
+                return existingKey(loadKeyStore(), KEY_ALIAS_ROTATED);
+            }
+            throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
+                    "The saved task encryption key version is unsupported.");
+        }
+
+        @Override
+        public int newStoreKeyVersion() {
+            return KEY_VERSION_CURRENT;
+        }
+
+        @Override
+        public EncryptedBlobStore.VersionedKey createReplacementKey()
+                throws EncryptedBlobStore.StorageException {
+            KeyStore keyStore = loadKeyStore();
+            if (keyStoreContainsAlias(keyStore, KEY_ALIAS_ROTATED)) {
+                return new EncryptedBlobStore.VersionedKey(
+                        existingKey(keyStore, KEY_ALIAS_ROTATED), KEY_VERSION_ROTATED);
+            }
+            return new EncryptedBlobStore.VersionedKey(
+                    generateKeyForAlias(KEY_ALIAS_ROTATED), KEY_VERSION_ROTATED);
+        }
+
+        @Override
+        public void destroyRetiredKey(int keyVersion) throws EncryptedBlobStore.StorageException {
+            if (keyVersion != KEY_VERSION_CURRENT) return;
             try {
-                return keyStore.containsAlias(KEY_ALIAS);
-            } catch (Exception exception) {
-                throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
-                        "Android Keystore could not be checked.", exception);
+                KeyStore keyStore = loadKeyStore();
+                if (keyStoreContainsAlias(keyStore, KEY_ALIAS)) keyStore.deleteEntry(KEY_ALIAS);
+            } catch (Exception keystoreFailure) {
+                // Retirement is best-effort; the retired alias is no longer referenced
+                // by the committed snapshot after a completed rotation.
             }
         }
     }
