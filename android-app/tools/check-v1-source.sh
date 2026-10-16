@@ -206,7 +206,7 @@ set_mode = re.search(r"private void setWebMode\(boolean enabled\)\s*\{(.*?)\n   
 assert set_mode and "taskDraft = quickCaptureInput.getText()" in set_mode.group(1), "task draft should remain local in task mode"
 assert "quickCaptureInput.setText(enabled ? \"\" : taskDraft);" in activity, "task draft must not be prefilled into Web mode"
 assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity, "Web text must not overwrite the local task draft"
-assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
+assert 'navWebTab = buildNavTab("🌐", "Web", "Open web browser and search", view -> setWebMode(true));' in activity, "Web mode must be reachable from the canonical bottom navigation"
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
 network_policy = (main / "java/com/abrar/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
