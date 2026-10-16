@@ -97,7 +97,9 @@ jobs:
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
           test -x "$sdkmanager" || { echo "::error::sdkmanager not found at $sdkmanager"; exit 1; }
-          yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null
+          if ! yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null; then
+            echo "::warning::sdkmanager --licenses exited nonzero (expected: 'yes' gets SIGPIPE under pipefail); continuing, install step surfaces real license problems"
+          fi
           "$sdkmanager" --install "platforms;android-36" "system-images;android-36;google_apis;x86_64" "emulator" "platform-tools" >/dev/null
           echo "no" | "$avdmanager" create avd -n ci36 -k "system-images;android-36;google_apis;x86_64" -d pixel_2 --force >/dev/null
           "$ANDROID_HOME/emulator/emulator" -version
@@ -124,7 +126,7 @@ jobs:
           echo "--- starting emulator (log: $RUNNER_TEMP/emulator36.log)"
           "$ANDROID_HOME/emulator/emulator" -avd ci36 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics > "$RUNNER_TEMP/emulator36.log" 2>&1 &
           emu_pid=$!
-          "$adb" wait-for-device || fail "adb wait-for-device failed"
+          timeout 300s "$adb" wait-for-device || { echo "ADB WAIT-FOR-DEVICE FAILED/TIMEOUT"; tail -n 80 "$RUNNER_TEMP/emulator36.log"; "$adb" devices; fail "adb wait-for-device timed out or failed"; }
           boot=""
           for i in $(seq 1 200); do
             boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
@@ -164,7 +166,9 @@ jobs:
           cd "${{ github.workspace }}"
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-          yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null
+          if ! yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null; then
+            echo "::warning::sdkmanager --licenses exited nonzero (expected: 'yes' gets SIGPIPE under pipefail); continuing, install step surfaces real license problems"
+          fi
           "$sdkmanager" --install "system-images;android-29;google_apis;x86_64" "emulator" "platform-tools" >/dev/null
           echo "no" | "$avdmanager" create avd -n ci29 -k "system-images;android-29;google_apis;x86_64" -d pixel_2 --force >/dev/null
 
@@ -187,7 +191,7 @@ jobs:
           echo "--- starting emulator (log: $RUNNER_TEMP/emulator29.log)"
           "$ANDROID_HOME/emulator/emulator" -avd ci29 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics > "$RUNNER_TEMP/emulator29.log" 2>&1 &
           emu_pid=$!
-          "$adb" wait-for-device || fail "adb wait-for-device failed"
+          timeout 300s "$adb" wait-for-device || { echo "ADB WAIT-FOR-DEVICE FAILED/TIMEOUT"; tail -n 80 "$RUNNER_TEMP/emulator29.log"; "$adb" devices; fail "adb wait-for-device timed out or failed"; }
           boot=""
           for i in $(seq 1 200); do
             boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
