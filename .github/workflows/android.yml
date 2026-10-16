@@ -79,58 +79,110 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Provision Android 16 (API 36) emulator image
+        if: github.event_name == 'pull_request'
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          test -x "$sdkmanager" || { echo "::error::sdkmanager not found at $sdkmanager"; exit 1; }
+          yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null
+          "$sdkmanager" --install "platforms;android-36" "system-images;android-36;google_apis;x86_64" "emulator" "platform-tools" >/dev/null
+          echo "no" | "$avdmanager" create avd -n ci36 -k "system-images;android-36;google_apis;x86_64" -d pixel_2 --force >/dev/null
+          "$ANDROID_HOME/emulator/emulator" -version
+          ls -l /dev/kvm || true
+
       - name: Cold-launch published v1.3 APK and current debug APK on Android 16
         if: github.event_name == 'pull_request'
         id: api36
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -eu
-            exec >> "$RUNNER_TEMP/api36-trace.log" 2>&1
-            set -x
-            cd "${{ github.workspace }}"
-            fail() { echo "::error::API-36 gate: $1"; exit 1; }
-            release_apk="$RUNNER_TEMP/Daymark-v1.3-githubSideload.apk"
-            debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
-            test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
-            curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.3/Daymark-v1.3-githubSideload.apk" --output "$release_apk" || fail "curl of published v1.3 APK failed"
-            echo "aa69ab6f81cae22a2c0ea58ca0619682dd77da826c5d5faaefe0eb934115e585  $release_apk" | sha256sum --check || fail "published v1.3 APK SHA-256 mismatch"
-            unzip -tqq "$release_apk" || fail "published v1.3 APK is not a valid zip"
-            unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml" || fail "published v1.3 APK missing AndroidManifest.xml"
-            unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc" || fail "published v1.3 APK missing resources.arsc"
-            unzip -Z1 "$release_apk" | grep -Fxq "classes.dex" || fail "published v1.3 APK missing classes.dex"
-            bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 36" "$release_apk" || fail "cold-launch of published v1.3 on API 36 failed"
-            timeout 30s adb uninstall com.abrar.daymark || fail "adb uninstall of com.abrar.daymark failed"
-            bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk" || fail "cold-launch of current PR debug APK on API 36 failed"
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          trace="$RUNNER_TEMP/api36-trace.log"
+          : > "$trace"
+          exec >> "$trace" 2>&1
+          set -x
+          cd "${{ github.workspace }}"
+          fail() { echo "::error::API-36 gate: $1"; exit 1; }
+          adb="$ANDROID_HOME/platform-tools/adb"
+          test -x "$adb" || fail "adb not found: $adb"
+          echo "--- /dev/kvm:"; ls -l /dev/kvm || true
+          echo "--- starting emulator (log: $RUNNER_TEMP/emulator36.log)"
+          "$ANDROID_HOME/emulator/emulator" -avd ci36 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics > "$RUNNER_TEMP/emulator36.log" 2>&1 &
+          emu_pid=$!
+          "$adb" wait-for-device || fail "adb wait-for-device failed"
+          boot=""
+          for i in $(seq 1 200); do
+            boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$boot" = "1" ]; then echo "BOOT COMPLETED (poll $i)"; break; fi
+            if ! kill -0 "$emu_pid" 2>/dev/null; then echo "EMULATOR PROCESS DIED (poll $i)"; tail -n 80 "$RUNNER_TEMP/emulator36.log"; fail "emulator process exited during boot"; fi
+            sleep 5
+          done
+          [ "$boot" = "1" ] || { echo "BOOT TIMEOUT"; tail -n 80 "$RUNNER_TEMP/emulator36.log"; "$adb" devices; fail "emulator failed to boot in 1000s"; }
+          "$adb" devices
+          release_apk="$RUNNER_TEMP/Daymark-v1.3-githubSideload.apk"
+          debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
+          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.3/Daymark-v1.3-githubSideload.apk" --output "$release_apk" || fail "curl of published v1.3 APK failed"
+          echo "aa69ab6f81cae22a2c0ea58ca0619682dd77da826c5d5faaefe0eb934115e585  $release_apk" | sha256sum --check || fail "published v1.3 APK SHA-256 mismatch"
+          unzip -tqq "$release_apk" || fail "published v1.3 APK is not a valid zip"
+          unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml" || fail "published v1.3 APK missing AndroidManifest.xml"
+          unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc" || fail "published v1.3 APK missing resources.arsc"
+          unzip -Z1 "$release_apk" | grep -Fxq "classes.dex" || fail "published v1.3 APK missing classes.dex"
+          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 36" "$release_apk" || fail "cold-launch of published v1.3 on API 36 failed"
+          PATH="$ANDROID_HOME/platform-tools:$PATH" timeout 30s "$adb" uninstall com.abrar.daymark || fail "adb uninstall of com.abrar.daymark failed"
+          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk" || fail "cold-launch of current PR debug APK on API 36 failed"
+          kill "$emu_pid" 2>/dev/null || true
+          echo "API36 GATE: ALL PASS"
+
+      - name: Provision Android 10 (API 29) emulator image
+        if: github.event_name == 'pull_request'
+        shell: bash
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          yes 2>/dev/null | "$sdkmanager" --licenses >/dev/null
+          "$sdkmanager" --install "system-images;android-29;google_apis;x86_64" "emulator" "platform-tools" >/dev/null
+          echo "no" | "$avdmanager" create avd -n ci29 -k "system-images;android-29;google_apis;x86_64" -d pixel_2 --force >/dev/null
 
       - name: Cold-launch current debug APK on Android 10 (API 29)
         if: github.event_name == 'pull_request'
         id: api29
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: |
-            set -eu
-            exec >> "$RUNNER_TEMP/api29-trace.log" 2>&1
-            set -x
-            cd "${{ github.workspace }}"
-            fail() { echo "::error::API-29 gate: $1"; exit 1; }
-            debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
-            test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
-            bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk" || fail "cold-launch of current PR debug APK on API 29 failed"
+        shell: bash
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          trace="$RUNNER_TEMP/api29-trace.log"
+          : > "$trace"
+          exec >> "$trace" 2>&1
+          set -x
+          cd "${{ github.workspace }}"
+          fail() { echo "::error::API-29 gate: $1"; exit 1; }
+          adb="$ANDROID_HOME/platform-tools/adb"
+          echo "--- starting emulator (log: $RUNNER_TEMP/emulator29.log)"
+          "$ANDROID_HOME/emulator/emulator" -avd ci29 -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics > "$RUNNER_TEMP/emulator29.log" 2>&1 &
+          emu_pid=$!
+          "$adb" wait-for-device || fail "adb wait-for-device failed"
+          boot=""
+          for i in $(seq 1 200); do
+            boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$boot" = "1" ]; then echo "BOOT COMPLETED (poll $i)"; break; fi
+            if ! kill -0 "$emu_pid" 2>/dev/null; then echo "EMULATOR PROCESS DIED (poll $i)"; tail -n 80 "$RUNNER_TEMP/emulator29.log"; fail "emulator process exited during boot"; fi
+            sleep 5
+          done
+          [ "$boot" = "1" ] || { echo "BOOT TIMEOUT"; tail -n 80 "$RUNNER_TEMP/emulator29.log"; "$adb" devices; fail "emulator failed to boot in 1000s"; }
+          debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
+          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk" || fail "cold-launch of current PR debug APK on API 29 failed"
+          kill "$emu_pid" 2>/dev/null || true
+          echo "API29 GATE: ALL PASS"
 
       - name: Report emulator gate traces to the pull request
         if: always() && github.event_name == 'pull_request'
@@ -149,7 +201,7 @@ jobs:
             echo "- API-36 gate outcome: ${API36_OUTCOME:-unknown}"
             echo "- API-29 gate outcome: ${API29_OUTCOME:-unknown}"
             echo
-            for f in "$RUNNER_TEMP/api36-trace.log" "$RUNNER_TEMP/api29-trace.log"; do
+            for f in "$RUNNER_TEMP/api36-trace.log" "$RUNNER_TEMP/emulator36.log" "$RUNNER_TEMP/api29-trace.log" "$RUNNER_TEMP/emulator29.log"; do
               echo "### $(basename "$f")"
               echo
               echo '<details><summary>trace</summary>'
