@@ -2038,7 +2038,7 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-            browserWebView.getSettings().setBlockNetworkLoads(false);
+            BrowserWorkspaceController.prepareForExplicitNavigation(browserNetworkPolicy, browserWebView);
             browserWebView.onResume();
             browserWebView.resumeTimers();
         } catch (SecurityException denied) {
@@ -4479,6 +4479,7 @@ public final class MainActivity extends Activity {
     private void setBrowserOnlineEnabled(boolean enabled) {
         if (browserNetworkPolicy.isOnlineEnabled() == enabled) return;
         browserNetworkPolicy.setOnlineEnabled(enabled);
+        if (!enabled) BrowserWorkspaceController.enforceOffline(browserNetworkPolicy, browserTabs);
         if (enabled) {
             browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)
                     .putBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, true).apply();
