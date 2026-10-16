@@ -26,8 +26,8 @@ android {
         testInstrumentationRunner = "com.abrar.daymark.DaymarkPlatformInstrumentation"
         // Owner-approved fresh app identity; previous app installations remain separate.
         // Keep versionCode monotonic even though the displayed version restarts.
-        versionCode = 9
-        versionName = "1.2"
+        versionCode = 10
+        versionName = "1.3"
     }
 
     signingConfigs {
@@ -57,7 +57,7 @@ android {
                 val keystoreFile = file(keystorePath!!)
                 if (!keystoreFile.exists()) {
                     throw GradleException(
-                        "Release signing configuration error: Keystore file not found at KEYSTORE_PATH: ${keystoreFile.absolutePath}"
+                        "Release signing configuration error: Keystore file not found at KEYSTORE_PATH: " + keystoreFile.absolutePath
                     )
                 }
 
