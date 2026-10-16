@@ -25,7 +25,10 @@ final class BrowserSelfHealingPolicy {
      */
     boolean shouldRecover(String address) {
         if (address == null || !address.regionMatches(true, 0, "https://", 0, 8)) return false;
-        if (!address.equals(activeAddress)) {
+        // Compare addresses case-insensitively: URL hosts are case-insensitive, and a
+        // case-only variant of the same address must not reset the recovery budget
+        // (otherwise a case-differing redirect could loop automatic reloads).
+        if (!address.equalsIgnoreCase(activeAddress)) {
             activeAddress = address;
             automaticRecoveries = 0;
         }
