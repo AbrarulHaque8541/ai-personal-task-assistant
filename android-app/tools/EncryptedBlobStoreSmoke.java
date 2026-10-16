@@ -6,7 +6,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -27,6 +30,11 @@ public final class EncryptedBlobStoreSmoke {
         silentCommitFailureIsReportedAndPriorSnapshotRemains();
         staleSnapshotCannotOverwriteNewerCommit();
         incompleteFirstWriteIsNotMistakenForEmpty();
+        legacyFormatBlobRemainsReadableAndIsUpgradedOnSave();
+        keyRotationReplacesBlobAndRetiresOldKey();
+        interruptedRotationPreservesPriorSnapshotAndRetiredKey();
+        rotationRequiresAVerifiedLoadedStore();
+        emptyStoreRotationIsANoOp();
         System.out.println("PASS encrypted storage recovery tests: " + assertions + " assertions");
     }
 
@@ -102,7 +110,7 @@ public final class EncryptedBlobStoreSmoke {
         Fixture saved = saveNew("last good snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         byte[] original = saved.file.bytes();
         TestKeys invalidated = new TestKeys();
-        invalidated.key = new SecretKeySpec(new byte[17], "AES");
+        invalidated.legacyKey = new SecretKeySpec(new byte[17], "AES");
         expectFailure(() -> new EncryptedBlobStore(saved.file, invalidated).load(),
                 EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
                 "an unusable AES key rejected at initialization is reported as unavailable");
@@ -188,6 +196,134 @@ public final class EncryptedBlobStoreSmoke {
         check(file.hasAnyArtifacts(), "failure does not delete the incomplete write artifact");
     }
 
+    private static void legacyFormatBlobRemainsReadableAndIsUpgradedOnSave() throws Exception {
+        MemoryAtomicFile file = new MemoryAtomicFile();
+        TestKeys keys = new TestKeys();
+        keys.legacyKey = new SecretKeySpec(new byte[32], "AES");
+        byte[] plaintext = "legacy task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        file.replaceBase(craftLegacyBlob(keys.legacyKey, plaintext));
+        byte[] legacyBlob = file.bytes();
+
+        EncryptedBlobStore store = new EncryptedBlobStore(file, keys);
+        EncryptedBlobStore.LoadResult loaded = store.load();
+        check(!loaded.isEmpty() && Arrays.equals(plaintext, loaded.plaintext()),
+                "a legacy DMT1 snapshot remains readable with the original key");
+
+        byte[] upgradedPlaintext = "upgraded task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        store.save(upgradedPlaintext);
+        byte[] saved = file.bytes();
+        check(hasVersionedMagic(saved), "save rewrites the snapshot with the versioned DMT2 header");
+        check(readBlobKeyVersion(saved) == 1, "an upgraded legacy snapshot keeps its original key version");
+        check(!Arrays.equals(legacyBlob, saved), "the legacy-format bytes are replaced on save");
+
+        EncryptedBlobStore reopened = new EncryptedBlobStore(file, keys);
+        check(!reopened.load().isEmpty() && Arrays.equals(upgradedPlaintext, reopened.load().plaintext()),
+                "an upgraded DMT2 snapshot loads back without the legacy header");
+    }
+
+    private static void keyRotationReplacesBlobAndRetiresOldKey() throws Exception {
+        byte[] originalPlaintext = "pre-rotation committed snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Fixture saved = saveNew(originalPlaintext);
+        check(hasVersionedMagic(saved.goodBytes) && readBlobKeyVersion(saved.goodBytes) == 1,
+                "the pre-rotation snapshot names the original key version");
+
+        saved.store.rotateKey(originalPlaintext);
+        byte[] rotated = saved.file.bytes();
+        check(hasVersionedMagic(rotated), "rotation writes the versioned DMT2 header");
+        check(readBlobKeyVersion(rotated) == 2, "the rotated blob names the replacement key version");
+        check(!Arrays.equals(rotated, saved.goodBytes), "rotation replaces the committed ciphertext");
+        check(saved.keys.retiredVersions.contains(Integer.valueOf(1)),
+                "the retired key version is destroyed after the new snapshot commits");
+        check(saved.keys.legacyKey == null, "the retired key is no longer loadable after rotation");
+
+        EncryptedBlobStore reopened = new EncryptedBlobStore(saved.file, saved.keys);
+        check(!reopened.load().isEmpty() && Arrays.equals(originalPlaintext, reopened.load().plaintext()),
+                "the reopened store reads the rotated snapshot with the replacement key");
+
+        byte[] postRotation = "post-rotation edit".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        reopened.save(postRotation);
+        EncryptedBlobStore reloaded = new EncryptedBlobStore(saved.file, saved.keys);
+        check(Arrays.equals(postRotation, reloaded.load().plaintext()),
+                "saving after rotation keeps working under the replacement key");
+    }
+
+    private static void interruptedRotationPreservesPriorSnapshotAndRetiredKey() throws Exception {
+        byte[] originalPlaintext = "pre-rotation committed snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Fixture saved = saveNew(originalPlaintext);
+        byte[] originalBlob = saved.file.bytes();
+        saved.file.failNextWriteAfter(13);
+        expectFailure(() -> { saved.store.rotateKey(originalPlaintext); return null; },
+                EncryptedBlobStore.Kind.WRITE_FAILED, "interrupted rotation reports a failed commit");
+        check(Arrays.equals(originalBlob, saved.file.bytes()),
+                "interrupted rotation preserves the exact prior ciphertext");
+        check(saved.keys.retiredVersions.isEmpty(),
+                "no key version is retired by a failed rotation");
+        check(saved.keys.legacyKey != null, "the original key survives a failed rotation");
+
+        EncryptedBlobStore restarted = new EncryptedBlobStore(saved.file, saved.keys);
+        check(!restarted.load().isEmpty() && Arrays.equals(originalPlaintext, restarted.load().plaintext()),
+                "the prior snapshot remains readable after a failed rotation");
+    }
+
+    private static void rotationRequiresAVerifiedLoadedStore() throws Exception {
+        Fixture saved = saveNew("verified snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        EncryptedBlobStore unloaded = new EncryptedBlobStore(saved.file, saved.keys);
+        expectFailure(() -> { unloaded.rotateKey("replacement data".getBytes(java.nio.charset.StandardCharsets.UTF_8)); return null; },
+                EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
+                "rotation is blocked before the store is loaded");
+
+        byte[] tampered = saved.file.bytes().clone();
+        tampered[tampered.length - 1] ^= 0x01;
+        saved.file.replaceBase(tampered);
+        byte[] beforeRotation = saved.file.bytes();
+        expectFailure(() -> { saved.store.load(); return null; },
+                EncryptedBlobStore.Kind.AUTHENTICATION_FAILED,
+                "a tampered snapshot fails authentication before any rotation state check");
+        expectFailure(() -> { saved.store.rotateKey("replacement data".getBytes(java.nio.charset.StandardCharsets.UTF_8)); return null; },
+                EncryptedBlobStore.Kind.STORE_NOT_VERIFIED,
+                "rotation is blocked after a failed load");
+        check(Arrays.equals(beforeRotation, saved.file.bytes()),
+                "a blocked rotation leaves the ciphertext unchanged");
+    }
+
+    private static void emptyStoreRotationIsANoOp() throws Exception {
+        MemoryAtomicFile file = new MemoryAtomicFile();
+        TestKeys keys = new TestKeys();
+        EncryptedBlobStore store = new EncryptedBlobStore(file, keys);
+        check(store.load().isEmpty(), "new store starts empty");
+        store.rotateKey("first task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        check(!file.hasAnyArtifacts(), "empty-store rotation writes no snapshot");
+        check(keys.retiredVersions.isEmpty(), "empty-store rotation retires no key version");
+
+        store.save("first task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        EncryptedBlobStore reloaded = new EncryptedBlobStore(file, keys);
+        check(!reloaded.load().isEmpty()
+                        && Arrays.equals("first task snapshot".getBytes(java.nio.charset.StandardCharsets.UTF_8), reloaded.load().plaintext()),
+                "saving still works after a no-op empty-store rotation");
+    }
+
+    private static byte[] craftLegacyBlob(SecretKey key, byte[] plaintext) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+        cipher.updateAAD(new byte[] { 'D', 'M', 'T', '1' });
+        byte[] iv = cipher.getIV();
+        byte[] ciphertext = cipher.doFinal(plaintext);
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        buffer.write(new byte[] { 'D', 'M', 'T', '1' });
+        buffer.write(iv);
+        buffer.write(ciphertext);
+        return buffer.toByteArray();
+    }
+
+    private static boolean hasVersionedMagic(byte[] blob) {
+        return blob != null && blob.length >= 4
+                && blob[0] == 'D' && blob[1] == 'M' && blob[2] == 'T' && blob[3] == '2';
+    }
+
+    private static int readBlobKeyVersion(byte[] blob) {
+        return ((blob[4] & 0xFF) << 8) | (blob[5] & 0xFF);
+    }
+
     private static Fixture saveNew(byte[] plaintext) throws Exception {
         MemoryAtomicFile file = new MemoryAtomicFile();
         TestKeys keys = new TestKeys();
@@ -236,25 +372,56 @@ public final class EncryptedBlobStoreSmoke {
     }
 
     private static final class TestKeys implements EncryptedBlobStore.KeyAccess {
-        private SecretKey key;
+        private SecretKey legacyKey;
+        private SecretKey rotatedKey;
         private boolean unavailable;
         private boolean invalidated;
         private int createCalls;
+        private final List<Integer> retiredVersions = new ArrayList<>();
 
         @Override
         public SecretKey loadExistingKey() throws EncryptedBlobStore.StorageException {
-            if (unavailable || invalidated || key == null) {
+            if (unavailable || invalidated || legacyKey == null) {
                 throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
                         invalidated ? "Simulated permanently invalidated key." : "Simulated missing key.");
             }
-            return key;
+            return legacyKey;
         }
 
         @Override
         public SecretKey createKeyForNewStore() {
             createCalls++;
-            if (key == null) key = new SecretKeySpec(new byte[32], "AES");
-            return key;
+            if (legacyKey == null) legacyKey = new SecretKeySpec(new byte[32], "AES");
+            return legacyKey;
+        }
+
+        @Override
+        public SecretKey loadKeyForVersion(int keyVersion) throws EncryptedBlobStore.StorageException {
+            if (keyVersion >= 2) {
+                if (unavailable || rotatedKey == null) {
+                    throw new EncryptedBlobStore.StorageException(EncryptedBlobStore.Kind.KEY_UNAVAILABLE,
+                            "Simulated missing replacement key.");
+                }
+                return rotatedKey;
+            }
+            return loadExistingKey();
+        }
+
+        @Override
+        public int newStoreKeyVersion() {
+            return 1;
+        }
+
+        @Override
+        public EncryptedBlobStore.VersionedKey createReplacementKey() {
+            if (rotatedKey == null) rotatedKey = new SecretKeySpec(new byte[32], "AES");
+            return new EncryptedBlobStore.VersionedKey(rotatedKey, 2);
+        }
+
+        @Override
+        public void destroyRetiredKey(int keyVersion) {
+            retiredVersions.add(keyVersion);
+            if (keyVersion == 1) legacyKey = null;
         }
     }
 
