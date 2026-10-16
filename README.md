@@ -16,7 +16,7 @@
 
 1. Open the [Latest Release](https://github.com/AbrarulHaque8541/daymark/releases/latest) on GitHub.
 2. Under **Assets**, download the single file whose name ends in `.apk` (e.g. `Daymark-v...-githubSideload.apk`).
-    - **Important:** Do not install a `.aab` file directly; it is an Android App Bundle for Play Console, not a phone-installable APK. The production workflow is gated to publish one installable `.apk` asset. Older releases may contain additional historical assets; select only the `.apk` for phone installation.
+    - **Important:** Do not install a `.aab` file directly; it is an Android App Bundle for Play Console, not a phone-installable APK. The production workflow creates a **draft release** with one installable `.apk` asset after signed-artifact and API-29/API-36 emulator gates. It must not publish publicly until the owner verifies and cold-launches that exact APK on the physical phone, then manually publishes the draft. Older releases may contain historical assets; select only the `.apk` for phone installation.
 3. Open the downloaded `.apk` file on your device and follow the prompts to install.
 4. **App identity & safety notes:**
    - **Application ID:** `com.abrar.daymark`. This is a fresh app identity, separate from previous app installations. Android keeps it separate and legacy local data is not automatically migrated (use encrypted backup/restore).
@@ -41,7 +41,7 @@
 Read **[AGENTS.md](AGENTS.md)** and **[RELEASE_SIGNING.md](RELEASE_SIGNING.md)** first. Then read the [agent status index](docs/AGENT_STATUS.md) and verify its linked snapshot against live GitHub.
 
 - Production signing secrets are already in GitHub Actions — **do not ask the owner for keystore files**.
-- Publish only through the production workflow with a tag exactly matching `v` + the source `versionName` on `main`, after all release gates pass.
+- Push a tag exactly matching `v` + the source `versionName` on `main` to trigger signed-artifact checks. The workflow must create a draft only; test the exact draft APK SHA-256 on the owner device and manually publish the draft only after acceptance.
 - Verify live Releases, Issues, PRs, and Actions instead of trusting old “candidate” sentences in dated audits.
 
 ## Build and test

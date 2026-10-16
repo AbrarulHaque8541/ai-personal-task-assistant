@@ -26,8 +26,8 @@ This repository's release and updater checks require exact production-signer con
 
 1. Keep `versionCode` strictly increasing.
 2. Keep `versionName` in `android-app/app/build.gradle.kts`; the production tag must be exactly `v` + that value.
-3. Publish only through `.github/workflows/android-production-release.yml` on the exact version tag after all required checks pass.
-4. The production workflow builds the signed APK/AAB and verifies package ID, version, target SDK 36, and signer before publication. Main Android CI is not a signed production release and does not publish assets.
+3. Push the exact version tag only after code/host checks pass; the production workflow must create a **draft**, not a public release, after signed-artifact and API-29/API-36 cold-launch gates pass.
+4. The workflow attaches only the installable APK to a draft and verifies its checksum/metadata. It must not mark the draft latest or publish it. The owner must download that exact draft APK, verify SHA-256, and cold-launch it on the physical device; only then may the owner manually publish the draft. Main Android CI is not a signed production release.
 5. The expected APK asset name is `Daymark-v{versionName}-githubSideload.apk`; verify the actual release assets and checksums before distribution.
 6. A successful CI build does not establish Android-device behavior or upgrade/data-migration compatibility.
 
@@ -49,7 +49,7 @@ After a clean install, a later build can update in place only when it has the sa
 2. Preserve `UpdaterPublisherConfig.PUBLISHER_SIGNER_SHA256` and the protected signing secrets.
 3. Complete review and merge the release change under the owner's authority.
 4. Only when the owner authorizes publication, create/push the exact `v<versionName>` tag on the intended `main` commit.
-5. Wait for the production-release workflow; verify its exact commit, package/version/target-SDK/signer assertions, signed APK/AAB, checksums, and attached release assets.
+5. Wait for the workflow to create a draft; verify exact commit, package/version/target-SDK/signer assertions and the APK SHA-256. Test the exact draft APK on the owner device before manually publishing the draft. Never treat a successful workflow alone as release approval.
 6. Describe an update as in-place only for a compatible same-application-ID installation. For the current separate identity, do not promise replacement of the older app or automatic data transfer.
 
 ## Debug vs. production
