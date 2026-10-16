@@ -1,0 +1,104 @@
+name: One-shot validate PR 312 merge head
+
+# One-shot validator: GitHub App pushes do not trigger pull_request workflows,
+# so this workflow checks out the exact PR #312 merge head and runs the full
+# PR-mode validation suite (host/source checks + both-flavor debug builds,
+# lint, unit tests, instrumentation compile, merged manifests, APK verify).
+# It runs once on this push to main and is then removed.
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneshot-validate-pr312-head
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out the exact PR 312 merge head
+        uses: actions/checkout@v5
+        with:
+          ref: 25af26681310375e3ab46370326835d1a4dab884
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
+      - name: Host and source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          cd android-app
+          sh ./tools/run-core-tests.sh
+          sh ./tools/run-updater-picker-routing-tests.sh
+          sh ./tools/run-attachment-tests.sh
+          sh ./tools/run-storage-recovery-tests.sh
+          sh ./tools/run-portable-backup-tests.sh
+          sh ./tools/check-v1-source.sh
+          python3 ./tools/check-accessibility-contrast.py
+          python3 ./tools/check-attachment-source.py "$PWD"
+          python3 ./tools/check-backup-rules.py
+          python3 ./tools/check-portable-archive-bounds.py
+          python3 ./tools/check-schema-v1-fixture.py "$PWD"
+          python3 ./tools/check-storage-failure-ui.py
+          python3 ./tools/check-task-template-source.py "$PWD"
+
+      - name: Clean Android build
+        working-directory: android-app
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon clean
+
+      - name: Build and check both Android flavors
+        working-directory: android-app
+        run: |
+          ./gradlew --no-daemon --continue \
+            assembleGithubSideloadDebug \
+            assemblePlayDebug \
+            lintGithubSideloadDebug \
+            lintPlayDebug \
+            testGithubSideloadDebugUnitTest \
+            testPlayDebugUnitTest \
+            compileGithubSideloadDebugAndroidTestJavaWithJavac \
+            compilePlayDebugAndroidTestJavaWithJavac
+
+      - name: Verify merged manifests
+        working-directory: android-app
+        run: python3 ./tools/check-merged-manifests.py "$PWD"
+
+      - name: Verify debug APK metadata and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+          test -s "$apk"
+          unzip -t "$apk" > /dev/null
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]]
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          [[ -x "$aapt" && -x "$apksigner" ]]
+          "$apksigner" verify "$apk"
+          badging="$RUNNER_TEMP/daymark-badging.txt"
+          "$aapt" dump badging "$apk" > "$badging"
+          grep -q "^package: name='com.abrar.daymark'" "$badging"
+          grep -q "targetSdkVersion:'35'" "$badging"
+          grep -q "sdkVersion:'26'" "$badging"
