@@ -1,4 +1,4 @@
-name: Diagnose PR 312 head check failures (one-shot v3)
+name: Diagnose PR 312 head check failures (one-shot v4)
 
 # One-shot diagnostic v3: runs each host/source check separately against the
 # exact PR #312 merge head and posts per-check exit codes plus failing output
@@ -11,6 +11,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: oneshot-diagnose-pr312-head
@@ -82,7 +83,7 @@ jobs:
       - name: Post diagnostics report as PR comment
         shell: bash
         env:
-          DIAG_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          DIAG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
