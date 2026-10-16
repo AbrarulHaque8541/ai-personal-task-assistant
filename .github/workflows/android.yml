@@ -243,7 +243,7 @@ jobs:
               echo '<details><summary>trace</summary>'
               echo
               echo '```'
-              if [ -s "$f" ]; then tail -c 12000 "$f"; else echo "(no trace output)"; fi
+              if [ -s "$f" ]; then tail -c 30000 "$f"; else echo "(no trace output)"; fi
               echo '```'
               echo
               echo '</details>'
