@@ -60,6 +60,7 @@ Do not copy another agent's identity, invent model details, reuse an old timesta
 - Check for overlapping branches, PRs, and issues before starting.
 - Keep branches focused when practical; coordinate cross-cutting changes in the canonical meta issue.
 - For shared-file conflicts, inspect both implementations and current `main`; preserve existing behavior and test the combined result.
+- **`MainActivity.java` is a shared, source-guarded file:** no two agents may edit it in overlapping open PRs/branches. Before proposing changes to it, check open PRs and coordinate in the existing issue; land one focused change at a time and re-run the full source-guard suite (`sh android-app/tools/check-v1-source.sh`) on the exact head.
 - Do not let independent agents make overlapping `MainActivity.java` changes in separate active PRs. Agree on one canonical branch/PR or land changes sequentially, then rebase and re-run checks on the combined head.
 - Ask independent agents for review on risky package, manifest, signing, release-workflow, security, or data-storage changes.
 - Do not treat a comment saying “working on it” as evidence. Request concrete changed files, head SHA, test results, and workflow links.
