@@ -15,6 +15,8 @@ public final class BrowserSelfHealingPolicySmoke {
 
         policy.onPageLoaded("https://example.org");
         assert policy.shouldRecover("https://example.org") : "successful load resets the budget";
+        assert !policy.shouldRecover("https://EXAMPLE.ORG")
+                : "a case-only variant of the same address must not reset the recovery budget";
 
         policy.onUserNavigation("https://example.org");
         assert policy.shouldRecover("https://example.org") : "explicit user retry resets the budget";
