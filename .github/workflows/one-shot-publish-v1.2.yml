@@ -1,0 +1,220 @@
+name: One-shot publish v1.2 (single APK)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oneshot-publish-v1-2
+  cancel-in-progress: false
+
+jobs:
+  retag-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Move v1.2 tag to current main HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag -f v1.2 "$GITHUB_SHA"
+          git push -f origin v1.2
+
+      - name: Check out exact v1.2 tag
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: refs/tags/v1.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${KEYSTORE_BASE64:-}" ]] || missing+=("KEYSTORE_BASE64")
+          [[ -n "${KEYSTORE_PASSWORD:-}" ]] || missing+=("KEYSTORE_PASSWORD")
+          [[ -n "${KEY_ALIAS:-}" ]] || missing+=("KEY_ALIAS")
+          [[ -n "${KEY_PASSWORD:-}" ]] || missing+=("KEY_PASSWORD")
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required signing secret(s): ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Restore production keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/daymark-release.keystore"
+          test -s "$RUNNER_TEMP/daymark-release.keystore"
+
+      - name: Build signed production APK and AAB
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/daymark-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleGithubSideloadRelease bundleGithubSideloadRelease lintGithubSideloadRelease testGithubSideloadReleaseUnitTest
+
+      - name: Verify package, version, and signing identity
+        id: verify
+        shell: bash
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/daymark-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+          test -s "$apk"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose "$apk"
+          badging="$( "$aapt" dump badging "$apk" )"
+          package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$badging")"
+          version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$badging")"
+          version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$badging")"
+          min_sdk_version="$(grep -m1 "^sdkVersion:" <<< "$badging" | sed -n "s/^sdkVersion:'\([0-9][0-9]*\)'.*/\1/p")"
+          target_sdk_version="$(awk -F"'" '/^targetSdkVersion:/ {print $2; exit}' <<< "$badging")"
+          expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/abrar/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
+          echo "Package ID:       $package_id"
+          echo "Version Name:     $version_name"
+          echo "Version Code:     $version_code"
+          echo "Target SDK:       $target_sdk_version"
+          echo "Min SDK:          $min_sdk_version"
+          echo "Expected signer:  ${expected_signer,,}"
+          [[ "$package_id" == "com.abrar.daymark" ]]
+          [[ "$version_name" == "1.2" && "$version_code" == "9" ]]
+          [[ "$target_sdk_version" == "35" ]]
+          [[ "${#expected_signer}" -eq 64 ]]
+          [[ "$min_sdk_version" =~ ^[0-9]+$ ]]
+          apksigner_output="$($apksigner verify --verbose --print-certs "$apk")"
+          actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
+          if [[ -z "$actual_signer" ]]; then
+            cert_file="$RUNNER_TEMP/release-certificate.der"
+            keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" 2>/dev/null || true
+            if [[ -s "$cert_file" ]]; then
+              actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr 'A-F' 'a-f')"
+            fi
+          fi
+          echo "Actual signer:    $actual_signer"
+          [[ "$actual_signer" == "${expected_signer,,}" ]] || { echo "::error::Release signer mismatch; refusing publication."; exit 1; }
+          mkdir -p release-artifacts
+          cp "$apk" "release-artifacts/Daymark-v1.2-githubSideload.apk"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "min_sdk_version=$min_sdk_version" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=${expected_signer,,}" >> "$GITHUB_OUTPUT"
+          echo "apk_sha=$(sha256sum release-artifacts/Daymark-v1.2-githubSideload.apk | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Publish single-APK production release v1.2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ steps.verify.outputs.version_code }}
+          MIN_SDK_VERSION: ${{ steps.verify.outputs.min_sdk_version }}
+          SIGNER_SHA256: ${{ steps.verify.outputs.signer_sha256 }}
+          APK_SHA: ${{ steps.verify.outputs.apk_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Remove any stale/unpublished v1.2 release first, then publish fresh.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.2" > /dev/null 2>&1; then
+            echo "Deleting stale v1.2 release object (tag is kept)."
+            release_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.2" --jq .id)"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"
+          fi
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "## Daymark v1.2"
+            echo
+            echo 'Download **only** this one file: `Daymark-v1.2-githubSideload.apk`.'
+            echo
+            echo 'This release attaches a single APK. No .aab is attached, so there is no second package to download by mistake.'
+            echo
+            echo 'Fixes in this release:'
+            echo
+            echo '- Cold-start crash on Android 10 (API 29): WindowInsets contrast calls are now isolated in Api29Window, so the launcher no longer class-loads API 30 symbols on Android 10.'
+            echo '- Startup crash reports: the app now captures the previous startup crash and shows it in-app instead of silently closing.'
+            echo '- targetSdk locked to API 35 for OEM/runtime stability.'
+            echo
+            echo 'Chrome and Android show a "harmful"/"unrecognized app" warning for every app installed outside the Play Store. Daymark is not malware; the APK is production-signed and its signer SHA-256 is pinned below. If Play Protect explicitly blocks install, verify the APK SHA-256 matches the one listed here before installing.'
+            echo
+            echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'. Target SDK 35, min SDK 26.'
+            echo
+            echo "- APK: Daymark-v1.2-githubSideload.apk"
+            echo "- APK SHA-256: $APK_SHA"
+            echo
+            echo "<!-- daymark-updater-v1"
+            printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
+            echo "-->"
+          } > "$notes"
+          gh release create v1.2 "release-artifacts/Daymark-v1.2-githubSideload.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Daymark v1.2" \
+            --notes-file "$notes" \
+            --latest \
+            --verify-tag
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.2" > "$RUNNER_TEMP/published.json"
+          actual_body="$(jq -r '.body // ""' "$RUNNER_TEMP/published.json")"
+          grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
+          grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Wrong applicationId in metadata."; exit 1; }
+          grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Wrong versionCode in metadata."; exit 1; }
+          grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Wrong minSdkVersion in metadata."; exit 1; }
+          grep -Fq "\"signerCertificateSha256\":\"\$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Wrong signer fingerprint in metadata."; exit 1; }
+          echo "Published v1.2 successfully."
+
+      - name: Remove production keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/daymark-release.keystore" "$RUNNER_TEMP/release-certificate.der"
+
+      - name: Self-remove this one-shot workflow from main
+        if: always()
+        continue-on-error: true
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git checkout -B main refs/remotes/origin/main
+          git rm -f .github/workflows/one-shot-publish-v1.2.yml
+          git commit -m "chore: remove one-shot v1.2 publish workflow"
+          git push origin HEAD:main
