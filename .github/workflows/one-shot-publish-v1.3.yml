@@ -1,0 +1,301 @@
+name: One-shot publish Daymark v1.3
+
+# Temporary workflow: retag v1.3 on current main, then run the exact
+# production release steps (signing, verify, publish) on the tag, then
+# remove this file from main. Tags pushed with GITHUB_TOKEN cannot trigger
+# android-production-release.yml (GitHub recursion protection), so this
+# workflow performs the production steps itself, exactly as done for v1.2.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-publish-v1.3.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-shot-publish-v1.3
+  cancel-in-progress: false
+
+jobs:
+  retag-build-verify-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Tag current main HEAD as v1.3
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v1.3"
+          if existing="$(git ls-remote origin "refs/tags/$tag")" && [[ -n "$existing" ]]; then
+            existing_sha="$(awk '{print $1}' <<<"$existing")"
+            if [[ "$existing_sha" == "$GITHUB_SHA" ]]; then
+              echo "Tag $tag already points at $GITHUB_SHA; nothing to do."
+            else
+              echo "::error::Tag $tag already exists at $existing_sha, refusing to move it."
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
+          fi
+
+      - name: Check out exact tag
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: refs/tags/v1.3
+
+      - name: Verify v1.3 tag is on main
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          tag="v1.3"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          tag_sha="$(git rev-parse "refs/tags/$tag^{commit}")"
+          git merge-base --is-ancestor "$tag_sha" refs/remotes/origin/main
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+          cache-dependency-path: android-app/**/*.gradle*
+
+      - name: Set up Android SDK API 36
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${KEYSTORE_BASE64:-}" ]] || missing+=("KEYSTORE_BASE64")
+          [[ -n "${KEYSTORE_PASSWORD:-}" ]] || missing+=("KEYSTORE_PASSWORD")
+          [[ -n "${KEY_ALIAS:-}" ]] || missing+=("KEY_ALIAS")
+          [[ -n "${KEY_PASSWORD:-}" ]] || missing+=("KEY_PASSWORD")
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing required signing secret(s): ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Restore production keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/daymark-release.keystore"
+          test -s "$RUNNER_TEMP/daymark-release.keystore"
+
+      - name: Build signed production APK and AAB
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/daymark-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleGithubSideloadRelease bundleGithubSideloadRelease lintGithubSideloadRelease testGithubSideloadReleaseUnitTest
+
+      - name: Verify package, version, and signing identity
+        id: verify
+        shell: bash
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/daymark-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          tag="v1.3"
+          apk="app/build/outputs/apk/githubSideload/release/app-githubSideload-release.apk"
+          aab="app/build/outputs/bundle/githubSideloadRelease/app-githubSideload-release.aab"
+          test -s "$apk" && test -s "$aab"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          aapt="$(find "$sdk_root/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose "$apk"
+          badging="$( "$aapt" dump badging "$apk" )"
+          package_line="$(grep '^package: ' <<< "$badging")"
+          package_id="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          version_code="$(sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" <<< "$package_line")"
+          expected_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          expected_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -n 1)"
+          expected_signer="$(grep -oE '[0-9A-Fa-f]{64}' app/src/main/java/com/abrar/daymark/updater/UpdaterPublisherConfig.java | head -n 1)"
+          min_sdk_version="$(grep -m1 "^sdkVersion:" <<< "$badging" | sed -n "s/^sdkVersion:'\([0-9][0-9]*\)'.*/\1/p")"
+          echo "Package ID:       $package_id"
+          echo "Version Name:     $version_name"
+          echo "Version Code:     $version_code"
+          target_sdk_version="$(awk -F"'" '/^targetSdkVersion:/ {print $2; exit}' <<< "$badging")"
+          echo "Target SDK:       $target_sdk_version"
+          echo "Expected Name:    $expected_name"
+          echo "Expected Code:    $expected_code"
+          [[ "$package_id" == "com.abrar.daymark" ]]
+          [[ "$version_name" == "$expected_name" && "$version_code" == "$expected_code" ]]
+          [[ "$version_name" == "1.3" && "$version_code" == "10" ]]
+          [[ "$tag" == "v${version_name}" ]]
+          [[ "${#expected_signer}" -eq 64 ]]
+          [[ "$min_sdk_version" =~ ^[0-9]+$ ]] || { echo "::error::Unable to read minSdkVersion from APK manifest"; exit 1; }
+          [[ "$target_sdk_version" == "35" ]] || { echo "::error::Unexpected target SDK: $target_sdk_version"; exit 1; }
+          apksigner_output="$("$apksigner" verify --verbose --print-certs "$apk")"
+          actual_signer="$(printf '%s\n' "$apksigner_output" | sed -n 's/.*certificate SHA-256 digest:[[:space:]]*\([0-9A-Fa-f]*\).*/\1/p' | head -n 1 | tr 'A-F' 'a-f')"
+          if [[ -z "$actual_signer" ]]; then
+            cert_file="$RUNNER_TEMP/release-certificate.der"
+            keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -file "$cert_file" 2>/dev/null || true
+            if [[ -s "$cert_file" ]]; then
+              actual_signer="$(openssl dgst -sha256 -r "$cert_file" | awk '{print $1}' | tr 'A-F' 'a-f')"
+            fi
+          fi
+          echo "Expected signer: ${expected_signer,,}"
+          echo "Actual signer:   ${actual_signer}"
+          [[ "$actual_signer" == "${expected_signer,,}" ]] || { echo "::error::Release signer mismatch (expected ${expected_signer,,}, got $actual_signer); refusing publication."; exit 1; }
+          mkdir -p release-artifacts
+          apk_name="Daymark-v${version_name}-githubSideload.apk"
+          aab_name="Daymark-v${version_name}-githubSideload.aab"
+          cp "$apk" "release-artifacts/$apk_name"
+          cp "$aab" "release-artifacts/$aab_name"
+          (cd release-artifacts && sha256sum "$apk_name" "$aab_name" | tee SHA256SUMS.txt)
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "min_sdk_version=$min_sdk_version" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=${expected_signer,,}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+          echo "aab_name=$aab_name" >> "$GITHUB_OUTPUT"
+          echo "apk_sha=$(sha256sum "release-artifacts/$apk_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "aab_sha=$(sha256sum "release-artifacts/$aab_name" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified release payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daymark-v${{ steps.verify.outputs.version_name }}-production-release
+          path: |
+            android-app/release-artifacts/Daymark-v${{ steps.verify.outputs.version_name }}-githubSideload.apk
+            android-app/release-artifacts/Daymark-v${{ steps.verify.outputs.version_name }}-githubSideload.aab
+            android-app/release-artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Publish verified production release without clobbering
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v1.3
+          VERSION_NAME: ${{ steps.verify.outputs.version_name }}
+          VERSION_CODE: ${{ steps.verify.outputs.version_code }}
+          MIN_SDK_VERSION: ${{ steps.verify.outputs.min_sdk_version }}
+          SIGNER_SHA256: ${{ steps.verify.outputs.signer_sha256 }}
+          APK_NAME: ${{ steps.verify.outputs.apk_name }}
+          AAB_NAME: ${{ steps.verify.outputs.aab_name }}
+          APK_SHA: ${{ steps.verify.outputs.apk_sha }}
+          AAB_SHA: ${{ steps.verify.outputs.aab_sha }}
+        shell: bash
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          apk="release-artifacts/$APK_NAME"
+          aab="release-artifacts/$AAB_NAME"
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            echo "## Daymark v$VERSION_NAME"
+            echo
+            echo 'Download **only** this one file: `'"$APK_NAME"'`.'
+            echo
+            echo 'This release attaches a single APK. The Play App Bundle (.aab) is kept as a build artifact and is not a download, so there is no second package to download by mistake.'
+            echo
+            echo 'Fixes and improvements in this release:'
+            echo
+            echo '- Compact workspace: Templates removed from the bottom bar, duplicate Task/Web tabs removed, and the duplicate More menu removed.'
+            echo '- Compact +Task and search controls; the large task composer is gone. All task actions live in the task menu.'
+            echo '- Browser: Downloads moved into the browser overflow menu; the search-provider picker is compact and only appears when relevant; result metadata rows are compact and scroll-aware.'
+            echo '- Headers no longer stick or blink while scrolling; browser controls hide while scrolling and come back on demand.'
+            echo '- Settings consolidated: task-related settings live in the task menu, browser settings live in the browser.'
+            echo
+            echo 'Chrome and Android show a "harmful" warning for every app installed outside the Play Store. Daymark is not malware. Choose **Download anyway**, then **Install anyway**.'
+            echo
+            echo 'Production build. Package: com.abrar.daymark. Version code:' "$VERSION_CODE"'.'
+            echo
+            echo "- APK: $APK_NAME"
+            echo "- APK SHA-256: $APK_SHA"
+            echo
+            echo "<!-- daymark-updater-v1"
+            printf '{"applicationId":"com.abrar.daymark","versionCode":%s,"minSdkVersion":%s,"signerCertificateSha256":"%s"}\n' "$VERSION_CODE" "$MIN_SDK_VERSION" "$SIGNER_SHA256"
+            echo "-->"
+          } > "$notes"
+          release_json="$RUNNER_TEMP/release.json"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json" 2>"$RUNNER_TEMP/release.err"; then
+            jq -e --arg tag "$TAG" --arg title "Daymark v$VERSION_NAME" '.tag_name == $tag and .name == $title and .draft == false and .prerelease == false' "$release_json" >/dev/null
+            for pair in "$APK_NAME:$APK_SHA:$apk"; do
+              name="${pair%%:*}"
+              remainder="${pair#*:}"
+              expected="${remainder%%:*}"
+              local_path="${remainder#*:}"
+              asset="$(jq -c --arg name "$name" '[.assets[] | select(.name == $name)] | .[0] // empty' "$release_json")"
+              if [[ -n "$asset" ]]; then
+                url="$(jq -r '.browser_download_url' <<<"$asset")"
+                downloaded="$RUNNER_TEMP/$name"
+                curl --fail --location --silent --show-error "$url" --output "$downloaded"
+                actual="$(sha256sum "$downloaded" | awk '{print $1}')"
+                [[ "$actual" == "$expected" ]] || { echo "::error::Existing $name differs; refusing overwrite."; exit 1; }
+              else
+                gh release upload "$TAG" "$local_path" --repo "$GITHUB_REPOSITORY" --clobber=false
+              fi
+            done
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+          else
+            grep -Fq 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
+            gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --title "Daymark v$VERSION_NAME" --notes-file "$notes" --latest --verify-tag
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > "$release_json"
+          fi
+          actual_body="$(jq -r '.body // ""' "$release_json")"
+          grep -Fq '<!-- daymark-updater-v1' <<<"$actual_body" || { echo "::error::Published release body is missing daymark-updater-v1 metadata."; exit 1; }
+          grep -Fq '"applicationId":"com.abrar.daymark"' <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing applicationId."; exit 1; }
+          grep -Fq "\"versionCode\":$VERSION_CODE" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing versionCode."; exit 1; }
+          grep -Fq "\"minSdkVersion\":$MIN_SDK_VERSION" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing minSdkVersion."; exit 1; }
+          grep -Fq "\"signerCertificateSha256\":\"$SIGNER_SHA256\"" <<<"$actual_body" || { echo "::error::Published release metadata has wrong/missing signer fingerprint."; exit 1; }
+
+      - name: Remove one-shot workflow from main
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git checkout -B main refs/remotes/origin/main
+          git rm -f .github/workflows/one-shot-publish-v1.3.yml
+          git commit -m "ci: remove one-shot v1.3 publish workflow"
+          git push origin refs/heads/main
+
+      - name: Remove production keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/daymark-release.keystore" "$RUNNER_TEMP/release-certificate.der"
