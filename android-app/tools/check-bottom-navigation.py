@@ -45,6 +45,12 @@ check('Button searchTasksShortcut = compactButton("⌕ Search"' in ACTIVITY, "Co
 check("if (y <= dp(24) || delta < -dp(10))" in ACTIVITY, "Header restores at top or deliberate upward scroll")
 check("y > dp(120) && delta > dp(8)" in ACTIVITY, "Header collapses only after meaningful downward scroll")
 check("mainHandler.postDelayed(taskChromeRestoreRunnable, 700L)" not in ACTIVITY, "Header must not auto-restore and flicker during a pause")
+check("private LinearLayout topBarMark;" in ACTIVITY and "topBarMark = mark;" in ACTIVITY,
+      "Scrolling must retain the compact Daymark mark")
+check("topBarBrand.setVisibility(View.GONE)" in ACTIVITY,
+      "Scrolling must collapse the full brand label rather than removing the entire header")
+check("markParams.width = dp(hidden ? 30 : 38)" in ACTIVITY,
+      "Header mark must shrink on downward scroll and restore on upward scroll")
 check('Button moreButton = plainButton("More")' not in ACTIVITY, "No duplicate More button remains in header")
 check('browserPrivacyButton = text("ⓘ", 18' in ACTIVITY, "Browser privacy disclosure must be a compact info icon")
 check('Button chooseProvider = compactButton("Choose search provider"' not in ACTIVITY, "Browser home must not show redundant provider CTA")
