@@ -85,6 +85,14 @@ jobs:
         timeout-minutes: 15
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          trace="$RUNNER_TEMP/provision36-trace.log"
+          : > "$trace"
+          exec >> "$trace" 2>&1
+          set -x
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -la "$ANDROID_HOME" | head -n 30
           cd "${{ github.workspace }}"
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
@@ -102,6 +110,8 @@ jobs:
         timeout-minutes: 25
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           trace="$RUNNER_TEMP/api36-trace.log"
           : > "$trace"
           exec >> "$trace" 2>&1
@@ -145,6 +155,12 @@ jobs:
         timeout-minutes: 15
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          trace="$RUNNER_TEMP/provision29-trace.log"
+          : > "$trace"
+          exec >> "$trace" 2>&1
+          set -x
           cd "${{ github.workspace }}"
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           avdmanager="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
@@ -159,6 +175,8 @@ jobs:
         timeout-minutes: 25
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           trace="$RUNNER_TEMP/api29-trace.log"
           : > "$trace"
           exec >> "$trace" 2>&1
@@ -201,7 +219,7 @@ jobs:
             echo "- API-36 gate outcome: ${API36_OUTCOME:-unknown}"
             echo "- API-29 gate outcome: ${API29_OUTCOME:-unknown}"
             echo
-            for f in "$RUNNER_TEMP/api36-trace.log" "$RUNNER_TEMP/emulator36.log" "$RUNNER_TEMP/api29-trace.log" "$RUNNER_TEMP/emulator29.log"; do
+            for f in "$RUNNER_TEMP/provision36-trace.log" "$RUNNER_TEMP/api36-trace.log" "$RUNNER_TEMP/emulator36.log" "$RUNNER_TEMP/provision29-trace.log" "$RUNNER_TEMP/api29-trace.log" "$RUNNER_TEMP/emulator29.log"; do
               echo "### $(basename "$f")"
               echo
               echo '<details><summary>trace</summary>'
