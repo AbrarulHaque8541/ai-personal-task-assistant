@@ -25,7 +25,7 @@ jobs:
       - name: Check out the exact PR 312 merge head
         uses: actions/checkout@v5
         with:
-          ref: 1fdd7c817822c18a5e38986cedb09ce23e4b8d3a
+          ref: b9555debb967db6bdff4900d1c3f1b297541f421
           fetch-depth: 0
 
       - name: Set up JDK 17
