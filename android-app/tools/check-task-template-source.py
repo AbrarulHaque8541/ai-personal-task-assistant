@@ -16,9 +16,9 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 composer = activity[activity.index("private View buildSharedComposer()"):activity.index("private void ", activity.index("private View buildSharedComposer()") + 1)]
-check('compactButton("Task templates"' in composer, "Task mode exposes a compact templates entry point")
-check("View, reuse, or create encrypted on-device task templates" in composer,
-      "templates entry point explains local storage and explicit creation")
+check('compactButton("Task templates"' not in composer, "templates are not permanently displayed in the task composer")
+check('addSettingsRow(content, "Task templates"' in activity,
+      "templates are reachable from Settings without occupying the home composer")
 
 list_start = activity.index("private void showTaskTemplatesDialog()")
 list_end = activity.index("private void removeTaskTemplate(", list_start)
