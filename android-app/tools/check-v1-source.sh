@@ -413,7 +413,7 @@ assert 'compactButton("Site history", false)' in activity and "Clear site histor
 assert "Site history stores only validated HTTPS origins" in activity and "no paths, queries, fragments, URL credentials, or page titles" in activity
 assert "for all websites used in Daymark (not just the current site)" in activity, "clear scope must disclose all-site WebView storage/cookie deletion"
 assert "saved Android Autofill or password-manager data is not cleared" in activity, "clear disclosure must not overstate WebView form-data clearing"
-assert "browserStatus.setText(\"Clearing Daymark site history and local site data...\")" in clear.group(1)
+assert "showBrowserStatus(\"Clearing Daymark site history and local data...\")" in clear.group(1)
 assert "Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared." in clear.group(1), "completion status must follow asynchronous cookie removal"
 assert "HTTP redirect/downgrade was blocked" in activity and "No insecure page was opened" in activity
 
