@@ -6,7 +6,7 @@ package_id="com.abrar.daymark"
 activity="$package_id/$package_id.MainActivity"
 dump_diagnostics() {
   echo "=== process exit-info ($package_id) ==="
-  timeout 20s adb shell dumpsys activity exit-info "$package_id" || true
+  timeout 20s adb shell "dumpsys activity exit-info $package_id 2>/dev/null" || true
   echo "=== filtered logcat ==="
   adb logcat -d -v threadtime | grep -E "abrar|FATAL|Fatal|SIGSEGV|SIGABRT|SIGQUIT|AndroidRuntime|am_kill|am_proc|lowmemory|lmkd|ANR |DaymarkStartup|Force stopping|died" | tail -n 200 || true
   echo "=== raw logcat tail ==="

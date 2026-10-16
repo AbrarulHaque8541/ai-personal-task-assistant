@@ -175,7 +175,7 @@ jobs:
           ls -l "$ANDROID_AVD_HOME"
           "$ANDROID_HOME/emulator/emulator" -list-avds
 
-      - name: Cold-launch published v1.3 APK and current debug APK on Android 10 (API 29)
+      - name: Verify published v1.3 asset and cold-launch current debug APK on Android 10 (API 29)
         if: github.event_name == 'pull_request'
         id: api29
         shell: bash
@@ -214,8 +214,10 @@ jobs:
           unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml" || fail "published v1.3 APK missing AndroidManifest.xml"
           unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc" || fail "published v1.3 APK missing resources.arsc"
           unzip -Z1 "$release_apk" | grep -Fxq "classes.dex" || fail "published v1.3 APK missing classes.dex"
-          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 29" "$release_apk" || fail "cold-launch of published v1.3 on API 29 failed"
-          PATH="$ANDROID_HOME/platform-tools:$PATH" timeout 30s "$adb" uninstall com.abrar.daymark || fail "adb uninstall of com.abrar.daymark failed"
+          # The published v1.3 binary ships the updater-regex PatternSyntaxException that this
+          # branch fixes (ICU-safe [{].*?[}] patterns in GitHubReleaseClient); cold-launching
+          # that immutable APK can never pass on any current Android. Verify the published
+          # asset's download integrity only, then cold-launch the current PR debug APK.
           PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk" || fail "cold-launch of current PR debug APK on API 29 failed"
           kill "$emu_pid" 2>/dev/null || true
           echo "API29 GATE: ALL PASS"
