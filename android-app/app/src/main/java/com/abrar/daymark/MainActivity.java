@@ -299,6 +299,7 @@ public final class MainActivity extends Activity {
     private Spinner searchEngineSpinner;
     private CheckBox browserOnlineToggle;
     private TextView browserStatus;
+    private Runnable browserStatusHideRunnable;
     private View browserProviderRow;
     private TextView browserPrivacyButton;
     private String browserPrivacyDisclosure;
@@ -558,7 +559,7 @@ public final class MainActivity extends Activity {
         if (ACTION_SHORTCUT_OPEN_BROWSER.equals(action)) {
             setWebMode(true);
             if (browserStatus != null) {
-                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+                showBrowserStatus(browserNetworkPolicy.isOnlineEnabled()
                         ? "Browser ready. Tap a site or enter a search; nothing opened automatically."
                         : "Browser ready in Offline mode. Enable Online before opening a site.");
             }
@@ -1672,7 +1673,8 @@ public final class MainActivity extends Activity {
         browserProviderRow = sitesScroll;
         // The provider shortcuts are placed after the weighted WebView below so they
         // remain a compact bottom strip while browsing.
-        browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
+        browserStatus = text("", 11, palette.muted, Typeface.NORMAL);
+        browserStatus.setVisibility(View.GONE);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         browserStatus.setOnClickListener(view -> {
             if (!webMode || !browserLoadFailed || lastBrowserAddress == null) return;
@@ -1700,6 +1702,35 @@ public final class MainActivity extends Activity {
         panel.addView(browserToolbarScroll, bottomMargin(dp(2)));
         panel.addView(browserProviderRow, bottomMargin(dp(3)));
         return panel;
+    }
+
+    /** Shows browser feedback only when needed; successful/info messages fade away. */
+    private void showBrowserStatus(String message) {
+        if (browserStatus == null) return;
+        if (browserStatusHideRunnable != null) mainHandler.removeCallbacks(browserStatusHideRunnable);
+        browserStatus.animate().cancel();
+        browserStatus.setText(message == null ? "" : message);
+        browserStatus.setVisibility(View.VISIBLE);
+        browserStatus.setAlpha(0f);
+        browserStatus.animate().alpha(1f).setDuration(150L).start();
+
+        // Keep actionable terminal failures visible so the user can tap to retry.
+        boolean needsManualRetry = message != null
+                && (message.contains("Tap this message to retry")
+                || message.contains("did not open after one automatic recovery")
+                || message.contains("Automatic recovery was limited"));
+        if (needsManualRetry) return;
+
+        browserStatusHideRunnable = () -> {
+            if (browserStatus == null || browserStatus.getVisibility() != View.VISIBLE) return;
+            browserStatus.animate().cancel();
+            browserStatus.animate().alpha(0f).setDuration(180L).withEndAction(() -> {
+                if (browserStatus != null && browserStatus.getAlpha() <= 0.01f) {
+                    browserStatus.setVisibility(View.GONE);
+                }
+            }).start();
+        };
+        mainHandler.postDelayed(browserStatusHideRunnable, 3500L);
     }
 
     private void selectSearchEngine(BrowserAddress.SearchEngine engine) {
@@ -1913,7 +1944,7 @@ public final class MainActivity extends Activity {
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
                 } catch (IllegalArgumentException exception) {
                     if (browserAddressInput != null) browserAddressInput.setError(exception.getMessage());
-                    browserStatus.setText("Nothing was opened. Check the question or provider address.");
+                    showBrowserStatus("Nothing was opened. Check the question or provider address.");
                     return;
                 }
             }
@@ -1973,7 +2004,7 @@ public final class MainActivity extends Activity {
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
-            browserStatus.setText("Nothing was opened. Check the search or web address.");
+            showBrowserStatus("Nothing was opened. Check the search or web address.");
         }
     }
 
@@ -2013,7 +2044,7 @@ public final class MainActivity extends Activity {
         } catch (SecurityException denied) {
             setBrowserOnlineEnabled(false);
             if (browserOnlineToggle != null) browserOnlineToggle.setChecked(false);
-            browserStatus.setText("Online access is unavailable. No page was opened; Daymark remains offline.");
+            showBrowserStatus("Online access is unavailable. No page was opened; Daymark remains offline.");
             return;
         }
         browserHomeView.setVisibility(View.GONE);
@@ -2023,10 +2054,10 @@ public final class MainActivity extends Activity {
         // Owner feedback (#222): the full egress disclosure is shown before the first
         // search of an install only; later navigations use a quiet per-page status.
         if (!browserPreferences.getBoolean(BROWSER_DISCLOSURE_ACK_KEY, false)) {
-            browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
+            showBrowserStatus("Opening page. Its provider and page resources may receive requests.");
             browserPreferences.edit().putBoolean(BROWSER_DISCLOSURE_ACK_KEY, true).apply();
         } else {
-            browserStatus.setText("Opening page…");
+            showBrowserStatus("Opening page…");
         }
         lastBrowserAddress = address;
         browserLoadFailed = false;
@@ -2053,7 +2084,7 @@ public final class MainActivity extends Activity {
                 Log.w(BROWSER_LOG_TAG, "attempting one automatic recovery for stalled page");
                 browserDiagnostics.record(System.currentTimeMillis(), "automatic recovery retry", address, null);
                 StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
-                browserStatus.setText("Page stalled. Daymark is retrying once...");
+                showBrowserStatus("Page stalled. Daymark is retrying once...");
                 try {
                     browserWebView.stopLoading();
                     scheduleBrowserLoadWatchdog(address);
@@ -2068,7 +2099,7 @@ public final class MainActivity extends Activity {
             browserDiagnostics.record(System.currentTimeMillis(), "watchdog exhausted; automatic retry budget spent", address, null);
             browserPageLoading = false;
             browserLoadFailed = true;
-            browserStatus.setText("The page did not open after one automatic recovery attempt. Tap this message to retry.");
+            showBrowserStatus("The page did not open after one automatic recovery attempt. Tap this message to retry.");
         });
         mainHandler.postDelayed(browserLoadWatchdog, BROWSER_LOAD_WATCHDOG_MS);
     }
@@ -2125,7 +2156,7 @@ public final class MainActivity extends Activity {
                 browserPageLoading = true;
                 Log.i(BROWSER_LOG_TAG, "page started: " + BrowserLogPolicy.redactedOrigin(url));
                 browserDiagnostics.record(System.currentTimeMillis(), "page started", url, null);
-                browserStatus.setText("Loading page. Embedded resources may also make network requests.");
+                showBrowserStatus("Loading page. Embedded resources may also make network requests.");
                 // Keep the watchdog active after navigation begins: a page can start successfully
                 // but never finish, leaving the viewport blank with no further WebView callback.
                 scheduleBrowserLoadWatchdog(url);
@@ -2151,7 +2182,7 @@ public final class MainActivity extends Activity {
                 Log.i(BROWSER_LOG_TAG, "page finished: " + BrowserLogPolicy.redactedOrigin(url));
                 browserDiagnostics.record(System.currentTimeMillis(), "page finished", url, null);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
-                browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
+                showBrowserStatus("Page loaded. Website content may contact its own or third-party endpoints.");
                 injectVideoDownloadOverlay(browserWebView);
                 syncBrowserButtons();
             }
@@ -2160,7 +2191,7 @@ public final class MainActivity extends Activity {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserPageLoading = false;
                 cancelBrowserLoadWatchdog();
-                browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
+                showBrowserStatus("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 browserDiagnostics.record(System.currentTimeMillis(), "navigation blocked (non-HTTPS)", url, null);
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
@@ -2182,7 +2213,7 @@ public final class MainActivity extends Activity {
                         ? "An HTTP redirect/downgrade was blocked. No insecure page was opened."
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
                 postActivityCallback(() -> {
-                    browserStatus.setText(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
+                    showBrowserStatus(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
                     browserDiagnostics.record(System.currentTimeMillis(), "navigation blocked (HTTP)", url, message);
                     showToast("Insecure HTTP navigation blocked. Use HTTPS instead.");
                 });
@@ -2197,7 +2228,7 @@ public final class MainActivity extends Activity {
                         + " origin=" + BrowserLogPolicy.redactedOrigin(failingUrl));
                 browserDiagnostics.record(System.currentTimeMillis(), "load failed", failingUrl,
                         "error " + errorCode + ": " + description);
-                browserStatus.setText(errorCode < 0
+                showBrowserStatus(errorCode < 0
                         ? "The page could not load securely. Certificate errors are not bypassed. Tap this message to try again."
                         : "The page did not open (error " + errorCode + "). Tap this message to try again.");
             }
@@ -2250,7 +2281,7 @@ public final class MainActivity extends Activity {
                         && BrowserAddress.isAllowedWebUrl(recoveryAddress)
                         && browserSelfHealingPolicy.shouldRecover(recoveryAddress)) {
                     StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
-                    browserStatus.setText("The page stopped unexpectedly. Rebuilding the browser and retrying once...");
+                    showBrowserStatus("The page stopped unexpectedly. Rebuilding the browser and retrying once...");
                     if (ensureBrowserWebView()) {
                         loadBrowserAddress(recoveryAddress);
                         return;
@@ -2263,7 +2294,7 @@ public final class MainActivity extends Activity {
                 if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
                 StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
                 browserDiagnostics.record(System.currentTimeMillis(), "renderer gone; automatic recovery budget spent", lastBrowserAddress, null);
-                browserStatus.setText("The page stopped unexpectedly. Automatic recovery was limited; return to browser home and try again.");
+                showBrowserStatus("The page stopped unexpectedly. Automatic recovery was limited; return to browser home and try again.");
             }
         });
         targetRef[0] = browserWebView;
@@ -2406,7 +2437,7 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
         if (browserAddressInput != null) browserAddressInput.setText("");
-        if (browserStatus != null) browserStatus.setText("New tab. Enter a website or search.");
+        if (browserStatus != null) showBrowserStatus("New tab. Enter a website or search.");
         updateBrowserTabButton();
         syncBrowserButtons();
     }
@@ -2427,7 +2458,7 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(hasPage ? View.GONE : View.VISIBLE);
         if (browserAddressInput != null) browserAddressInput.setText(hasPage ? tab.getUrl() : "");
-        if (browserStatus != null) browserStatus.setText(hasPage
+        if (browserStatus != null) showBrowserStatus(hasPage
                 ? (tab.getTitle() == null || tab.getTitle().trim().isEmpty() ? tab.getUrl() : tab.getTitle())
                 : "New tab. Enter a website or search.");
         updateBrowserTabButton();
@@ -2456,7 +2487,7 @@ public final class MainActivity extends Activity {
             if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
             if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
             if (browserAddressInput != null) browserAddressInput.setText("");
-            if (browserStatus != null) browserStatus.setText("No tabs open. Create a new tab to browse.");
+            if (browserStatus != null) showBrowserStatus("No tabs open. Create a new tab to browse.");
         } else {
             int nextIndex = BrowserTabPolicy.indexAfterClose(oldIndex, browserTabs.size());
             if (nextIndex >= 0) switchBrowserTab(browserTabs.get(nextIndex));
@@ -3439,7 +3470,7 @@ public final class MainActivity extends Activity {
             showToast("Open a page first.");
             return;
         }
-        browserStatus.setText("Searching the page for downloadable videos and audio...");
+        showBrowserStatus("Searching the page for downloadable videos and audio...");
         String mediaProbeScript = "(function(){"
                 + "var found=[];var seen={};"
                 + "function push(url,kind,label){"
@@ -3465,7 +3496,7 @@ public final class MainActivity extends Activity {
         browserWebView.evaluateJavascript(mediaProbeScript, value -> {
             if (!isActivityCallbackCurrent()) return;
             if (value == null || value.equals("null") || value.equals("[]")) {
-                browserStatus.setText("No direct video or audio found. Protected streaming players are not downloadable.");
+                showBrowserStatus("No direct video or audio found. Protected streaming players are not downloadable.");
                 showToast("No downloadable media found on this page.");
                 return;
             }
@@ -3505,7 +3536,7 @@ public final class MainActivity extends Activity {
                         showToast("Download blocked: HTTPS is required.");
                         return;
                     }
-                    browserStatus.setText("Download started for the selected media file. Check Downloads for progress.");
+                    showBrowserStatus("Download started for the selected media file. Check Downloads for progress.");
                     queueBrowserDownload(url, null, null, null);
                 })
                 .setNegativeButton("Close", null)
@@ -3552,7 +3583,7 @@ public final class MainActivity extends Activity {
         browserLastSearchQuery = "";
         if (browserAddressInput != null) browserAddressInput.setText("");
         if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
-        if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
+        if (browserStatus != null) showBrowserStatus("Ready. No page has been requested.");
         syncBrowserButtons();
     }
 
@@ -3568,7 +3599,7 @@ public final class MainActivity extends Activity {
         }
         final DaymarkWebView source = browserWebView;
         final String sourceUrl = source.getUrl();
-        browserStatus.setText("Preparing a local text-only reading view...");
+        showBrowserStatus("Preparing a local text-only reading view...");
         String script = "(function(){try{"
                 + "var root=document.querySelector('article')||document.querySelector('main')||document.body;"
                 + "var walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{acceptNode:function(node){"
@@ -3596,11 +3627,11 @@ public final class MainActivity extends Activity {
                 String title = extracted.optString(0, "Reader mode");
                 String body = extracted.optString(1, "");
                 if (body.trim().isEmpty()) {
-                    browserStatus.setText("Reader Mode found no readable article text on this page.");
+                    showBrowserStatus("Reader Mode found no readable article text on this page.");
                     showToast("No readable article text found.");
                     return;
                 }
-                browserStatus.setText("Reader Mode extracted page text locally. The original page is unchanged.");
+                showBrowserStatus("Reader Mode extracted page text locally. The original page is unchanged.");
                 showReaderModeDialog(title, body);
             } catch (Exception invalidResult) {
                 showToast("Reader Mode could not read this page.");
@@ -3848,7 +3879,7 @@ public final class MainActivity extends Activity {
 
     private void showBrowserOfflineStatus() {
         if (browserStatus != null) {
-            browserStatus.setText("Offline: no search/site request was sent. Daymark page/resource loads are blocked; platform-managed Android System WebView Safe Browsing may still make Google/Play Services URL-hash or update checks.");
+            showBrowserStatus("Offline: no search/site request was sent. Daymark page/resource loads are blocked; platform-managed Android System WebView Safe Browsing may still make Google/Play Services URL-hash or update checks.");
         }
     }
 
@@ -3899,7 +3930,7 @@ public final class MainActivity extends Activity {
         }
 
         showBrowserHome();
-        browserStatus.setText("Clearing Daymark site history and local site data...");
+        showBrowserStatus("Clearing Daymark site history and local site data...");
         final boolean allTabDataCleared = tabDataCleared;
         final boolean allSiteStorageCleared = siteStorageCleared;
         try {
@@ -3913,17 +3944,17 @@ public final class MainActivity extends Activity {
                 }
                 if (isActivityCallbackCurrent()) {
                     if (allTabDataCleared && allSiteStorageCleared && cookiesFlushed) {
-                        browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
+                        showBrowserStatus("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
                         showToast("Local site history and site data cleared.");
                     } else {
-                        browserStatus.setText("Site-data cleanup was partial. One or more tab-local or shared stores could not be cleared; close/reopen affected tabs and retry.");
+                        showBrowserStatus("Site-data cleanup was partial. One or more tab-local or shared stores could not be cleared; close/reopen affected tabs and retry.");
                         showToast("Site-data cleanup was partial. Some local data may remain.");
                     }
                 }
             });
         } catch (RuntimeException cookieClearFailed) {
             if (isActivityCallbackCurrent()) {
-                browserStatus.setText("Site-data cleanup was partial. Cookie clearing could not be completed; some local data may remain.");
+                showBrowserStatus("Site-data cleanup was partial. Cookie clearing could not be completed; some local data may remain.");
                 showToast("Cookie clearing failed. Some local data may remain.");
             }
         }
@@ -4428,7 +4459,7 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setText(enabled ? "" : taskDraft);
         quickCaptureInput.setError(null);
         if (enabled && browserStatus != null) {
-            browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+            showBrowserStatus(browserNetworkPolicy.isOnlineEnabled()
                     ? "Online is enabled. No website opens until you tap Go or a site."
                     : "Website access is Offline. Turn Online on, then tap Go or a site.");
         }
@@ -4451,7 +4482,7 @@ public final class MainActivity extends Activity {
         if (enabled) {
             browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)
                     .putBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, true).apply();
-            if (browserStatus != null) browserStatus.setText("Online access enabled. No website opens until you tap Go or a site.");
+            if (browserStatus != null) showBrowserStatus("Online access enabled. No website opens until you tap Go or a site.");
         } else {
             // Offline is the fail-closed default; remove both the Online choice and its consent marker.
             browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY)
