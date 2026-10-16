@@ -111,7 +111,7 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -version
           ls -l /dev/kvm || true
 
-      - name: Cold-launch published v1.3 APK and current debug APK on Android 16
+      - name: Cold-launch current debug APK on Android 16 (API 36)
         if: github.event_name == 'pull_request'
         id: api36
         shell: bash
@@ -144,17 +144,8 @@ jobs:
           done
           [ "$boot" = "1" ] || { echo "BOOT TIMEOUT"; tail -n 80 "$RUNNER_TEMP/emulator36.log"; "$adb" devices; fail "emulator failed to boot in 1000s"; }
           "$adb" devices
-          release_apk="$RUNNER_TEMP/Daymark-v1.3-githubSideload.apk"
           debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
           test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
-          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.3/Daymark-v1.3-githubSideload.apk" --output "$release_apk" || fail "curl of published v1.3 APK failed"
-          echo "aa69ab6f81cae22a2c0ea58ca0619682dd77da826c5d5faaefe0eb934115e585  $release_apk" | sha256sum --check || fail "published v1.3 APK SHA-256 mismatch"
-          unzip -tqq "$release_apk" || fail "published v1.3 APK is not a valid zip"
-          unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml" || fail "published v1.3 APK missing AndroidManifest.xml"
-          unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc" || fail "published v1.3 APK missing resources.arsc"
-          unzip -Z1 "$release_apk" | grep -Fxq "classes.dex" || fail "published v1.3 APK missing classes.dex"
-          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 36" "$release_apk" || fail "cold-launch of published v1.3 on API 36 failed"
-          PATH="$ANDROID_HOME/platform-tools:$PATH" timeout 30s "$adb" uninstall com.abrar.daymark || fail "adb uninstall of com.abrar.daymark failed"
           PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk" || fail "cold-launch of current PR debug APK on API 36 failed"
           kill "$emu_pid" 2>/dev/null || true
           echo "API36 GATE: ALL PASS"
@@ -184,7 +175,7 @@ jobs:
           ls -l "$ANDROID_AVD_HOME"
           "$ANDROID_HOME/emulator/emulator" -list-avds
 
-      - name: Cold-launch current debug APK on Android 10 (API 29)
+      - name: Cold-launch published v1.3 APK and current debug APK on Android 10 (API 29)
         if: github.event_name == 'pull_request'
         id: api29
         shell: bash
@@ -214,8 +205,17 @@ jobs:
             sleep 5
           done
           [ "$boot" = "1" ] || { echo "BOOT TIMEOUT"; tail -n 80 "$RUNNER_TEMP/emulator29.log"; "$adb" devices; fail "emulator failed to boot in 1000s"; }
+          release_apk="$RUNNER_TEMP/Daymark-v1.3-githubSideload.apk"
           debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
           test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
+          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.3/Daymark-v1.3-githubSideload.apk" --output "$release_apk" || fail "curl of published v1.3 APK failed"
+          echo "aa69ab6f81cae22a2c0ea58ca0619682dd77da826c5d5faaefe0eb934115e585  $release_apk" | sha256sum --check || fail "published v1.3 APK SHA-256 mismatch"
+          unzip -tqq "$release_apk" || fail "published v1.3 APK is not a valid zip"
+          unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml" || fail "published v1.3 APK missing AndroidManifest.xml"
+          unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc" || fail "published v1.3 APK missing resources.arsc"
+          unzip -Z1 "$release_apk" | grep -Fxq "classes.dex" || fail "published v1.3 APK missing classes.dex"
+          PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 29" "$release_apk" || fail "cold-launch of published v1.3 on API 29 failed"
+          PATH="$ANDROID_HOME/platform-tools:$PATH" timeout 30s "$adb" uninstall com.abrar.daymark || fail "adb uninstall of com.abrar.daymark failed"
           PATH="$ANDROID_HOME/platform-tools:$PATH" bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk" || fail "cold-launch of current PR debug APK on API 29 failed"
           kill "$emu_pid" 2>/dev/null || true
           echo "API29 GATE: ALL PASS"

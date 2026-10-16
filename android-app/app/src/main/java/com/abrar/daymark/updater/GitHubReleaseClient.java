@@ -27,8 +27,8 @@ public final class GitHubReleaseClient implements UpdaterCore.ReleaseClient {
     private static final int READ_TIMEOUT_MILLIS = 15_000;
     private static final int MAX_RESPONSE_BYTES = 1_000_000;
     private static final Pattern PUBLISHER_METADATA = Pattern.compile(
-            "(?s)<!--\\s*daymark-updater-v1\\s*(\\{.*?})\\s*-->");
-    private static final Pattern METADATA_BLOCK = Pattern.compile("(?s)<!--\\s*daymark-updater-v1\\s*\\{.*?}\\s*-->");
+            "(?s)<!--\\s*daymark-updater-v1\\s*([{].*?[}])\\s*-->");
+    private static final Pattern METADATA_BLOCK = Pattern.compile("(?s)<!--\\s*daymark-updater-v1\\s*[{].*?[}]\\s*-->");
 
     interface ConnectionFactory {
         HttpURLConnection open(URL url) throws IOException;

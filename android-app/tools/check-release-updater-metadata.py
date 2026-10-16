@@ -25,6 +25,7 @@ for marker in (
     'requiredLong(metadata, "versionCode")',
     'requiredInt(metadata, "minSdkVersion")',
     'requiredString(metadata, "signerCertificateSha256")',
+    '[{].*?[}]',
 ):
     assert marker in client, f"updater parser contract changed unexpectedly: {marker}"
 # Never advise users to bypass a warning that explicitly labels the APK harmful.
