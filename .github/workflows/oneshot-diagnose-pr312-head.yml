@@ -1,6 +1,6 @@
-name: Diagnose PR 312 head check failures (one-shot v2)
+name: Diagnose PR 312 head check failures (one-shot v3)
 
-# One-shot diagnostic v2: runs each host/source check separately against the
+# One-shot diagnostic v3: runs each host/source check separately against the
 # exact PR #312 merge head and posts per-check exit codes plus failing output
 # as a PR #312 comment, so results are readable without Actions log access.
 
@@ -82,7 +82,7 @@ jobs:
       - name: Post diagnostics report as PR comment
         shell: bash
         env:
-          DIAG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIAG_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -91,19 +91,21 @@ jobs:
           import re
           import urllib.request
 
+          nl = chr(10)
+          fence = chr(96) * 3
           log = open('/tmp/diag.log', encoding='utf-8', errors='replace').read()
-          lines = log.splitlines()
+          lines = log.split(nl)
           exits = {}
           sections = {}
           cur_name = None
           cur_lines = []
           for line in lines:
-              m = re.match(r'### CHECK-START (S+)', line)
+              m = re.match(r'### CHECK-START ([^ ]+)', line)
               if m:
                   cur_name = m.group(1)
                   cur_lines = []
                   continue
-              m = re.match(r'### CHECK-EXIT (S+):(d+)', line)
+              m = re.match(r'### CHECK-EXIT ([^ :]+):([0-9]+)', line)
               if m:
                   exits[m.group(1)] = int(m.group(2))
                   sections[m.group(1)] = cur_lines
@@ -121,19 +123,25 @@ jobs:
           for name in exits:
               report.append('- %s: exit %d' % (name, exits[name]))
           report.append('')
-          if not failing:
+          if not exits:
+              report.append('PARSE-ERROR: no CHECK-EXIT markers were captured; see raw tail below.')
+              tail = nl.join(lines[-150:])
+              report.append(fence)
+              report.append(tail)
+              report.append(fence)
+          elif not failing:
               report.append('ALL CHECKS PASSED.')
           for name in failing:
-              body = '\n'.join(sections.get(name, []))
+              body = nl.join(sections.get(name, []))
               if len(body) > 11000:
-                  body = body[:5500] + '\n...[snip]...\n' + body[-4500:]
+                  body = body[:5500] + nl + '...[snip]...' + nl + body[-4500:]
               report.append('### Failing check: %s' % name)
               report.append('')
-              report.append('\x60\x60\x60')
+              report.append(fence)
               report.append(body)
-              report.append('\x60\x60\x60')
+              report.append(fence)
               report.append('')
-          text = '\n'.join(report)
+          text = nl.join(report)
           if len(text) > 60000:
               text = text[:60000]
           token = os.environ['DIAG_TOKEN']
