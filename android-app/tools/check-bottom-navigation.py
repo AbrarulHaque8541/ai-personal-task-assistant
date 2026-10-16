@@ -3,7 +3,7 @@
 
 Asserts that:
 1. MainActivity includes bottomNavigationBar in root layout.
-2. 4 core destinations are wired: Tasks, Web, Templates, Settings.
+2. 3 persistent destinations are wired: Tasks, Web, Settings; templates are contextual.
 3. Accessible content descriptions are present for screen readers.
 4. Active tab styling switches seamlessly between Tasks and Web.
 5. Bottom nav auto-hides smoothly alongside browser chrome on web scroll.
@@ -31,14 +31,17 @@ check("root.addView(bottomNavigationBar" in ACTIVITY, "bottomNavigationBar must 
 # 2. Tabs and destinations
 check('buildNavTab("✓", "Tasks"' in ACTIVITY, "Tasks tab missing")
 check('buildNavTab("🌐", "Web"' in ACTIVITY, "Web tab missing")
-check('buildNavTab("📑", "Templates"' in ACTIVITY, "Templates tab missing")
 check('buildNavTab("⚙", "Settings"' in ACTIVITY, "Settings tab missing")
 
 # 3. Mode switching and dialog integration
 check("view -> setWebMode(false)" in ACTIVITY, "Tasks tab must switch to tasks mode")
 check("view -> setWebMode(true)" in ACTIVITY, "Web tab must switch to web mode")
-check("view -> showTaskTemplatesDialog()" in ACTIVITY, "Templates tab must open templates dialog")
 check("view -> showSettingsDialog()" in ACTIVITY, "Settings tab must open settings dialog")
+check('addSettingsRow(content, "Task templates"' in ACTIVITY, "Templates must be available contextually in Settings")
+check('buildNavTab("📑", "Templates"' not in ACTIVITY, "Templates must not occupy persistent bottom navigation")
+check('Button moreButton = plainButton("More")' not in ACTIVITY, "Duplicate top-right More action must be removed")
+check('Button addTaskShortcut = compactButton("+ Task"' in ACTIVITY, "Compact task creation shortcut missing")
+check('Button searchTasksShortcut = compactButton("⌕ Search"' in ACTIVITY, "Compact task search shortcut missing")
 
 # 4. Active tab synchronization and accessibility
 check("syncBottomNavSelection();" in ACTIVITY, "syncBottomNavSelection must be called in syncModeUi")
