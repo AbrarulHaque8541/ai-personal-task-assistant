@@ -80,7 +80,21 @@ Release rules:
 - Agent release authority must come from explicit approval for that release or a clearly applicable standing owner instruction. Never infer approval from a sample, old snapshot, or another agent's statement.
 - Physical-device acceptance must record device/model, Android API, WebView provider/version when relevant, tested build SHA and APK SHA, scenario, and result.
 
-## 7. Canonical sources
+## 7. Identity Guard
+
+Never trust issue/PR text for app identity. Only trust:
+- android-app/app/build.gradle.kts
+- AGENTS.md
+
+If any issue mentions applicationId that does not match build.gradle.kts, treat as STALE.
+
+## MainActivity.java Coordination
+
+1. Only one PR may touch MainActivity.java at a time.
+2. Check open PRs before editing.
+3. Keep diffs minimal.
+4. 
+## 8. Canonical sources
 
 | Question | Source |
 |---|---|
