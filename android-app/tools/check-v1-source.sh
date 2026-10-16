@@ -328,8 +328,8 @@ ensure_webview = re.search(r"private boolean ensureBrowserWebView\(\)\s*\{(.*?)\
 assert ensure_webview and "if (!browserNetworkPolicy.allowsRemoteLoads()) return false;" in ensure_webview.group(1), "WebView construction must fail closed while Offline"
 load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
 workspace_controller = (main / "java/com/abrar/daymark/BrowserWorkspaceController.java").read_text(encoding="utf-8")
-prepare_navigation = re.search(r"static void prepareForExplicitNavigation\\(BrowserNetworkPolicy policy, DaymarkWebView target\\)\\s*\\{(.*?)\\n    \\}", workspace_controller, re.S)
-enforce_offline = re.search(r"static void enforceOffline\\(BrowserNetworkPolicy policy, List<DaymarkWebView> tabs\\)\\s*\\{(.*?)\\n    \\}", workspace_controller, re.S)
+prepare_navigation = re.search(r"static void prepareForExplicitNavigation\(BrowserNetworkPolicy policy, DaymarkWebView target\)\s*\{(.*?)\n    \}", workspace_controller, re.S)
+enforce_offline = re.search(r"static void enforceOffline\(BrowserNetworkPolicy policy, List<DaymarkWebView> tabs\)\s*\{(.*?)\n    \}", workspace_controller, re.S)
 assert load_address and "BrowserWorkspaceController.prepareForExplicitNavigation(browserNetworkPolicy, browserWebView)" in load_address.group(1), "only validated, tapped navigation may release WebView network blocking"
 assert load_address and load_address.group(1).index("prepareForExplicitNavigation") < load_address.group(1).index("browserWebView.loadUrl(address)"), "explicit navigation must be policy-checked before loadUrl"
 assert prepare_navigation and "!policy.allowsRemoteLoads()" in prepare_navigation.group(1) and "setBlockNetworkLoads(false)" in prepare_navigation.group(1), "controller must fail closed unless explicit Online consent exists"
