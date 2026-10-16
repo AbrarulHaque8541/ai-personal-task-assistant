@@ -71,13 +71,15 @@ jobs:
         run: |
           find app/build -type f \( -name 'lint-results*.txt' -o -name 'lint-report*.txt' \) -print -exec cat {} \; || true
 
-      - name: Enable KVM acceleration for emulator cold-launch gates
+      - name: Enable KVM acceleration and install emulator runtime libraries
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          # ubuntu-24.04 runners do not ship libpulse.so.0, which qemu-system-x86_64 (bundled with the Android emulator) links against.
+          sudo apt-get install -y libpulse0 || { sudo apt-get update && sudo apt-get install -y libpulse0; }
 
       - name: Provision Android 16 (API 36) emulator image
         if: github.event_name == 'pull_request'
