@@ -91,6 +91,7 @@ jobs:
             set -eu
             cd "${{ github.workspace }}"
             fail() { echo "::error::API-36 gate: $1"; exit 1; }
+            echo "::warning::API36 stage: script running; workspace=$(pwd); adb=$(command -v adb || echo missing)"
             release_apk="$RUNNER_TEMP/Daymark-v1.3-githubSideload.apk"
             debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
             test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
@@ -100,9 +101,12 @@ jobs:
             unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml" || fail "published v1.3 APK missing AndroidManifest.xml"
             unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc" || fail "published v1.3 APK missing resources.arsc"
             unzip -Z1 "$release_apk" | grep -Fxq "classes.dex" || fail "published v1.3 APK missing classes.dex"
+            echo "::warning::API36 stage: v1.3 APK downloaded+verified; starting cold-launch"
             bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 36" "$release_apk" || fail "cold-launch of published v1.3 on API 36 failed (see annotations/raw logs)"
+            echo "::warning::API36 stage: v1.3 cold-launch PASS; uninstalling"
             timeout 30s adb uninstall com.abrar.daymark || fail "adb uninstall of com.abrar.daymark failed"
             bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk" || fail "cold-launch of current PR debug APK on API 36 failed (see annotations/raw logs)"
+            echo "::warning::API36 stage: ALL PASS"
 
       - name: Cold-launch current debug APK on Android 10 (API 29)
         if: github.event_name == 'pull_request'
@@ -119,9 +123,12 @@ jobs:
             set -eu
             cd "${{ github.workspace }}"
             fail() { echo "::error::API-29 gate: $1"; exit 1; }
+            echo "::warning::API29 stage: script running; workspace=$(pwd)"
             debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
             test -s "$debug_apk" || fail "debug APK missing: $debug_apk"
+            echo "::warning::API29 stage: starting cold-launch"
             bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk" || fail "cold-launch of current PR debug APK on API 29 failed (see annotations/raw logs)"
+            echo "::warning::API29 stage: ALL PASS"
 
       - name: Validate production signing secrets
         if: github.event_name != 'pull_request'

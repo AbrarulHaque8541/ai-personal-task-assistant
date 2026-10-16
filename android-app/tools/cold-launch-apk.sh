@@ -7,11 +7,13 @@ activity="$package_id/$package_id.MainActivity"
 if [[ ! -s "$apk" ]]; then echo "::error::$label APK is missing or empty: $apk"; exit 1; fi
 echo "::group::Cold launch: $label"
 echo "::notice::Installing $label"
+echo "::warning::$label stage: adb install starting"
 if ! timeout 180s adb install -r "$apk"; then
   echo "::error::$label adb install failed"
   adb logcat -d -v threadtime | tail -n 500
   exit 1
 fi
+echo "::warning::$label stage: install ok; starting activity"
 adb logcat -c
 timeout 15s adb shell am force-stop "$package_id" || true
 echo "::notice::Starting $label MainActivity"
@@ -21,6 +23,7 @@ if ! timeout 90s adb shell am start -W -n "$activity"; then
   adb logcat -d -v threadtime | tail -n 500
   exit 1
 fi
+echo "::warning::$label stage: am start ok; waiting for stability"
 sleep 8
 pid="$(timeout 15s adb shell pidof "$package_id" | tr -d '\r' || true)"
 if [[ -z "$pid" ]]; then echo "::error::$label process exited during cold launch"; adb logcat -d -v threadtime | tail -n 500; exit 1; fi
@@ -31,4 +34,5 @@ if [[ -n "$startup_failure" ]]; then echo "::error::$label displayed the startup
 crash_lines="$(adb logcat -d -v threadtime | grep -E 'FATAL EXCEPTION:|Process: com.abrar.daymark|Fatal signal' || true)"
 if [[ -n "$crash_lines" ]]; then echo "::error::$label emitted crash log entries"; adb logcat -d -v threadtime | tail -n 500; exit 1; fi
 echo "PASS: $label stayed alive and MainActivity remained resumed."
+echo "::warning::$label stage: PASS"
 echo "::endgroup::"
