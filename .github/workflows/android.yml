@@ -35,8 +35,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Apply home/browser redesign (UX)
-        run: python3 ./tools/apply-home-browser-redesign.py .
+      # UI source must be tested exactly as committed. Do not mutate MainActivity during CI.
 
       - name: Run Android host regression checks
         run: |

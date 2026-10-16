@@ -206,7 +206,7 @@ set_mode = re.search(r"private void setWebMode\(boolean enabled\)\s*\{(.*?)\n   
 assert set_mode and "taskDraft = quickCaptureInput.getText()" in set_mode.group(1), "task draft should remain local in task mode"
 assert "quickCaptureInput.setText(enabled ? \"\" : taskDraft);" in activity, "task draft must not be prefilled into Web mode"
 assert "new TextWatcher()" in activity and "if (!webMode) taskDraft" in activity, "Web text must not overwrite the local task draft"
-assert "webModeButton.setOnClickListener(view -> setWebMode(true))" in activity
+assert 'navWebTab = buildNavTab("🌐", "Web", "Open web browser and search", view -> setWebMode(true));' in activity, "Web mode must be reachable from the canonical bottom navigation"
 assert "webGoButton.setOnClickListener(view -> navigateFromInput())" in activity
 assert "browserNetworkPolicy = new BrowserNetworkPolicy(readBrowserOnlinePreference());" in activity
 network_policy = (main / "java/com/abrar/daymark/BrowserNetworkPolicy.java").read_text(encoding="utf-8")
@@ -287,7 +287,7 @@ for expected in (
     "Selecting a saved site opens its origin, not its last route",
 ):
     assert expected in disclosure_text, f"privacy disclosure must cover: {expected}"
-assert 'text("ⓘ Privacy & connection details"' in activity, "full privacy details must be available from a compact home row"
+assert 'browserPrivacyButton = text("ⓘ", 18' in activity and 'setContentDescription("Open privacy and connection details")' in activity, "full privacy details must remain available through an accessible compact info icon"
 assert 'showInfo("Privacy & connection details", disclosureText)' in activity, "privacy details must open on tap"
 assert "sanitizeStoredBrowserHistory();" in activity and "BrowserHistory.sanitizeSerialized(existing)" in activity, "legacy history must be sanitized on launch"
 assert "BrowserHistory.sanitizeUrl(url)" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity, "each history write must pass through the sanitizer"
@@ -327,8 +327,15 @@ assert on_pause and "browserWebView.pauseTimers()" in on_pause.group(1) and "dis
 ensure_webview = re.search(r"private boolean ensureBrowserWebView\(\)\s*\{(.*?)\n    \}", activity, re.S)
 assert ensure_webview and "if (!browserNetworkPolicy.allowsRemoteLoads()) return false;" in ensure_webview.group(1), "WebView construction must fail closed while Offline"
 load_address = re.search(r"private void loadBrowserAddress\(String address\)\s*\{(.*?)\n    \}", activity, re.S)
-assert load_address and "setBlockNetworkLoads(false)" in load_address.group(1)
-assert load_address and load_address.group(1).index("setBlockNetworkLoads(false)") < load_address.group(1).index("browserWebView.loadUrl(address)"), "only a tapped navigation may release WebView network blocking"
+workspace_controller = (main / "java/com/abrar/daymark/BrowserWorkspaceController.java").read_text(encoding="utf-8")
+prepare_navigation = re.search(r"static void prepareForExplicitNavigation\(BrowserNetworkPolicy policy, DaymarkWebView target\)\s*\{(.*?)\n    \}", workspace_controller, re.S)
+enforce_offline = re.search(r"static void enforceOffline\(BrowserNetworkPolicy policy, List<DaymarkWebView> tabs\)\s*\{(.*?)\n    \}", workspace_controller, re.S)
+assert load_address and "BrowserWorkspaceController.prepareForExplicitNavigation(browserNetworkPolicy, browserWebView)" in load_address.group(1), "only validated, tapped navigation may release WebView network blocking"
+assert load_address and load_address.group(1).index("prepareForExplicitNavigation") < load_address.group(1).index("browserWebView.loadUrl(address)"), "explicit navigation must be policy-checked before loadUrl"
+assert prepare_navigation and "!policy.allowsRemoteLoads()" in prepare_navigation.group(1) and "setBlockNetworkLoads(false)" in prepare_navigation.group(1), "controller must fail closed unless explicit Online consent exists"
+assert enforce_offline and "tab.stopLoading()" in enforce_offline.group(1) and "tab.getSettings().setBlockNetworkLoads(true)" in enforce_offline.group(1), "Offline transition must stop and block every retained tab"
+assert "BrowserWorkspaceController.enforceOffline(browserNetworkPolicy, browserTabs)" in online_setting.group(1), "Offline toggle must enforce policy before browser teardown"
+assert online_setting and "loadUrl(" not in online_setting.group(1) and "loadBrowserAddress(" not in online_setting.group(1), "enabling Online must not itself load or reload a page"
 assert load_address and "browserWebView.loadUrl(address)" in load_address.group(1), "active browsing must retain the full validated route/query"
 
 for expected in (
@@ -406,7 +413,7 @@ assert 'compactButton("Site history", false)' in activity and "Clear site histor
 assert "Site history stores only validated HTTPS origins" in activity and "no paths, queries, fragments, URL credentials, or page titles" in activity
 assert "for all websites used in Daymark (not just the current site)" in activity, "clear scope must disclose all-site WebView storage/cookie deletion"
 assert "saved Android Autofill or password-manager data is not cleared" in activity, "clear disclosure must not overstate WebView form-data clearing"
-assert "browserStatus.setText(\"Clearing Daymark site history and local site data...\")" in clear.group(1)
+assert "showBrowserStatus(\"Clearing Daymark site history and local site data...\")" in clear.group(1), "clear action must show a clearing status before asynchronous cookie removal"
 assert "Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared." in clear.group(1), "completion status must follow asynchronous cookie removal"
 assert "HTTP redirect/downgrade was blocked" in activity and "No insecure page was opened" in activity
 
@@ -522,6 +529,18 @@ assert updater_core.index("if (!consent.accept(release))") < updater_core.index(
 assert "uri.getPort() == -1 || uri.getPort() == 443" in updater_core, "release asset URLs must reject non-default HTTPS ports"
 assert "github.com:444" in (root / "tools/UpdaterSmoke.java").read_text(encoding="utf-8"), "unusual asset port regression is required"
 assert "WorkManager" not in updater_sources and "JobScheduler" not in updater_sources, "updater must not add background polling"
+
+# Browser status should not permanently consume reading viewport space.
+assert 'browserStatus = text("", 11, palette.muted, Typeface.NORMAL);' in activity, \
+    "browser must start without a persistent idle status banner"
+assert "browserStatus.setVisibility(View.GONE);" in activity, \
+    "idle browser status must be hidden"
+assert "mainHandler.postDelayed(browserStatusHideRunnable, 3500L)" in activity, \
+    "non-error browser feedback must auto-dismiss"
+assert "browserStatus.animate().alpha(0f).setDuration(180L)" in activity, \
+    "browser status must fade out instead of abruptly occupying the viewport"
+assert 'message.contains("Tap this message to retry")' in activity, \
+    "actionable failed-navigation status must remain available for retry"
 
 # One accurate summary per policy area. The previous block repeated several lines
 # verbatim and still claimed "no permissions/network" for a manifest that declares

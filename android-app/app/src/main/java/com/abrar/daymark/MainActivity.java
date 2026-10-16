@@ -220,6 +220,8 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private View appTopBar;
     private View sharedComposer;
+    private LinearLayout topBarMark;
+    private View topBarBrand;
     private LinearLayout taskList;
     private LinearLayout suggestionList;
     private LinearLayout undoBar;
@@ -297,6 +299,7 @@ public final class MainActivity extends Activity {
     private Spinner searchEngineSpinner;
     private CheckBox browserOnlineToggle;
     private TextView browserStatus;
+    private Runnable browserStatusHideRunnable;
     private View browserProviderRow;
     private TextView browserPrivacyButton;
     private String browserPrivacyDisclosure;
@@ -556,7 +559,7 @@ public final class MainActivity extends Activity {
         if (ACTION_SHORTCUT_OPEN_BROWSER.equals(action)) {
             setWebMode(true);
             if (browserStatus != null) {
-                browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+                showBrowserStatus(browserNetworkPolicy.isOnlineEnabled()
                         ? "Browser ready. Tap a site or enter a search; nothing opened automatically."
                         : "Browser ready in Offline mode. Enable Online before opening a site.");
             }
@@ -1072,14 +1075,15 @@ public final class MainActivity extends Activity {
         scrollView.setOnScrollChangeListener((View view, int x, int y, int oldX, int oldY) -> {
             if (webMode) return;
             int delta = y - oldY;
-            if (delta > dp(3)) {
-                setTaskChromeHidden(true);
-            } else if (delta < -dp(3)) {
+            // Use a meaningful threshold and no timed auto-restore: tiny scroll noise must
+            // not make the header blink in and out. Returning to the top always restores it.
+            if (y <= dp(24) || delta < -dp(10)) {
+                if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
                 setTaskChromeHidden(false);
+            } else if (y > dp(120) && delta > dp(8)) {
+                if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
+                setTaskChromeHidden(true);
             }
-            if (taskChromeRestoreRunnable != null) mainHandler.removeCallbacks(taskChromeRestoreRunnable);
-            taskChromeRestoreRunnable = () -> setTaskChromeHidden(false);
-            mainHandler.postDelayed(taskChromeRestoreRunnable, 700L);
         });
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
@@ -1139,12 +1143,10 @@ public final class MainActivity extends Activity {
 
         navTasksTab = buildNavTab("✓", "Tasks", "View your tasks and dashboard", view -> setWebMode(false));
         navWebTab = buildNavTab("🌐", "Web", "Open web browser and search", view -> setWebMode(true));
-        navTemplatesTab = buildNavTab("📑", "Templates", "Open task templates", view -> showTaskTemplatesDialog());
         navSettingsTab = buildNavTab("⚙", "Settings", "Open Daymark settings", view -> showSettingsDialog());
 
         bar.addView(navTasksTab, tabParams);
         bar.addView(navWebTab, tabParams);
-        bar.addView(navTemplatesTab, tabParams);
         bar.addView(navSettingsTab, tabParams);
 
         container.addView(bar, new LinearLayout.LayoutParams(
@@ -1214,10 +1216,6 @@ public final class MainActivity extends Activity {
         }
 
         // Templates & Settings tabs
-        if (navTemplatesIcon != null && navTemplatesLabel != null) {
-            navTemplatesIcon.setTextColor(palette.muted);
-            navTemplatesLabel.setTextColor(palette.muted);
-        }
         if (navSettingsIcon != null && navSettingsLabel != null) {
             navSettingsIcon.setTextColor(palette.muted);
             navSettingsLabel.setTextColor(palette.muted);
@@ -1230,6 +1228,7 @@ public final class MainActivity extends Activity {
         bar.setPadding(dp(18), dp(12), dp(18), dp(8));
 
         LinearLayout mark = new LinearLayout(this);
+        topBarMark = mark;
         mark.setGravity(Gravity.CENTER);
         TextView markText = text("d", 20, Color.WHITE, Typeface.BOLD);
         mark.setBackground(shape(palette.accent, 22, palette.accent));
@@ -1238,6 +1237,7 @@ public final class MainActivity extends Activity {
         bar.addView(mark, markParams);
 
         LinearLayout brand = new LinearLayout(this);
+        topBarBrand = brand;
         brand.setOrientation(LinearLayout.VERTICAL);
         brand.setPadding(dp(10), 0, 0, 0);
         TextView brandName = text("daymark", 16, palette.text, Typeface.BOLD);
@@ -1254,13 +1254,7 @@ public final class MainActivity extends Activity {
         pathButton.setOnClickListener(view -> toggleExperienceMode());
         // Keep the main header focused; advanced task mode remains available from More.
         pathButton.setVisibility(View.GONE);
-        Button moreButton = plainButton("More");
-        moreButton.setContentDescription("Open appearance, accessibility, and permission settings");
-        moreButton.setOnClickListener(view -> showSettingsDialog());
-        LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        moreParams.leftMargin = dp(6);
-        bar.addView(moreButton, moreParams);
+        // Settings live in the bottom navigation; avoid a duplicate top-right More button.
         return bar;
     }
 
@@ -1293,32 +1287,24 @@ public final class MainActivity extends Activity {
     }
 
     private void addPrivacyCard(LinearLayout content) {
-        LinearLayout card = new LinearLayout(this);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(13), dp(11), dp(13), dp(11));
-        card.setBackground(shape(palette.accentSoft, 16, palette.accentSoft));
+        // Keep the live storage status view attached so load/save failures remain actionable,
+        // but remove the large permanent privacy marketing banner from the dashboard.
+        LinearLayout statusRow = new LinearLayout(this);
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        statusRow.setPadding(dp(8), dp(2), dp(8), dp(2));
 
-        TextView shield = text("●", 11, palette.accent, Typeface.BOLD);
-        shield.setGravity(Gravity.CENTER);
-        card.addView(shield, new LinearLayout.LayoutParams(dp(22), dp(22)));
-
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        copy.setPadding(dp(8), 0, 0, 0);
-        copy.addView(text("Tasks are encrypted on this device", 13, palette.text, Typeface.BOLD));
-        copy.addView(text("Web requests only after your tap · no task sync", 12, palette.muted, Typeface.NORMAL));
-        card.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        storageStatus = text("Opening encrypted storage…", 12, palette.muted, Typeface.NORMAL);
-        storageStatus.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
+        storageStatus = text("Opening encrypted storage…", 11, palette.muted, Typeface.NORMAL);
+        storageStatus.setGravity(Gravity.CENTER_VERTICAL);
         storageStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        card.addView(storageStatus);
-        cancelAttachmentButton = compactButton("Cancel import", true);
+        statusRow.addView(storageStatus, new LinearLayout.LayoutParams(0, dp(28), 1f));
+
+        cancelAttachmentButton = compactButton("Cancel", true);
         cancelAttachmentButton.setContentDescription("Cancel the active import or backup before it is committed");
         cancelAttachmentButton.setVisibility(View.GONE);
         cancelAttachmentButton.setOnClickListener(view -> requestOperationCancel());
-        copy.addView(cancelAttachmentButton, topMargin(dp(4)));
-        content.addView(card, bottomMargin(dp(15)));
+        statusRow.addView(cancelAttachmentButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)));
+        content.addView(statusRow, bottomMargin(dp(5)));
     }
 
     private View buildSharedComposer() {
@@ -1328,19 +1314,26 @@ public final class MainActivity extends Activity {
         card.setBackground(shape(palette.surface, 20, palette.line));
         card.setElevation(dp(1));
 
-        LinearLayout modes = new LinearLayout(this);
-        modes.setOrientation(LinearLayout.HORIZONTAL);
-        taskModeButton = plainButton("Task");
-        taskModeButton.setContentDescription("Task mode. Typing here creates a task only after you tap Add task.");
-        taskModeButton.setOnClickListener(view -> setWebMode(false));
-        webModeButton = plainButton("Web");
-        webModeButton.setContentDescription("Web mode. Search or open a website only after you tap Go or a site link.");
-        webModeButton.setOnClickListener(view -> setWebMode(true));
-        modes.addView(taskModeButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
-        LinearLayout.LayoutParams webModeParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
-        webModeParams.leftMargin = dp(6);
-        modes.addView(webModeButton, webModeParams);
-        card.addView(modes, bottomMargin(dp(7)));
+        LinearLayout quickActions = new LinearLayout(this);
+        quickActions.setGravity(Gravity.CENTER_VERTICAL);
+        Button addTaskShortcut = compactButton("+ Task", false);
+        addTaskShortcut.setContentDescription("Open the task editor to create a task with date, priority, notes and other options");
+        addTaskShortcut.setOnClickListener(view -> showTaskEditor(null, ""));
+        quickActions.addView(addTaskShortcut, new LinearLayout.LayoutParams(0, dp(40), 1f));
+        Button searchTasksShortcut = compactButton("⌕ Search", false);
+        searchTasksShortcut.setContentDescription("Expand task search by title and words");
+        searchTasksShortcut.setOnClickListener(view -> {
+            if (searchControlView == null) return;
+            searchControlView.setVisibility(searchControlView.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+            if (searchControlView.getVisibility() == View.VISIBLE && searchInput != null) {
+                searchInput.requestFocus();
+                if (taskScrollView != null) taskScrollView.post(() -> taskScrollView.smoothScrollTo(0, searchControlView.getTop()));
+            }
+        });
+        LinearLayout.LayoutParams searchShortcutParams = new LinearLayout.LayoutParams(0, dp(40), 1f);
+        searchShortcutParams.leftMargin = dp(6);
+        quickActions.addView(searchTasksShortcut, searchShortcutParams);
+        card.addView(quickActions, bottomMargin(dp(7)));
 
         quickCaptureInput = new EditText(this);
         quickCaptureInput.setSingleLine(true);
@@ -1350,7 +1343,7 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
         quickCaptureInput.setFilters(new InputFilter[] { new InputFilter.LengthFilter(2048) });
         quickCaptureInput.setPadding(dp(12), dp(8), dp(12), dp(8));
-        quickCaptureInput.setMinHeight(dp(52));
+        quickCaptureInput.setMinHeight(dp(44));
         quickCaptureInput.setTextColor(palette.text);
         quickCaptureInput.setHintTextColor(palette.muted);
         quickCaptureInput.setBackground(shape(palette.background, 14, palette.line));
@@ -1378,7 +1371,9 @@ public final class MainActivity extends Activity {
 
         taskActions = new LinearLayout(this);
         taskActions.setOrientation(LinearLayout.VERTICAL);
-        addTaskButton = primaryButton("Add task");
+        addTaskButton = compactButton("Add task", false);
+        addTaskButton.setMinHeight(dp(40));
+        addTaskButton.setMinimumHeight(dp(40));
         addTaskButton.setContentDescription("Add this task in the full editor with the captured text");
         addTaskButton.setOnClickListener(view -> {
             String draft = quickCaptureInput.getText() == null
@@ -1387,18 +1382,8 @@ public final class MainActivity extends Activity {
         });
         taskActions.addView(addTaskButton, bottomMargin(dp(5)));
 
-        LinearLayout secondaryTaskActions = new LinearLayout(this);
-        secondaryTaskActions.setOrientation(LinearLayout.HORIZONTAL);
-        // Redundant with Add task -> full editor (#225).
+        // Templates are contextual under Settings and are not shown as a permanent home action.
         addDetailsButton = null;
-        Button templatesButton = compactButton("Task templates", false);
-        templatesButton.setContentDescription("View, reuse, or create encrypted on-device task templates. Choosing one opens an editable task; it is not created until you confirm Create task.");
-        templatesButton.setOnClickListener(view -> showTaskTemplatesDialog());
-        LinearLayout.LayoutParams templatesParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
-        templatesParams.leftMargin = dp(6);
-        secondaryTaskActions.addView(templatesButton, templatesParams);
-        taskActions.addView(secondaryTaskActions, bottomMargin(dp(5)));
         captureFeedback = text(powerMode
                         ? "Power path adds search, filters, and ranked demo suggestions. It uses the same tasks."
                         : "New tasks start with no due date and medium priority. You can change both later.",
@@ -1593,9 +1578,6 @@ public final class MainActivity extends Activity {
         browserToolbarScroll = toolbarScroll;
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        Button downloadsShortcut = compactButton("Downloads", false);
-        downloadsShortcut.setContentDescription("Open browser Downloads to view download status and progress");
-        downloadsShortcut.setOnClickListener(view -> showBrowserDownloadsDialog());
         browserBackButton = compactButton("‹", false);
         browserBackButton.setContentDescription("Go back one page");
         browserBackButton.setOnClickListener(view -> {
@@ -1643,8 +1625,7 @@ public final class MainActivity extends Activity {
         browserExpandButton.setContentDescription("Open the current web page in a full-screen view");
         browserExpandButton.setEnabled(false);
         browserExpandButton.setOnClickListener(view -> openFullScreenWebView());
-        for (Button button : Arrays.asList(downloadsShortcut, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserTabButton, browserOverflowButton)) {
+        for (Button button : Arrays.asList(browserHomeButton, browserTabButton, browserOverflowButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -1659,14 +1640,18 @@ public final class MainActivity extends Activity {
 
         String disclosureText =
                 "Browsing is ready for explicit user-initiated navigation; no page opens until you tap Go or a site. Queries/URLs and connection data go to the chosen destination, which may log them; pages may contact third parties. Android System WebView Safe Browsing is separate and platform-managed; it may contact Google/Play Services for version/device-dependent threat-list updates or URL-hash checks. The Safe Browsing provider itself is not selectable in Daymark. HTTPS only; HTTP is blocked. Site history keeps only validated HTTPS origins (scheme, host, and non-default port). Paths, queries, fragments, URL credentials, and page titles are not saved; older entries are reduced to origins when Daymark opens. Selecting a saved site opens its origin, not its last route. Site history is local but not encrypted; use Site history to clear it and Daymark's cookies/cache/storage.";
-        browserPrivacyButton = text("ⓘ Privacy & connection details", 11, palette.muted, Typeface.NORMAL);
-        browserPrivacyButton.setGravity(Gravity.CENTER_VERTICAL);
-        browserPrivacyButton.setPadding(dp(8), 0, dp(8), 0);
+        browserPrivacyButton = text("ⓘ", 18, palette.muted, Typeface.NORMAL);
+        browserPrivacyButton.setGravity(Gravity.CENTER);
+        browserPrivacyButton.setPadding(dp(4), 0, dp(4), 0);
         browserPrivacyButton.setBackground(shape(palette.surface, 18, palette.line));
+        browserPrivacyButton.setContentDescription("Open privacy and connection details");
         browserPrivacyButton.setContentDescription("Browser privacy: browsing is ready for explicit user-initiated navigation; each search or site still requires a separate tap. The selected destination receives your query or URL and normal connection data such as your IP address and browser identification, and may log it; pages may contact and be logged by third-party endpoints. Daymark's browser network policy controls Daymark page and resource loads only and does not control Android System WebView Safe Browsing, a separate platform-managed service that may contact Google/Play Services for threat-list updates or URL-hash-based checks. The Safe Browsing provider itself is not selectable in Daymark. Browser Settings can disable the protection feature only after a warning. WebView M126 and later may send a partial URL hash through a proxy for real-time checks; earlier versions use a local partial-hash database and may query a server on prefix match. This does not mean every full URL is sent; the method depends on WebView version and device settings. Daymark sends no task text, adds no app analytics, and opts out of WebView diagnostic metrics. HTTPS only; HTTP is blocked.");
         browserPrivacyButton.setOnClickListener(view -> showInfo("Privacy & connection details", disclosureText));
         browserPrivacyDisclosure = disclosureText;
-        panel.addView(browserPrivacyButton, bottomMargin(dp(2)));
+        LinearLayout privacyRow = new LinearLayout(this);
+        privacyRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        privacyRow.addView(browserPrivacyButton, new LinearLayout.LayoutParams(dp(36), dp(30)));
+        panel.addView(privacyRow, bottomMargin(dp(2)));
 
         HorizontalScrollView sitesScroll = new HorizontalScrollView(this);
         sitesScroll.setHorizontalScrollBarEnabled(false);
@@ -1688,7 +1673,8 @@ public final class MainActivity extends Activity {
         browserProviderRow = sitesScroll;
         // The provider shortcuts are placed after the weighted WebView below so they
         // remain a compact bottom strip while browsing.
-        browserStatus = text("Ready. No page has been requested.", 11, palette.muted, Typeface.NORMAL);
+        browserStatus = text("", 11, palette.muted, Typeface.NORMAL);
+        browserStatus.setVisibility(View.GONE);
         browserStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         browserStatus.setOnClickListener(view -> {
             if (!webMode || !browserLoadFailed || lastBrowserAddress == null) return;
@@ -1716,6 +1702,35 @@ public final class MainActivity extends Activity {
         panel.addView(browserToolbarScroll, bottomMargin(dp(2)));
         panel.addView(browserProviderRow, bottomMargin(dp(3)));
         return panel;
+    }
+
+    /** Shows browser feedback only when needed; successful/info messages fade away. */
+    private void showBrowserStatus(String message) {
+        if (browserStatus == null) return;
+        if (browserStatusHideRunnable != null) mainHandler.removeCallbacks(browserStatusHideRunnable);
+        browserStatus.animate().cancel();
+        browserStatus.setText(message == null ? "" : message);
+        browserStatus.setVisibility(View.VISIBLE);
+        browserStatus.setAlpha(0f);
+        browserStatus.animate().alpha(1f).setDuration(150L).start();
+
+        // Keep actionable terminal failures visible so the user can tap to retry.
+        boolean needsManualRetry = message != null
+                && (message.contains("Tap this message to retry")
+                || message.contains("did not open after one automatic recovery")
+                || message.contains("Automatic recovery was limited"));
+        if (needsManualRetry) return;
+
+        browserStatusHideRunnable = () -> {
+            if (browserStatus == null || browserStatus.getVisibility() != View.VISIBLE) return;
+            browserStatus.animate().cancel();
+            browserStatus.animate().alpha(0f).setDuration(180L).withEndAction(() -> {
+                if (browserStatus != null && browserStatus.getAlpha() <= 0.01f) {
+                    browserStatus.setVisibility(View.GONE);
+                }
+            }).start();
+        };
+        mainHandler.postDelayed(browserStatusHideRunnable, 3500L);
     }
 
     private void selectSearchEngine(BrowserAddress.SearchEngine engine) {
@@ -1929,7 +1944,7 @@ public final class MainActivity extends Activity {
                     address = BrowserAddress.requireAllowedWebUrl(entry.searchEngine.searchUrl(value));
                 } catch (IllegalArgumentException exception) {
                     if (browserAddressInput != null) browserAddressInput.setError(exception.getMessage());
-                    browserStatus.setText("Nothing was opened. Check the question or provider address.");
+                    showBrowserStatus("Nothing was opened. Check the question or provider address.");
                     return;
                 }
             }
@@ -1962,18 +1977,11 @@ public final class MainActivity extends Activity {
         home.addView(hint, bottomMargin(dp(7)));
 
         TextView detail = text(
-                "Type a question in the address bar above, then tap a provider to search in one step. Or choose a provider first.",
+                "Enter a question or HTTPS address above, then tap Go or a provider shortcut. Choose another provider with + Add when needed.",
                 13, palette.muted, Typeface.NORMAL);
         detail.setGravity(Gravity.CENTER);
         detail.setLineSpacing(dp(3), 1f);
         home.addView(detail, bottomMargin(dp(18)));
-
-        Button chooseProvider = compactButton("Choose search provider", true);
-        chooseProvider.setOnClickListener(view -> showSearchProviderPicker());
-        LinearLayout.LayoutParams chooseParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(42));
-        chooseParams.gravity = Gravity.CENTER_HORIZONTAL;
-        home.addView(chooseProvider, chooseParams);
 
         TextView privacyHint = text("Offline until you enable Online. Privacy details are above.", 11,
                 palette.muted, Typeface.NORMAL);
@@ -1996,7 +2004,7 @@ public final class MainActivity extends Activity {
             navigateBrowserTo(address);
         } catch (IllegalArgumentException exception) {
             quickCaptureInput.setError(exception.getMessage());
-            browserStatus.setText("Nothing was opened. Check the search or web address.");
+            showBrowserStatus("Nothing was opened. Check the search or web address.");
         }
     }
 
@@ -2030,13 +2038,13 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-            browserWebView.getSettings().setBlockNetworkLoads(false);
+            BrowserWorkspaceController.prepareForExplicitNavigation(browserNetworkPolicy, browserWebView);
             browserWebView.onResume();
             browserWebView.resumeTimers();
         } catch (SecurityException denied) {
             setBrowserOnlineEnabled(false);
             if (browserOnlineToggle != null) browserOnlineToggle.setChecked(false);
-            browserStatus.setText("Online access is unavailable. No page was opened; Daymark remains offline.");
+            showBrowserStatus("Online access is unavailable. No page was opened; Daymark remains offline.");
             return;
         }
         browserHomeView.setVisibility(View.GONE);
@@ -2046,10 +2054,10 @@ public final class MainActivity extends Activity {
         // Owner feedback (#222): the full egress disclosure is shown before the first
         // search of an install only; later navigations use a quiet per-page status.
         if (!browserPreferences.getBoolean(BROWSER_DISCLOSURE_ACK_KEY, false)) {
-            browserStatus.setText("Opening page. Its provider and page resources may receive requests.");
+            showBrowserStatus("Opening page. Its provider and page resources may receive requests.");
             browserPreferences.edit().putBoolean(BROWSER_DISCLOSURE_ACK_KEY, true).apply();
         } else {
-            browserStatus.setText("Opening page…");
+            showBrowserStatus("Opening page…");
         }
         lastBrowserAddress = address;
         browserLoadFailed = false;
@@ -2076,7 +2084,7 @@ public final class MainActivity extends Activity {
                 Log.w(BROWSER_LOG_TAG, "attempting one automatic recovery for stalled page");
                 browserDiagnostics.record(System.currentTimeMillis(), "automatic recovery retry", address, null);
                 StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
-                browserStatus.setText("Page stalled. Daymark is retrying once...");
+                showBrowserStatus("Page stalled. Daymark is retrying once...");
                 try {
                     browserWebView.stopLoading();
                     scheduleBrowserLoadWatchdog(address);
@@ -2091,7 +2099,7 @@ public final class MainActivity extends Activity {
             browserDiagnostics.record(System.currentTimeMillis(), "watchdog exhausted; automatic retry budget spent", address, null);
             browserPageLoading = false;
             browserLoadFailed = true;
-            browserStatus.setText("The page did not open after one automatic recovery attempt. Tap this message to retry.");
+            showBrowserStatus("The page did not open after one automatic recovery attempt. Tap this message to retry.");
         });
         mainHandler.postDelayed(browserLoadWatchdog, BROWSER_LOAD_WATCHDOG_MS);
     }
@@ -2148,7 +2156,7 @@ public final class MainActivity extends Activity {
                 browserPageLoading = true;
                 Log.i(BROWSER_LOG_TAG, "page started: " + BrowserLogPolicy.redactedOrigin(url));
                 browserDiagnostics.record(System.currentTimeMillis(), "page started", url, null);
-                browserStatus.setText("Loading page. Embedded resources may also make network requests.");
+                showBrowserStatus("Loading page. Embedded resources may also make network requests.");
                 // Keep the watchdog active after navigation begins: a page can start successfully
                 // but never finish, leaving the viewport blank with no further WebView callback.
                 scheduleBrowserLoadWatchdog(url);
@@ -2174,7 +2182,7 @@ public final class MainActivity extends Activity {
                 Log.i(BROWSER_LOG_TAG, "page finished: " + BrowserLogPolicy.redactedOrigin(url));
                 browserDiagnostics.record(System.currentTimeMillis(), "page finished", url, null);
                 if (browserAddressInput != null) browserAddressInput.setText(url);
-                browserStatus.setText("Page loaded. Website content may contact its own or third-party endpoints.");
+                showBrowserStatus("Page loaded. Website content may contact its own or third-party endpoints.");
                 injectVideoDownloadOverlay(browserWebView);
                 syncBrowserButtons();
             }
@@ -2183,7 +2191,7 @@ public final class MainActivity extends Activity {
                 if (!isActivityCallbackCurrent() || targetRef[0] != browserWebView) return;
                 browserPageLoading = false;
                 cancelBrowserLoadWatchdog();
-                browserStatus.setText("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
+                showBrowserStatus("A non-HTTPS page link was blocked. Use HTTPS; a per-site HTTP exception requires a separate explicit request.");
                 browserDiagnostics.record(System.currentTimeMillis(), "navigation blocked (non-HTTPS)", url, null);
                 showToast("Only HTTPS pages open here. HTTP is blocked; site exceptions need a separate request.");
             }
@@ -2205,7 +2213,7 @@ public final class MainActivity extends Activity {
                         ? "An HTTP redirect/downgrade was blocked. No insecure page was opened."
                         : "An HTTP page navigation was blocked. No insecure page was opened.";
                 postActivityCallback(() -> {
-                    browserStatus.setText(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
+                    showBrowserStatus(message + " Only HTTPS is supported. A per-site exception requires a separate explicit request.");
                     browserDiagnostics.record(System.currentTimeMillis(), "navigation blocked (HTTP)", url, message);
                     showToast("Insecure HTTP navigation blocked. Use HTTPS instead.");
                 });
@@ -2220,7 +2228,7 @@ public final class MainActivity extends Activity {
                         + " origin=" + BrowserLogPolicy.redactedOrigin(failingUrl));
                 browserDiagnostics.record(System.currentTimeMillis(), "load failed", failingUrl,
                         "error " + errorCode + ": " + description);
-                browserStatus.setText(errorCode < 0
+                showBrowserStatus(errorCode < 0
                         ? "The page could not load securely. Certificate errors are not bypassed. Tap this message to try again."
                         : "The page did not open (error " + errorCode + "). Tap this message to try again.");
             }
@@ -2273,7 +2281,7 @@ public final class MainActivity extends Activity {
                         && BrowserAddress.isAllowedWebUrl(recoveryAddress)
                         && browserSelfHealingPolicy.shouldRecover(recoveryAddress)) {
                     StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_ATTEMPTED, null);
-                    browserStatus.setText("The page stopped unexpectedly. Rebuilding the browser and retrying once...");
+                    showBrowserStatus("The page stopped unexpectedly. Rebuilding the browser and retrying once...");
                     if (ensureBrowserWebView()) {
                         loadBrowserAddress(recoveryAddress);
                         return;
@@ -2286,7 +2294,7 @@ public final class MainActivity extends Activity {
                 if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
                 StartupDiagnostics.record(StartupDiagnostics.BROWSER_RECOVERY_EXHAUSTED, null);
                 browserDiagnostics.record(System.currentTimeMillis(), "renderer gone; automatic recovery budget spent", lastBrowserAddress, null);
-                browserStatus.setText("The page stopped unexpectedly. Automatic recovery was limited; return to browser home and try again.");
+                showBrowserStatus("The page stopped unexpectedly. Automatic recovery was limited; return to browser home and try again.");
             }
         });
         targetRef[0] = browserWebView;
@@ -2429,7 +2437,7 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
         if (browserAddressInput != null) browserAddressInput.setText("");
-        if (browserStatus != null) browserStatus.setText("New tab. Enter a website or search.");
+        if (browserStatus != null) showBrowserStatus("New tab. Enter a website or search.");
         updateBrowserTabButton();
         syncBrowserButtons();
     }
@@ -2450,7 +2458,7 @@ public final class MainActivity extends Activity {
         if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
         if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(hasPage ? View.GONE : View.VISIBLE);
         if (browserAddressInput != null) browserAddressInput.setText(hasPage ? tab.getUrl() : "");
-        if (browserStatus != null) browserStatus.setText(hasPage
+        if (browserStatus != null) showBrowserStatus(hasPage
                 ? (tab.getTitle() == null || tab.getTitle().trim().isEmpty() ? tab.getUrl() : tab.getTitle())
                 : "New tab. Enter a website or search.");
         updateBrowserTabButton();
@@ -2479,7 +2487,7 @@ public final class MainActivity extends Activity {
             if (browserProviderRow != null) browserProviderRow.setVisibility(View.VISIBLE);
             if (browserPrivacyButton != null) browserPrivacyButton.setVisibility(View.VISIBLE);
             if (browserAddressInput != null) browserAddressInput.setText("");
-            if (browserStatus != null) browserStatus.setText("No tabs open. Create a new tab to browse.");
+            if (browserStatus != null) showBrowserStatus("No tabs open. Create a new tab to browse.");
         } else {
             int nextIndex = BrowserTabPolicy.indexAfterClose(oldIndex, browserTabs.size());
             if (nextIndex >= 0) switchBrowserTab(browserTabs.get(nextIndex));
@@ -2557,7 +2565,7 @@ public final class MainActivity extends Activity {
                 "Privacy details", "Browser settings", "Site info", "Turn off online browsing",
                 "Diagnostics",
                 "Bookmark this page", "Bookmarks",
-                "Save page as task"
+                "Save page as task", "Back", "Forward", "Reload"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -2627,6 +2635,18 @@ public final class MainActivity extends Activity {
                             break;
                         case 19:
                             saveCurrentPageAsTask();
+                            break;
+                        case 20:
+                            if (browserWebView != null && browserWebView.canGoBack()) browserWebView.goBack();
+                            break;
+                        case 21:
+                            if (browserWebView != null && browserWebView.canGoForward()) browserWebView.goForward();
+                            break;
+                        case 22:
+                            if (browserWebView != null) {
+                                if (browserWebView.getUrl() != null && browserWebView.getProgress() < 100) browserWebView.stopLoading();
+                                else browserWebView.reload();
+                            }
                             break;
                         default:
                             break;
@@ -3450,7 +3470,7 @@ public final class MainActivity extends Activity {
             showToast("Open a page first.");
             return;
         }
-        browserStatus.setText("Searching the page for downloadable videos and audio...");
+        showBrowserStatus("Searching the page for downloadable videos and audio...");
         String mediaProbeScript = "(function(){"
                 + "var found=[];var seen={};"
                 + "function push(url,kind,label){"
@@ -3476,7 +3496,7 @@ public final class MainActivity extends Activity {
         browserWebView.evaluateJavascript(mediaProbeScript, value -> {
             if (!isActivityCallbackCurrent()) return;
             if (value == null || value.equals("null") || value.equals("[]")) {
-                browserStatus.setText("No direct video or audio found. Protected streaming players are not downloadable.");
+                showBrowserStatus("No direct video or audio found. Protected streaming players are not downloadable.");
                 showToast("No downloadable media found on this page.");
                 return;
             }
@@ -3516,7 +3536,7 @@ public final class MainActivity extends Activity {
                         showToast("Download blocked: HTTPS is required.");
                         return;
                     }
-                    browserStatus.setText("Download started for the selected media file. Check Downloads for progress.");
+                    showBrowserStatus("Download started for the selected media file. Check Downloads for progress.");
                     queueBrowserDownload(url, null, null, null);
                 })
                 .setNegativeButton("Close", null)
@@ -3563,7 +3583,7 @@ public final class MainActivity extends Activity {
         browserLastSearchQuery = "";
         if (browserAddressInput != null) browserAddressInput.setText("");
         if (quickCaptureInput != null && webMode) quickCaptureInput.setText("");
-        if (browserStatus != null) browserStatus.setText("Ready. No page has been requested.");
+        if (browserStatus != null) showBrowserStatus("Ready. No page has been requested.");
         syncBrowserButtons();
     }
 
@@ -3579,7 +3599,7 @@ public final class MainActivity extends Activity {
         }
         final DaymarkWebView source = browserWebView;
         final String sourceUrl = source.getUrl();
-        browserStatus.setText("Preparing a local text-only reading view...");
+        showBrowserStatus("Preparing a local text-only reading view...");
         String script = "(function(){try{"
                 + "var root=document.querySelector('article')||document.querySelector('main')||document.body;"
                 + "var walker=document.createTreeWalker(root,NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT,{acceptNode:function(node){"
@@ -3607,11 +3627,11 @@ public final class MainActivity extends Activity {
                 String title = extracted.optString(0, "Reader mode");
                 String body = extracted.optString(1, "");
                 if (body.trim().isEmpty()) {
-                    browserStatus.setText("Reader Mode found no readable article text on this page.");
+                    showBrowserStatus("Reader Mode found no readable article text on this page.");
                     showToast("No readable article text found.");
                     return;
                 }
-                browserStatus.setText("Reader Mode extracted page text locally. The original page is unchanged.");
+                showBrowserStatus("Reader Mode extracted page text locally. The original page is unchanged.");
                 showReaderModeDialog(title, body);
             } catch (Exception invalidResult) {
                 showToast("Reader Mode could not read this page.");
@@ -3859,7 +3879,7 @@ public final class MainActivity extends Activity {
 
     private void showBrowserOfflineStatus() {
         if (browserStatus != null) {
-            browserStatus.setText("Offline: no search/site request was sent. Daymark page/resource loads are blocked; platform-managed Android System WebView Safe Browsing may still make Google/Play Services URL-hash or update checks.");
+            showBrowserStatus("Offline: no search/site request was sent. Daymark page/resource loads are blocked; platform-managed Android System WebView Safe Browsing may still make Google/Play Services URL-hash or update checks.");
         }
     }
 
@@ -3910,7 +3930,7 @@ public final class MainActivity extends Activity {
         }
 
         showBrowserHome();
-        browserStatus.setText("Clearing Daymark site history and local site data...");
+        showBrowserStatus("Clearing Daymark site history and local site data...");
         final boolean allTabDataCleared = tabDataCleared;
         final boolean allSiteStorageCleared = siteStorageCleared;
         try {
@@ -3924,17 +3944,17 @@ public final class MainActivity extends Activity {
                 }
                 if (isActivityCallbackCurrent()) {
                     if (allTabDataCleared && allSiteStorageCleared && cookiesFlushed) {
-                        browserStatus.setText("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
+                        showBrowserStatus("Daymark site history, WebView cache, Web SQL/HTML5 Storage, and cookies were cleared. Android Autofill and password-manager data were not changed.");
                         showToast("Local site history and site data cleared.");
                     } else {
-                        browserStatus.setText("Site-data cleanup was partial. One or more tab-local or shared stores could not be cleared; close/reopen affected tabs and retry.");
+                        showBrowserStatus("Site-data cleanup was partial. One or more tab-local or shared stores could not be cleared; close/reopen affected tabs and retry.");
                         showToast("Site-data cleanup was partial. Some local data may remain.");
                     }
                 }
             });
         } catch (RuntimeException cookieClearFailed) {
             if (isActivityCallbackCurrent()) {
-                browserStatus.setText("Site-data cleanup was partial. Cookie clearing could not be completed; some local data may remain.");
+                showBrowserStatus("Site-data cleanup was partial. Cookie clearing could not be completed; some local data may remain.");
                 showToast("Cookie clearing failed. Some local data may remain.");
             }
         }
@@ -4057,7 +4077,7 @@ public final class MainActivity extends Activity {
         searchRow.addView(searchClear, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
         searchControlView = searchRow;
-        powerOnlyViews.add(searchRow);
+        searchRow.setVisibility(View.GONE);
         content.addView(searchRow, bottomMargin(dp(11)));
 
         searchInput.addTextChangedListener(new TextWatcher() {
@@ -4350,21 +4370,48 @@ public final class MainActivity extends Activity {
         if (webMode || appTopBar == null || sharedComposer == null) return;
         if (taskChromeHidden == hidden) return;
         taskChromeHidden = hidden;
-        View[] chrome = {appTopBar, sharedComposer};
-        for (View view : chrome) {
-            view.animate().cancel();
+
+        // Keep a small Daymark mark visible while scrolling; hide only the full brand
+        // label and composer. This preserves a workspace anchor without a tall header.
+        appTopBar.animate().cancel();
+        appTopBar.setVisibility(View.VISIBLE);
+        appTopBar.setTranslationY(0f);
+        appTopBar.setAlpha(1f);
+        if (topBarBrand != null) {
+            topBarBrand.animate().cancel();
             if (hidden) {
-                view.setVisibility(View.VISIBLE);
-                view.animate().translationY(-Math.max(view.getHeight(), dp(48)))
-                        .alpha(0f).setDuration(180L).withEndAction(() -> {
-                            if (taskChromeHidden && !webMode) view.setVisibility(View.GONE);
-                        }).start();
+                topBarBrand.animate().alpha(0f).setDuration(120L).withEndAction(() -> {
+                    if (taskChromeHidden && !webMode && topBarBrand != null) {
+                        topBarBrand.setVisibility(View.GONE);
+                    }
+                }).start();
             } else {
-                view.setVisibility(View.VISIBLE);
-                view.setTranslationY(-Math.max(view.getHeight(), dp(48)));
-                view.setAlpha(0f);
-                view.animate().translationY(0f).alpha(1f).setDuration(200L).start();
+                topBarBrand.setVisibility(View.VISIBLE);
+                topBarBrand.setAlpha(0f);
+                topBarBrand.animate().alpha(1f).setDuration(180L).start();
             }
+        }
+        if (topBarMark != null && topBarMark.getLayoutParams() instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams markParams = (LinearLayout.LayoutParams) topBarMark.getLayoutParams();
+            markParams.width = dp(hidden ? 30 : 38);
+            markParams.height = dp(hidden ? 30 : 38);
+            topBarMark.setLayoutParams(markParams);
+        }
+        appTopBar.setPadding(dp(hidden ? 12 : 18), dp(hidden ? 6 : 12),
+                dp(hidden ? 12 : 18), dp(hidden ? 6 : 8));
+
+        sharedComposer.animate().cancel();
+        if (hidden) {
+            sharedComposer.setVisibility(View.VISIBLE);
+            sharedComposer.animate().translationY(-Math.max(sharedComposer.getHeight(), dp(48)))
+                    .alpha(0f).setDuration(180L).withEndAction(() -> {
+                        if (taskChromeHidden && !webMode) sharedComposer.setVisibility(View.GONE);
+                    }).start();
+        } else {
+            sharedComposer.setVisibility(View.VISIBLE);
+            sharedComposer.setTranslationY(-Math.max(sharedComposer.getHeight(), dp(48)));
+            sharedComposer.setAlpha(0f);
+            sharedComposer.animate().translationY(0f).alpha(1f).setDuration(200L).start();
         }
     }
 
@@ -4384,23 +4431,12 @@ public final class MainActivity extends Activity {
         taskActions.setVisibility(webMode ? View.GONE : View.VISIBLE);
         webActions.setVisibility(View.GONE);
         pathButton.setVisibility(webMode ? View.GONE : View.VISIBLE);
-        quickCaptureInput.setHint(webMode ? "Search the web or enter a URL" : "Type a task in your own words");
+        quickCaptureInput.setHint(webMode ? "Search or enter HTTPS address" : "Task title or quick note");
         quickCaptureInput.setContentDescription(webMode
                 ? "Search the web or enter an HTTPS web address. Browsing is ready; requests are sent only after you tap Go or a provider/site shortcut."
                 : "What do you want to get done? Type a task");
         quickCaptureInput.setImeOptions(webMode ? EditorInfo.IME_ACTION_SEARCH : EditorInfo.IME_ACTION_DONE);
-        taskModeButton.setTextColor(webMode ? palette.muted : palette.accent);
-        taskModeButton.setBackground(shape(webMode ? palette.surfaceAlt : palette.accentSoft,
-                18, webMode ? palette.line : palette.accent));
-        webModeButton.setTextColor(webMode ? palette.accent : palette.muted);
-        webModeButton.setBackground(shape(webMode ? palette.accentSoft : palette.surfaceAlt,
-                18, webMode ? palette.accent : palette.line));
-        taskModeButton.setContentDescription(webMode
-                ? "Switch to Task mode. Your web search is not added to your tasks."
-                : "Task mode selected. Typing creates a task only after Add task.");
-        webModeButton.setContentDescription(webMode
-                ? "Web mode selected. Browsing is ready; requests require a separate Go or site tap."
-                : "Switch to Web mode. The current task draft stays in Daymark and is not sent to a site.");
+        // Bottom navigation is the sole Tasks/Web workspace switcher.
         if (undoBar != null) {
             if (webMode) undoBar.setVisibility(View.GONE);
             else if (pendingDeletedTask != null) undoBar.setVisibility(View.VISIBLE);
@@ -4423,7 +4459,7 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setText(enabled ? "" : taskDraft);
         quickCaptureInput.setError(null);
         if (enabled && browserStatus != null) {
-            browserStatus.setText(browserNetworkPolicy.isOnlineEnabled()
+            showBrowserStatus(browserNetworkPolicy.isOnlineEnabled()
                     ? "Online is enabled. No website opens until you tap Go or a site."
                     : "Website access is Offline. Turn Online on, then tap Go or a site.");
         }
@@ -4443,10 +4479,11 @@ public final class MainActivity extends Activity {
     private void setBrowserOnlineEnabled(boolean enabled) {
         if (browserNetworkPolicy.isOnlineEnabled() == enabled) return;
         browserNetworkPolicy.setOnlineEnabled(enabled);
+        if (!enabled) BrowserWorkspaceController.enforceOffline(browserNetworkPolicy, browserTabs);
         if (enabled) {
             browserPreferences.edit().putBoolean(BROWSER_ONLINE_ENABLED_KEY, true)
                     .putBoolean(BROWSER_ONLINE_EXPLICIT_OPT_IN_KEY, true).apply();
-            if (browserStatus != null) browserStatus.setText("Online access enabled. No website opens until you tap Go or a site.");
+            if (browserStatus != null) showBrowserStatus("Online access enabled. No website opens until you tap Go or a site.");
         } else {
             // Offline is the fail-closed default; remove both the Online choice and its consent marker.
             browserPreferences.edit().remove(BROWSER_ONLINE_ENABLED_KEY)
@@ -7150,6 +7187,10 @@ public final class MainActivity extends Activity {
         addSettingsRow(content, "Encrypted backup & restore", "Export or add tasks from a .dmbackup file",
                 () -> showPortableBackupDialog());
 
+        addSettingsSection(content, "TASK TOOLS");
+        addSettingsRow(content, "Task templates", "Save and reuse local encrypted task templates",
+                () -> showTaskTemplatesDialog());
+
         addSettingsSection(content, "POWER FEATURES");
         addSettingsRow(content, "Check for updates", "Check the signed sideload release channel",
                 () -> checkForUpdates(true));
@@ -7159,7 +7200,7 @@ public final class MainActivity extends Activity {
         scroll.setClipToPadding(false);
         scroll.addView(content);
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("More")
+                .setTitle("Settings")
                 .setView(scroll)
                 .setNegativeButton("Done", null)
                 .create();

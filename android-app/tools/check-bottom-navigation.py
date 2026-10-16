@@ -3,7 +3,7 @@
 
 Asserts that:
 1. MainActivity includes bottomNavigationBar in root layout.
-2. 4 core destinations are wired: Tasks, Web, Templates, Settings.
+2. 3 persistent destinations are wired: Tasks, Web, Settings; templates are contextual.
 3. Accessible content descriptions are present for screen readers.
 4. Active tab styling switches seamlessly between Tasks and Web.
 5. Bottom nav auto-hides smoothly alongside browser chrome on web scroll.
@@ -31,14 +31,31 @@ check("root.addView(bottomNavigationBar" in ACTIVITY, "bottomNavigationBar must 
 # 2. Tabs and destinations
 check('buildNavTab("✓", "Tasks"' in ACTIVITY, "Tasks tab missing")
 check('buildNavTab("🌐", "Web"' in ACTIVITY, "Web tab missing")
-check('buildNavTab("📑", "Templates"' in ACTIVITY, "Templates tab missing")
 check('buildNavTab("⚙", "Settings"' in ACTIVITY, "Settings tab missing")
 
 # 3. Mode switching and dialog integration
 check("view -> setWebMode(false)" in ACTIVITY, "Tasks tab must switch to tasks mode")
 check("view -> setWebMode(true)" in ACTIVITY, "Web tab must switch to web mode")
-check("view -> showTaskTemplatesDialog()" in ACTIVITY, "Templates tab must open templates dialog")
 check("view -> showSettingsDialog()" in ACTIVITY, "Settings tab must open settings dialog")
+check('addSettingsRow(content, "Task templates"' in ACTIVITY, "Templates must be available contextually in Settings")
+check('buildNavTab("📑", "Templates"' not in ACTIVITY, "Templates must not occupy persistent bottom navigation")
+check('Button moreButton = plainButton("More")' not in ACTIVITY, "Duplicate top-right More action must be removed")
+check('Button addTaskShortcut = compactButton("+ Task"' in ACTIVITY, "Compact task creation shortcut missing")
+check('Button searchTasksShortcut = compactButton("⌕ Search"' in ACTIVITY, "Compact task search shortcut missing")
+check("if (y <= dp(24) || delta < -dp(10))" in ACTIVITY, "Header restores at top or deliberate upward scroll")
+check("y > dp(120) && delta > dp(8)" in ACTIVITY, "Header collapses only after meaningful downward scroll")
+check("mainHandler.postDelayed(taskChromeRestoreRunnable, 700L)" not in ACTIVITY, "Header must not auto-restore and flicker during a pause")
+check("private LinearLayout topBarMark;" in ACTIVITY and "topBarMark = mark;" in ACTIVITY,
+      "Scrolling must retain the compact Daymark mark")
+check("topBarBrand.setVisibility(View.GONE)" in ACTIVITY,
+      "Scrolling must collapse the full brand label rather than removing the entire header")
+check("markParams.width = dp(hidden ? 30 : 38)" in ACTIVITY,
+      "Header mark must shrink on downward scroll and restore on upward scroll")
+check('Button moreButton = plainButton("More")' not in ACTIVITY, "No duplicate More button remains in header")
+check('browserPrivacyButton = text("ⓘ", 18' in ACTIVITY, "Browser privacy disclosure must be a compact info icon")
+check('Button chooseProvider = compactButton("Choose search provider"' not in ACTIVITY, "Browser home must not show redundant provider CTA")
+check("Arrays.asList(browserHomeButton, browserTabButton, browserOverflowButton)" in ACTIVITY, "Browser toolbar should keep only essential compact controls")
+check('"Save page as task", "Back", "Forward", "Reload"' in ACTIVITY, "Navigation controls must remain reachable in overflow")
 
 # 4. Active tab synchronization and accessibility
 check("syncBottomNavSelection();" in ACTIVITY, "syncBottomNavSelection must be called in syncModeUi")

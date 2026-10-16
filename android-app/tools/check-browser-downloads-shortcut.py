@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the first-level browser Downloads shortcut and its accessible action."""
+"""Guard browser Downloads discoverability and its accessible overflow action."""
 from pathlib import Path
 import sys
 
@@ -11,13 +11,13 @@ browser_screen = activity.split("private LinearLayout buildBrowserScreen()", 1)[
     "private void selectSearchEngine(", 1
 )[0]
 
-assert 'compactButton("Downloads", false)' in browser_screen, \
-    "Downloads should be visibly labeled rather than hidden only in the overflow menu"
-assert 'setContentDescription("Open browser Downloads to view download status and progress")' in browser_screen, \
-    "the Downloads shortcut must explain its purpose to assistive technology"
-assert "downloadsShortcut.setOnClickListener(view -> showBrowserDownloadsDialog());" in browser_screen, \
-    "the shortcut must open the existing in-app DownloadManager list"
-assert "Arrays.asList(downloadsShortcut, browserBackButton" in browser_screen, \
-    "Downloads must be part of the visible, scrollable browser toolbar"
+overflow_start = activity.index("private void showBrowserOverflowMenu(View anchor)")
+overflow_end = activity.index("private ", overflow_start + len("private void "))
+overflow_menu = activity[overflow_start:overflow_end]
+assert '"Downloads"' in overflow_menu, "Downloads must remain discoverable in browser actions"
+assert 'case 8:' in overflow_menu and 'showBrowserDownloadsDialog();' in overflow_menu, \
+    "the Downloads overflow action must open the existing in-app DownloadManager list"
+assert 'compactButton("Downloads", false)' not in browser_screen, \
+    "the redundant persistent Downloads toolbar button should stay removed"
 
-print("PASS browser Downloads shortcut: first-level labeled control, accessible description, existing status-list action")
+print("PASS browser Downloads shortcut: overflow discoverability and existing status-list action")
