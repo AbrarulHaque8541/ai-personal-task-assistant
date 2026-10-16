@@ -287,7 +287,7 @@ for expected in (
     "Selecting a saved site opens its origin, not its last route",
 ):
     assert expected in disclosure_text, f"privacy disclosure must cover: {expected}"
-assert 'text("ⓘ Privacy & connection details"' in activity, "full privacy details must be available from a compact home row"
+assert 'browserPrivacyButton = text("ⓘ", 18' in activity and 'setContentDescription("Open privacy and connection details")' in activity, "full privacy details must remain available through an accessible compact info icon"
 assert 'showInfo("Privacy & connection details", disclosureText)' in activity, "privacy details must open on tap"
 assert "sanitizeStoredBrowserHistory();" in activity and "BrowserHistory.sanitizeSerialized(existing)" in activity, "legacy history must be sanitized on launch"
 assert "BrowserHistory.sanitizeUrl(url)" in activity and "BrowserHistory.add(current, safeHistoryUrl)" in activity, "each history write must pass through the sanitizer"
