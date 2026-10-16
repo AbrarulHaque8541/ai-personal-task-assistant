@@ -220,6 +220,8 @@ public final class MainActivity extends Activity {
     private LinearLayout root;
     private View appTopBar;
     private View sharedComposer;
+    private LinearLayout topBarMark;
+    private View topBarBrand;
     private LinearLayout taskList;
     private LinearLayout suggestionList;
     private LinearLayout undoBar;
@@ -1225,6 +1227,7 @@ public final class MainActivity extends Activity {
         bar.setPadding(dp(18), dp(12), dp(18), dp(8));
 
         LinearLayout mark = new LinearLayout(this);
+        topBarMark = mark;
         mark.setGravity(Gravity.CENTER);
         TextView markText = text("d", 20, Color.WHITE, Typeface.BOLD);
         mark.setBackground(shape(palette.accent, 22, palette.accent));
@@ -1233,6 +1236,7 @@ public final class MainActivity extends Activity {
         bar.addView(mark, markParams);
 
         LinearLayout brand = new LinearLayout(this);
+        topBarBrand = brand;
         brand.setOrientation(LinearLayout.VERTICAL);
         brand.setPadding(dp(10), 0, 0, 0);
         TextView brandName = text("daymark", 16, palette.text, Typeface.BOLD);
@@ -4335,21 +4339,48 @@ public final class MainActivity extends Activity {
         if (webMode || appTopBar == null || sharedComposer == null) return;
         if (taskChromeHidden == hidden) return;
         taskChromeHidden = hidden;
-        View[] chrome = {appTopBar, sharedComposer};
-        for (View view : chrome) {
-            view.animate().cancel();
+
+        // Keep a small Daymark mark visible while scrolling; hide only the full brand
+        // label and composer. This preserves a workspace anchor without a tall header.
+        appTopBar.animate().cancel();
+        appTopBar.setVisibility(View.VISIBLE);
+        appTopBar.setTranslationY(0f);
+        appTopBar.setAlpha(1f);
+        if (topBarBrand != null) {
+            topBarBrand.animate().cancel();
             if (hidden) {
-                view.setVisibility(View.VISIBLE);
-                view.animate().translationY(-Math.max(view.getHeight(), dp(48)))
-                        .alpha(0f).setDuration(180L).withEndAction(() -> {
-                            if (taskChromeHidden && !webMode) view.setVisibility(View.GONE);
-                        }).start();
+                topBarBrand.animate().alpha(0f).setDuration(120L).withEndAction(() -> {
+                    if (taskChromeHidden && !webMode && topBarBrand != null) {
+                        topBarBrand.setVisibility(View.GONE);
+                    }
+                }).start();
             } else {
-                view.setVisibility(View.VISIBLE);
-                view.setTranslationY(-Math.max(view.getHeight(), dp(48)));
-                view.setAlpha(0f);
-                view.animate().translationY(0f).alpha(1f).setDuration(200L).start();
+                topBarBrand.setVisibility(View.VISIBLE);
+                topBarBrand.setAlpha(0f);
+                topBarBrand.animate().alpha(1f).setDuration(180L).start();
             }
+        }
+        if (topBarMark != null && topBarMark.getLayoutParams() instanceof LinearLayout.LayoutParams) {
+            LinearLayout.LayoutParams markParams = (LinearLayout.LayoutParams) topBarMark.getLayoutParams();
+            markParams.width = dp(hidden ? 30 : 38);
+            markParams.height = dp(hidden ? 30 : 38);
+            topBarMark.setLayoutParams(markParams);
+        }
+        appTopBar.setPadding(dp(hidden ? 12 : 18), dp(hidden ? 6 : 12),
+                dp(hidden ? 12 : 18), dp(hidden ? 6 : 8));
+
+        sharedComposer.animate().cancel();
+        if (hidden) {
+            sharedComposer.setVisibility(View.VISIBLE);
+            sharedComposer.animate().translationY(-Math.max(sharedComposer.getHeight(), dp(48)))
+                    .alpha(0f).setDuration(180L).withEndAction(() -> {
+                        if (taskChromeHidden && !webMode) sharedComposer.setVisibility(View.GONE);
+                    }).start();
+        } else {
+            sharedComposer.setVisibility(View.VISIBLE);
+            sharedComposer.setTranslationY(-Math.max(sharedComposer.getHeight(), dp(48)));
+            sharedComposer.setAlpha(0f);
+            sharedComposer.animate().translationY(0f).alpha(1f).setDuration(200L).start();
         }
     }
 
