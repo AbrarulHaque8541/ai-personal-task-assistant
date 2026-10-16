@@ -19,10 +19,10 @@ if api33_back_path.exists():
     activity += "\n" + api33_back_path.read_text(encoding="utf-8")
 
 assert re.search(r"compileSdk\s*=\s*36\b", gradle), "compileSdk must be 36"
-assert re.search(r"targetSdk\s*=\s*35\b", gradle), "targetSdk must be 35"
+assert re.search(r"targetSdk\s*=\s*36\b", gradle), "targetSdk must be 36"
 assert 'id("com.android.application") version "8.12.2" apply false' in toolchain, "AGP must officially support API 36"
 assert "gradle-8.13-bin.zip" in wrapper, "Gradle must match the AGP 8.12 minimum"
-assert '[[ "$target_sdk" == "35" ]]' in workflow, "release artifact target validator must agree"
+assert '[[ "$target_sdk" == "36" ]]' in workflow, "release artifact target validator must agree"
 assert "OnBackInvokedCallback" in activity and "registerOnBackInvokedCallback" in activity, (
     "API 33+ predictive Back callback must be registered"
 )
@@ -34,4 +34,4 @@ assert re.search(r'@SuppressLint\("GestureBackNavigation"\)\s+@Override\s+public
     "lint suppression must be scoped to the pre-API-33 legacy back override"
 )
 
-print("PASS API 36 compile / API 35 target, AGP 8.12.2/Gradle 8.13 toolchain, platform predictive-Back callback, and scoped legacy-lint assertions; runtime acceptance remains NOT TESTED")
+print("PASS API 36 target, AGP 8.12.2/Gradle 8.13 toolchain, platform predictive-Back callback, and scoped legacy-lint assertions; runtime acceptance remains NOT TESTED")

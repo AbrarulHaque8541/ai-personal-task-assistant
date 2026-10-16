@@ -43,6 +43,10 @@ jobs:
           sh ./tools/run-storage-recovery-tests.sh
           sh ./tools/run-updater-picker-routing-tests.sh
 
+      - name: Run repository-level Node tests
+        working-directory: ${{ github.workspace }}
+        run: npm test
+
       - name: Build and verify debug variants
         if: github.event_name == 'pull_request'
         run: >-
@@ -51,10 +55,61 @@ jobs:
           assemblePlayDebug
           lintGithubSideloadDebug
           lintPlayDebug
+          lintGithubSideloadRelease
           testGithubSideloadDebugUnitTest
+          testGithubSideloadReleaseUnitTest
           testPlayDebugUnitTest
           compileGithubSideloadDebugAndroidTestJavaWithJavac
           compilePlayDebugAndroidTestJavaWithJavac
+
+      - name: Print lint reports on PR build failure
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          find app/build -type f \( -name 'lint-results*.txt' -o -name 'lint-report*.txt' \) -print -exec cat {} \; || true
+
+      - name: Cold-launch published v1.3 APK and current debug APK on Android 16
+        if: github.event_name == 'pull_request'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -eu
+            cd "${{ github.workspace }}"
+            release_apk="$RUNNER_TEMP/Daymark-v1.3-githubSideload.apk"
+            debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+            test -s "$debug_apk"
+            curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.3/Daymark-v1.3-githubSideload.apk" --output "$release_apk"
+            echo "aa69ab6f81cae22a2c0ea58ca0619682dd77da826c5d5faaefe0eb934115e585  $release_apk" | sha256sum --check
+            unzip -tqq "$release_apk"
+            unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml"
+            unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc"
+            unzip -Z1 "$release_apk" | grep -Fxq "classes.dex"
+            bash android-app/tools/cold-launch-apk.sh "published v1.3 signed APK on API 36" "$release_apk"
+            timeout 30s adb uninstall com.abrar.daymark
+            bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk"
+
+      - name: Cold-launch current debug APK on Android 10 (API 29)
+        if: github.event_name == 'pull_request'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -eu
+            cd "${{ github.workspace }}"
+            debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+            test -s "$debug_apk"
+            bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk"
 
       - name: Validate production signing secrets
         if: github.event_name != 'pull_request'

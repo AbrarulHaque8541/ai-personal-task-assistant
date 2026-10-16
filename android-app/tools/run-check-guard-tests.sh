@@ -39,6 +39,7 @@ expect_fail_after_removal check-text-scale.py "TextScalePolicy.combined("
 WINDOW="$ROOT/app/src/main/java/com/abrar/daymark/Api30Window.java"
 if [ -f "$WINDOW" ]; then
   expect_fail_after_removal check-window-insets.py "WindowInsets.Type.ime()" "$WINDOW"
+  expect_fail_after_removal check-window-insets.py "Api29Window.relaxBarContrast(window);" "$ACTIVITY"
 else
   expect_fail_after_removal check-window-insets.py "WindowInsets.Type.ime()"
 fi
