@@ -4,8 +4,6 @@
 
 ## Latest reviewed snapshot
 
-- [Daymark status snapshot — 2026-10-16 0513 UTC](CURRENT_STATUS_2026-10-16_0513Z.md)
-
 - [Daymark status snapshot — 2026-10-16 0215 UTC](CURRENT_STATUS_2026-10-16_0215Z.md)
 
 - [Daymark status snapshot — 2026-10-13 1813 UTC](CURRENT_STATUS_2026-10-13_1813Z.md)
