@@ -2,7 +2,7 @@
 
 A native, single-user Android app with local-first task management and an HTTPS-only embedded browser that connects only after a user action. This is a separate Android project under `android-app`; the existing web prototype in the parent directory remains intact.
 
-> **Source/release status checked 2026-10-13:** current `main` uses `com.abrar.daymark`, version `1.0`/code `7`, and target API 36. The latest published release is v1.0.5 and targets API 35; the current source is not published and installs separately from the earlier app line, with no automatic task-data migration. Device acceptance remains untested. See the [status index](../docs/AGENT_STATUS.md) for the dated snapshot and recheck live GitHub before acting.
+> **Source/release status checked 2026-10-16:** current main baseline is `com.abrar.daymark`, version `1.2`/code `9`, target API 35; latest published v1.2 also targets API 35. PR #310 proposes version `1.2.1`/code `10`, target API 36, with API-29/API-36 cold-launch gates. At this check, the candidate PR is not merged, its CI is pending, and physical-device acceptance is NOT TESTED. See the [status index](../docs/AGENT_STATUS.md) and recheck live GitHub before acting.
 
 ## Attached brief: requirement status map
 
@@ -38,12 +38,12 @@ Before any APK download, the app shows the release name/version/notes and exact 
 
 ### Stable-release publishing prerequisites
 
-1. Publish a non-draft, non-prerelease GitHub Release with one `.apk` asset whose GitHub API `digest` is `sha256:<64 hex characters>`. The version tag must equal `v` + exact `versionName` (`v1.0` is the current source value, not evidence of a published release; later patch versions may use three components); the APK `versionName` must match the tag, `versionCode` must exceed the installed app, and the APK application ID must be `com.abrar.daymark`.
+1. Publish a non-draft, non-prerelease GitHub Release with one `.apk` asset whose GitHub API `digest` is `sha256:<64 hex characters>`. The version tag must equal `v` + exact `versionName` (`v1.2.1` is the proposed next candidate in PR #310 at the time of this review, not evidence of publication; always recheck live source and Releases); the APK `versionName` must match the tag, `versionCode` must exceed the installed app, and the APK application ID must be `com.abrar.daymark`.
 2. Include this machine-readable block in the release body, followed by human-readable notes. `minSdkVersion` must match the APK manifest and be supported by the device; `signerCertificateSha256` is the APK signing certificate SHA-256 fingerprint.
 
    ```html
    <!-- daymark-updater-v1
-   {"applicationId":"com.abrar.daymark","versionCode":7,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
+   {"applicationId":"com.abrar.daymark","versionCode":10,"minSdkVersion":26,"signerCertificateSha256":"<64 lowercase hex characters>"}
    -->
    ```
 
@@ -164,7 +164,7 @@ ANDROID_HOME="$HOME/Android/Sdk" ANDROID_SDK_ROOT="$HOME/Android/Sdk" \
 
 Results: `check-v1-source.sh` passed, including browser opt-in/offline policy, text scaling, source-level accessibility and locale checks, and palette contrast (minimum 5.00:1). `npm test` passed 13/13. Both Gradle assemble and lint tasks succeeded; each lint report has 118 warnings (111 `SetTextI18n` warnings), with no finding on the edited browser-preference lines. The two unit-test tasks are `NO-SOURCE`. The review-branch debug APKs are **305,945 bytes** (`githubSideload`, SHA-256 `a75a755f013d2bd9210af79d54c3e0e36caffe0046c0eac9e63e47a78600e386`) and **304,829 bytes** (`play`, SHA-256 `7bbb08d6d6af7fcb7637b3e060e3ead1513bd3facd2717fad9dcfdd963ebb295`). Both report application ID `com.abrar.daymark`, API 36 target, minSdk 26, and verify with the debug certificate using APK Signature Scheme v2. The sideload manifest additionally has `ACCESS_NETWORK_STATE`; both include Internet and reminder declarations. Neither APK contains a model/weight payload. Debug bytes are not the release-size measurement.
 
-The latest published production asset, [v1.0.5 `githubSideload` APK](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.0.5), is **221,293 bytes** (SHA-256 `4f11393bb7d00acc5743e5847d8ba31f2bbd48d873ab2baf26a723c6d1a50fb7`). Its exact-tag [production workflow](https://github.com/AbrarulHaque8541/daymark/actions/runs/37983124962) succeeded; the downloaded asset's digest, v2 signature, and pinned production signer were verified. It is targetSdk 35, from before the current API-36 source, and contains no model weights. This measured release is below the `<15 MB` target; remeasure a new production artifact after an API-36 release build rather than promising the next version's size.
+The historical published production asset, [v1.0.5 `githubSideload` APK] (superseded by v1.2)(https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.0.5), is **221,293 bytes** (SHA-256 `4f11393bb7d00acc5743e5847d8ba31f2bbd48d873ab2baf26a723c6d1a50fb7`). Its exact-tag [production workflow](https://github.com/AbrarulHaque8541/daymark/actions/runs/37983124962) succeeded; the downloaded asset's digest, v2 signature, and pinned production signer were verified. It is targetSdk 35, from before the current API-36 source, and contains no model weights. This measured release is below the `<15 MB` target; remeasure a new production artifact after an API-36 release build rather than promising the next version's size.
 
 `adb devices -l` found no device, and no emulator is installed. Therefore the debug APKs were not installed/launched; airplane-mode behavior, actual offline WebView traffic, layout/font rendering, TalkBack traversal, translations/RTL, Keystore behavior, and Android 16 runtime/edge-to-edge acceptance are **NOT TESTED**. See `ANDROID_SOURCES.md` for current official platform and provider sources, and `V1_ACCEPTANCE.md` for remaining gates.
 
