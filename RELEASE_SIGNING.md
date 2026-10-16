@@ -2,13 +2,14 @@
 
 This document describes durable release rules plus a dated source/release snapshot. Verify the live `main` branch, GitHub Releases, and exact workflow run before acting.
 
-## Current source and published release (checked 2026-10-13)
+## Current source and published release (checked 2026-10-16)
 
-- Current source on `main` uses application ID `com.abrar.daymark`, `versionName = 1.1`, `versionCode = 8`, and `targetSdk = 35`.
-- The latest published release is **v1.0.5**; its APK targets API 35 and belongs to a separate, older application identity. The current `1.0` source line is not published and installs separately from that older line. There is no automatic task-data migration between the apps.
+- Current `main` baseline at the audit uses application ID `com.abrar.daymark`, `versionName = 1.2`, `versionCode = 9`, `compileSdk = 36`, and `targetSdk = 35`.
+- Latest published release is [**v1.2**](https://github.com/AbrarulHaque8541/daymark/releases/tag/v1.2). It contains one APK asset (`Daymark-v1.2-githubSideload.apk`, SHA-256 `de3e59757182992d7da5df3c47007720a813f9bed796c21e1a15dd162807bdce`); it targets API 35 and uses versionCode 9.
+- [PR #310](https://github.com/AbrarulHaque8541/daymark/pull/310) proposes the next candidate `versionName = 1.2.1`, `versionCode = 10`, `targetSdk = 36`, with API-29/API-36 emulator cold-launch gates. It is not merged and CI is pending at this snapshot; no new tag or production release has been created.
 - Do not infer publication from Gradle values or CI. The live Releases page is the source of truth for published assets; the current source values are in [`android-app/app/build.gradle.kts`](android-app/app/build.gradle.kts).
 
-PR #295 prepared future links under `AbrarulHaque8541/daymark`, but the actual GitHub repository slug remained `AbrarulHaque8541/ai-personal-task-assistant` at the 2026-10-13 review. The owner has not applied the rename; prepared future-name links may not resolve until then. This review does not rename the repository.
+The canonical GitHub repository slug is now `AbrarulHaque8541/daymark`. Older documents that say the repository rename is still pending are historical and should be updated when touched.
 
 ## Immutable identity and signer
 
