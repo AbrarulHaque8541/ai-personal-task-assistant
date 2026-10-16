@@ -82,7 +82,7 @@ jobs:
           script: |
             set -eu
             release_apk="$RUNNER_TEMP/Daymark-v1.2-githubSideload.apk"
-            debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+            debug_apk="app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
             test -s "$debug_apk"
             curl --fail --location --silent --show-error --connect-timeout 10 --max-time 60 "https://github.com/AbrarulHaque8541/daymark/releases/download/v1.2/Daymark-v1.2-githubSideload.apk" --output "$release_apk"
             echo "de3e59757182992d7da5df3c47007720a813f9bed796c21e1a15dd162807bdce  $release_apk" | sha256sum --check
@@ -90,9 +90,9 @@ jobs:
             unzip -Z1 "$release_apk" | grep -Fxq "AndroidManifest.xml"
             unzip -Z1 "$release_apk" | grep -Fxq "resources.arsc"
             unzip -Z1 "$release_apk" | grep -Fxq "classes.dex"
-            bash android-app/tools/cold-launch-apk.sh "published v1.2 signed APK on API 36" "$release_apk"
+            bash tools/cold-launch-apk.sh "published v1.2 signed APK on API 36" "$release_apk"
             timeout 30s adb uninstall com.abrar.daymark
-            bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk"
+            bash tools/cold-launch-apk.sh "current PR debug APK on API 36" "$debug_apk"
 
       - name: Cold-launch current debug APK on Android 10 (API 29)
         if: github.event_name == 'pull_request'
@@ -106,9 +106,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
             set -eu
-            debug_apk="android-app/app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
+            debug_apk="app/build/outputs/apk/githubSideload/debug/app-githubSideload-debug.apk"
             test -s "$debug_apk"
-            bash android-app/tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk"
+            bash tools/cold-launch-apk.sh "current PR debug APK on API 29" "$debug_apk"
 
       - name: Validate production signing secrets
         if: github.event_name != 'pull_request'
