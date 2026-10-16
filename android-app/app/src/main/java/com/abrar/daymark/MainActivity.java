@@ -1346,7 +1346,7 @@ public final class MainActivity extends Activity {
         quickCaptureInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
         quickCaptureInput.setFilters(new InputFilter[] { new InputFilter.LengthFilter(2048) });
         quickCaptureInput.setPadding(dp(12), dp(8), dp(12), dp(8));
-        quickCaptureInput.setMinHeight(dp(52));
+        quickCaptureInput.setMinHeight(dp(44));
         quickCaptureInput.setTextColor(palette.text);
         quickCaptureInput.setHintTextColor(palette.muted);
         quickCaptureInput.setBackground(shape(palette.background, 14, palette.line));
@@ -1374,7 +1374,9 @@ public final class MainActivity extends Activity {
 
         taskActions = new LinearLayout(this);
         taskActions.setOrientation(LinearLayout.VERTICAL);
-        addTaskButton = primaryButton("Add task");
+        addTaskButton = compactButton("Add task", false);
+        addTaskButton.setMinHeight(dp(40));
+        addTaskButton.setMinimumHeight(dp(40));
         addTaskButton.setContentDescription("Add this task in the full editor with the captured text");
         addTaskButton.setOnClickListener(view -> {
             String draft = quickCaptureInput.getText() == null
@@ -1629,8 +1631,7 @@ public final class MainActivity extends Activity {
         browserExpandButton.setContentDescription("Open the current web page in a full-screen view");
         browserExpandButton.setEnabled(false);
         browserExpandButton.setOnClickListener(view -> openFullScreenWebView());
-        for (Button button : Arrays.asList(downloadsShortcut, browserBackButton, browserForwardButton,
-                browserReloadButton, browserHomeButton, browserTabButton, browserOverflowButton)) {
+        for (Button button : Arrays.asList(browserHomeButton, browserTabButton, browserOverflowButton)) {
             button.setMinHeight(dp(38));
             button.setMinimumHeight(dp(38));
             button.setTextSize(12 * textScale);
@@ -2540,7 +2541,7 @@ public final class MainActivity extends Activity {
                 "Privacy details", "Browser settings", "Site info", "Turn off online browsing",
                 "Diagnostics",
                 "Bookmark this page", "Bookmarks",
-                "Save page as task"
+                "Save page as task", "Back", "Forward", "Reload"
         };
         new AlertDialog.Builder(this)
                 .setTitle("Browser actions")
@@ -2610,6 +2611,18 @@ public final class MainActivity extends Activity {
                             break;
                         case 19:
                             saveCurrentPageAsTask();
+                            break;
+                        case 20:
+                            if (browserWebView != null && browserWebView.canGoBack()) browserWebView.goBack();
+                            break;
+                        case 21:
+                            if (browserWebView != null && browserWebView.canGoForward()) browserWebView.goForward();
+                            break;
+                        case 22:
+                            if (browserWebView != null) {
+                                if (browserWebView.getUrl() != null && browserWebView.getProgress() < 100) browserWebView.stopLoading();
+                                else browserWebView.reload();
+                            }
                             break;
                         default:
                             break;
