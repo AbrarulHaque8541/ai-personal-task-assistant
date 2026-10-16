@@ -223,7 +223,7 @@ jobs:
           echo "API29 GATE: ALL PASS"
 
       - name: Report emulator gate traces to the pull request
-        if: always() && github.event_name == 'pull_request'
+        if: failure() && github.event_name == 'pull_request'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -251,7 +251,7 @@ jobs:
               echo '</details>'
               echo
             done
-            echo "Temporary diagnostics posted by CI; removed after root-cause fix."
+            echo "Diagnostics posted by CI on gate failure only."
           } > "$body"
           gh pr comment "$PR_NUMBER" --body-file "$body"
 
