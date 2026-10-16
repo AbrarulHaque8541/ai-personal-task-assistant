@@ -25,7 +25,7 @@ jobs:
       - name: Check out the exact PR 312 merge head
         uses: actions/checkout@v5
         with:
-          ref: 25af26681310375e3ab46370326835d1a4dab884
+          ref: b9555debb967db6bdff4900d1c3f1b297541f421
 
       - name: Run each check with markers
         shell: bash
