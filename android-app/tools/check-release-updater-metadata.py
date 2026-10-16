@@ -43,7 +43,9 @@ for marker in (
 ):
     assert marker in workflow, f"release artifact safety/cold-launch gate missing: {marker}"
 assert 'Choose **Download anyway**' not in workflow, "unsafe Play Protect bypass instruction must not return"
-assert 'for pair in "$APK_NAME:$APK_SHA:$apk"; do' in workflow, "release page must upload only the installable APK"
+assert 'gh release upload "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --clobber=false' in workflow, "draft release must upload only the installable APK"
+assert 'gh release upload "$TAG" "$aab"' not in workflow, "AAB must not be attached as a second user download"
+assert 'gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$APK_NAME"' in workflow, "draft APK SHA-256 must be verified by downloading the actual draft asset"
 assert 'gh release create "$TAG" "$apk"' in workflow, "draft release must attach only the APK, not the AAB"
 assert '--draft --verify-tag' in workflow, "production workflow must create a draft release, not publish automatically"
 assert '.draft == true' in workflow, "workflow must verify draft status before finishing"
