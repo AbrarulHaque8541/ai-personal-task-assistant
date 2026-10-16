@@ -16,11 +16,17 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /** Authenticated encrypted-blob protocol; platform file/key access is injected. */
 final class EncryptedBlobStore {
+    /** Legacy v1 on-disk header: magic + IV + ciphertext, bound to the original key alias. */
     private static final byte[] MAGIC = new byte[] { 'D', 'M', 'T', '1' };
+    /** Versioned header: magic + keyVersion(2, big-endian) + IV + ciphertext. */
+    private static final byte[] MAGIC_V2 = new byte[] { 'D', 'M', 'T', '2' };
     private static final int IV_LENGTH_BYTES = 12;
     private static final int TAG_LENGTH_BYTES = 16;
+    private static final int KEY_VERSION_LENGTH_BYTES = 2;
     private static final int HEADER_LENGTH = MAGIC.length + IV_LENGTH_BYTES;
+    private static final int HEADER_LENGTH_V2 = MAGIC_V2.length + KEY_VERSION_LENGTH_BYTES + IV_LENGTH_BYTES;
     private static final int MIN_BLOB_LENGTH = HEADER_LENGTH + TAG_LENGTH_BYTES;
+    private static final int MIN_BLOB_LENGTH_V2 = HEADER_LENGTH_V2 + TAG_LENGTH_BYTES;
     private static final int GCM_TAG_BITS = TAG_LENGTH_BYTES * 8;
     private static final int MAX_STORE_BYTES = 10 * 1024 * 1024;
 
@@ -29,6 +35,7 @@ final class EncryptedBlobStore {
     private boolean loadedSuccessfully;
     private boolean loadedExistingSnapshot;
     private byte[] loadedBlob;
+    private int loadedKeyVersion;
 
     EncryptedBlobStore(AtomicFileAccess file, KeyAccess keys) {
         this.file = file;
@@ -39,6 +46,7 @@ final class EncryptedBlobStore {
         loadedSuccessfully = false;
         loadedExistingSnapshot = false;
         loadedBlob = null;
+        loadedKeyVersion = 0;
 
         if (!file.hasCommittedSnapshot()) {
             if (file.hasAnyArtifacts()) {
@@ -49,7 +57,6 @@ final class EncryptedBlobStore {
             return LoadResult.empty();
         }
 
-        SecretKey key = keys.loadExistingKey();
         byte[] blob;
         try (InputStream input = file.openRead()) {
             blob = readBounded(input);
@@ -63,19 +70,43 @@ final class EncryptedBlobStore {
             throw new StorageException(Kind.CORRUPT_DATA,
                     "The encrypted task file has an invalid size.");
         }
-        for (int index = 0; index < MAGIC.length; index++) {
-            if (blob[index] != MAGIC[index]) {
+
+        byte[] iv;
+        byte[] ciphertext;
+        byte[] aad;
+        SecretKey key;
+        int keyVersion;
+        if (hasMagic(blob, MAGIC_V2)) {
+            if (blob.length < MIN_BLOB_LENGTH_V2) {
+                throw new StorageException(Kind.CORRUPT_DATA,
+                        "The encrypted task file has an invalid size.");
+            }
+            keyVersion = readKeyVersion(blob);
+            if (keyVersion < 1) {
                 throw new StorageException(Kind.CORRUPT_DATA,
                         "The encrypted task file format is not recognized.");
             }
+            key = keys.loadKeyForVersion(keyVersion);
+            iv = Arrays.copyOfRange(blob, MAGIC_V2.length + KEY_VERSION_LENGTH_BYTES, HEADER_LENGTH_V2);
+            ciphertext = Arrays.copyOfRange(blob, HEADER_LENGTH_V2, blob.length);
+            aad = versionedAAD(keyVersion);
+        } else if (hasMagic(blob, MAGIC)) {
+            // Legacy DMT1 snapshots stay readable with the original key alias.
+            key = keys.loadExistingKey();
+            keyVersion = 1;
+            iv = Arrays.copyOfRange(blob, MAGIC.length, HEADER_LENGTH);
+            ciphertext = Arrays.copyOfRange(blob, HEADER_LENGTH, blob.length);
+            aad = MAGIC;
+        } else {
+            throw new StorageException(Kind.CORRUPT_DATA,
+                    "The encrypted task file format is not recognized.");
         }
 
-        byte[] iv = Arrays.copyOfRange(blob, MAGIC.length, HEADER_LENGTH);
-        byte[] ciphertext = Arrays.copyOfRange(blob, HEADER_LENGTH, blob.length);
-        byte[] plaintext = decrypt(key, iv, ciphertext);
+        byte[] plaintext = decrypt(key, aad, iv, ciphertext);
         loadedSuccessfully = true;
         loadedExistingSnapshot = true;
         loadedBlob = Arrays.copyOf(blob, blob.length);
+        loadedKeyVersion = keyVersion;
         return LoadResult.present(plaintext);
     }
 
@@ -86,9 +117,11 @@ final class EncryptedBlobStore {
         }
 
         SecretKey key;
+        int keyVersion;
         if (loadedExistingSnapshot) {
             verifyLoadedSnapshotUnchanged();
-            key = keys.loadExistingKey();
+            key = keys.loadKeyForVersion(loadedKeyVersion);
+            keyVersion = loadedKeyVersion;
         } else {
             if (file.hasAnyArtifacts()) {
                 loadedSuccessfully = false;
@@ -96,20 +129,54 @@ final class EncryptedBlobStore {
                         "An encrypted task file appeared after the empty store was loaded.");
             }
             key = keys.createKeyForNewStore();
+            keyVersion = keys.newStoreKeyVersion();
         }
 
-        byte[] blob = encrypt(key, plaintext);
+        byte[] blob = encrypt(key, keyVersion, plaintext);
         writeAtomically(blob);
         loadedSuccessfully = true;
         loadedExistingSnapshot = true;
         loadedBlob = Arrays.copyOf(blob, blob.length);
+        loadedKeyVersion = keyVersion;
     }
 
-    private byte[] decrypt(SecretKey key, byte[] iv, byte[] ciphertext) throws StorageException {
+    /**
+     * Re-encrypts the caller's current plaintext snapshot under a fresh key.
+     * The committed snapshot is only replaced after the new blob is written and
+     * read back; the retired key version is destroyed only after that commit.
+     * Rotation of an empty store is a no-op.
+     */
+    void rotateKey(byte[] plaintext) throws StorageException {
+        if (!loadedSuccessfully) {
+            throw new StorageException(Kind.STORE_NOT_VERIFIED,
+                    "Task storage must load successfully before it can be changed.");
+        }
+        if (!loadedExistingSnapshot) {
+            return;
+        }
+        verifyLoadedSnapshotUnchanged();
+        // Fail closed if the current key is already unusable, before creating a replacement.
+        keys.loadKeyForVersion(loadedKeyVersion);
+        KeyAccess.VersionedKey replacement = keys.createReplacementKey();
+        byte[] blob = encrypt(replacement.key, replacement.version, plaintext);
+        writeAtomically(blob);
+        int retiredKeyVersion = loadedKeyVersion;
+        loadedSuccessfully = true;
+        loadedExistingSnapshot = true;
+        loadedBlob = Arrays.copyOf(blob, blob.length);
+        loadedKeyVersion = replacement.version;
+        try {
+            keys.destroyRetiredKey(retiredKeyVersion);
+        } catch (Exception keyStoreFailure) {
+            // Retirement is best-effort: the committed blob no longer needs the retired key.
+        }
+    }
+
+    private byte[] decrypt(SecretKey key, byte[] aad, byte[] iv, byte[] ciphertext) throws StorageException {
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_BITS, iv));
-            cipher.updateAAD(MAGIC);
+            cipher.updateAAD(aad);
             return cipher.doFinal(ciphertext);
         } catch (InvalidKeyException exception) {
             throw new StorageException(Kind.KEY_UNAVAILABLE,
@@ -123,23 +190,28 @@ final class EncryptedBlobStore {
         }
     }
 
-    private byte[] encrypt(SecretKey key, byte[] plaintext) throws StorageException {
-        if (plaintext.length > MAX_STORE_BYTES - MIN_BLOB_LENGTH) {
+    private byte[] encrypt(SecretKey key, int keyVersion, byte[] plaintext) throws StorageException {
+        if (keyVersion < 1) {
+            throw new StorageException(Kind.CRYPTO_UNAVAILABLE,
+                    "The task encryption key version is invalid.");
+        }
+        if (plaintext.length > MAX_STORE_BYTES - MIN_BLOB_LENGTH_V2) {
             throw new StorageException(Kind.STORAGE_LIMIT,
                     "The task data exceeds the encrypted-store size limit.");
         }
         try {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key);
-            cipher.updateAAD(MAGIC);
+            cipher.updateAAD(versionedAAD(keyVersion));
             byte[] iv = cipher.getIV();
             if (iv == null || iv.length != IV_LENGTH_BYTES) {
                 throw new GeneralSecurityException("Unexpected AES-GCM IV length.");
             }
             byte[] ciphertext = cipher.doFinal(plaintext);
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream(HEADER_LENGTH + ciphertext.length);
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream(HEADER_LENGTH_V2 + ciphertext.length);
             DataOutputStream data = new DataOutputStream(buffer);
-            data.write(MAGIC);
+            data.write(MAGIC_V2);
+            data.writeShort(keyVersion);
             data.write(iv);
             data.write(ciphertext);
             data.flush();
@@ -158,6 +230,26 @@ final class EncryptedBlobStore {
             throw new StorageException(Kind.CRYPTO_UNAVAILABLE,
                     "The task data could not be encrypted.", exception);
         }
+    }
+
+    private static boolean hasMagic(byte[] blob, byte[] magic) {
+        if (blob.length < magic.length) return false;
+        for (int index = 0; index < magic.length; index++) {
+            if (blob[index] != magic[index]) return false;
+        }
+        return true;
+    }
+
+    private static int readKeyVersion(byte[] blob) {
+        int offset = MAGIC_V2.length;
+        return ((blob[offset] & 0xFF) << 8) | (blob[offset + 1] & 0xFF);
+    }
+
+    private static byte[] versionedAAD(int keyVersion) {
+        byte[] aad = Arrays.copyOf(MAGIC_V2, MAGIC_V2.length + KEY_VERSION_LENGTH_BYTES);
+        aad[MAGIC_V2.length] = (byte) (keyVersion >>> 8);
+        aad[MAGIC_V2.length + 1] = (byte) keyVersion;
+        return aad;
     }
 
     private void verifyLoadedSnapshotUnchanged() throws StorageException {
@@ -243,6 +335,36 @@ final class EncryptedBlobStore {
     interface KeyAccess {
         SecretKey loadExistingKey() throws StorageException;
         SecretKey createKeyForNewStore() throws StorageException;
+
+        /** Returns the key bound to a versioned DMT2 blob header. */
+        default SecretKey loadKeyForVersion(int keyVersion) throws StorageException {
+            return loadExistingKey();
+        }
+
+        /** Key version stamped into blobs written for a brand-new store. */
+        default int newStoreKeyVersion() throws StorageException {
+            return 1;
+        }
+
+        /** Creates the replacement key used by rotation; fails closed when unsupported. */
+        default VersionedKey createReplacementKey() throws StorageException {
+            throw new StorageException(Kind.KEY_UNAVAILABLE,
+                    "Task key rotation is not supported by this key provider.");
+        }
+
+        /** Best-effort destruction of a key version retired by a completed rotation. */
+        default void destroyRetiredKey(int keyVersion) throws StorageException {
+        }
+    }
+
+    static final class VersionedKey {
+        final SecretKey key;
+        final int version;
+
+        VersionedKey(SecretKey key, int version) {
+            this.key = key;
+            this.version = version;
+        }
     }
 
     static final class LoadResult {
