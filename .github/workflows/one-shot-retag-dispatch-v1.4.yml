@@ -56,8 +56,13 @@ jobs:
             fi
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag "$tag" "$GITHUB_SHA"
+            # fetch-depth: 0 also fetches the OLD v1.4 tag, so plain `git tag`
+            # would fail with "tag already exists". Force-move the local tag.
+            git tag -f "$tag" "$GITHUB_SHA"
             git push origin "refs/tags/$tag"
+            # Confirm the remote tag landed on this commit before dispatching.
+            remote_sha="$(git ls-remote origin "refs/tags/$tag" | awk '{print $1}')"
+            [[ "$remote_sha" == "$GITHUB_SHA" ]] || { echo "::error::Tag $tag did not land on $GITHUB_SHA (got ${remote_sha:-none})"; exit 1; }
           fi
           echo "Tag $tag is at $GITHUB_SHA; dispatching android-production-release.yml on $tag"
           gh workflow run android-production-release.yml --ref "$tag"
