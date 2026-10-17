@@ -1,12 +1,12 @@
 name: One-shot move v1.4 tag and dispatch production draft
 
-# Temporary workflow: the v1.4 tag currently points at a commit whose
-# android-production-release.yml has a broken emulator boot poll
-# (literal backslashes made the sys.boot_completed poll always fail).
-# This commit fixes that workflow, so the tag must move to this commit
-# before the production draft workflow is dispatched on it. Tags pushed
-# with GITHUB_TOKEN cannot trigger workflows themselves (recursion
-# protection), so the production workflow is dispatched explicitly.
+# Temporary workflow: moves tag v1.4 to this commit and dispatches the
+# production draft workflow on it. Tags pushed with GITHUB_TOKEN cannot
+# trigger workflows themselves (recursion protection), so the production
+# workflow is dispatched explicitly. This revision also fixes a literal
+# carriage-return byte in android-production-release.yml that made the
+# workflow file unparseable ("Invalid workflow file"), which is why the
+# previous dispatch attempt failed.
 
 on:
   push:

@@ -228,7 +228,7 @@ jobs:
           timeout 300s "$adb" wait-for-device || { tail -n 80 "$RUNNER_TEMP/emulator29.log"; "$adb" devices; echo "::error::API-29 gate: adb wait-for-device timed out or failed"; exit 1; }
           boot=""
           for i in $(seq 1 300); do
-            boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '' || true)"
+            boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             if [ "$boot" = "1" ]; then echo "BOOT COMPLETED (poll $i)"; break; fi
             if ! kill -0 "$emu_pid" 2>/dev/null; then tail -n 80 "$RUNNER_TEMP/emulator29.log"; echo "::error::API-29 gate: emulator process exited during boot"; exit 1; fi
             sleep 5
@@ -281,7 +281,7 @@ jobs:
           timeout 300s "$adb" wait-for-device || { tail -n 80 "$RUNNER_TEMP/emulator36.log"; "$adb" devices; echo "::error::API-36 gate: adb wait-for-device timed out or failed"; exit 1; }
           boot=""
           for i in $(seq 1 300); do
-            boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '' || true)"
+            boot="$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             if [ "$boot" = "1" ]; then echo "BOOT COMPLETED (poll $i)"; break; fi
             if ! kill -0 "$emu_pid" 2>/dev/null; then tail -n 80 "$RUNNER_TEMP/emulator36.log"; echo "::error::API-36 gate: emulator process exited during boot"; exit 1; fi
             sleep 5
