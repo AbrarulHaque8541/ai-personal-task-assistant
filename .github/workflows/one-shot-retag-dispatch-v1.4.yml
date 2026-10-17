@@ -1,0 +1,75 @@
+name: One-shot move v1.4 tag and dispatch production draft
+
+# Temporary workflow: the v1.4 tag currently points at a commit whose
+# android-production-release.yml has a broken emulator boot poll
+# (literal backslashes made the sys.boot_completed poll always fail).
+# This commit fixes that workflow, so the tag must move to this commit
+# before the production draft workflow is dispatched on it. Tags pushed
+# with GITHUB_TOKEN cannot trigger workflows themselves (recursion
+# protection), so the production workflow is dispatched explicitly.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-retag-dispatch-v1.4.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-shot-retag-dispatch-v1.4
+  cancel-in-progress: false
+
+jobs:
+  retag-dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Move v1.4 tag to this commit and dispatch the production draft workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v1.4"
+          existing="$(git ls-remote origin "refs/tags/$tag" | awk '{print $1}' || true)"
+          if [[ -n "$existing" && "$existing" == "$GITHUB_SHA" ]]; then
+            echo "Tag $tag already points at $GITHUB_SHA; skipping retag."
+          else
+            # Safety: never move the tag if any release (even a draft) already references it.
+            if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > /dev/null 2>&1; then
+              echo "::error::A release (possibly draft) already exists for $tag; refusing to move the tag."
+              exit 1
+            fi
+            if [[ -n "$existing" ]]; then
+              echo "Deleting stale tag $tag at $existing (no release was ever attached to it)."
+              git push origin ":refs/tags/$tag"
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
+          fi
+          echo "Tag $tag is at $GITHUB_SHA; dispatching android-production-release.yml on $tag"
+          gh workflow run android-production-release.yml --ref "$tag"
+
+      - name: Remove one-shot workflow from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git checkout -B main refs/remotes/origin/main
+          git rm -f .github/workflows/one-shot-retag-dispatch-v1.4.yml
+          git commit -m "ci: remove one-shot v1.4 retag/dispatch workflow"
+          git push origin refs/heads/main
